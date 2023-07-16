@@ -123,7 +123,7 @@ def mpl_fontsizes(small=14, medium=18, large=24):
     plt.rc('axes', labelsize=medium)    # fontsize of the x and y labels
     plt.rc('xtick', labelsize=small)    # fontsize of the tick labels
     plt.rc('ytick', labelsize=small)    # fontsize of the tick labels
-    plt.rc('legend', fontsize=small)    # legend fontsize
+    plt.rc('legend', fontsize=medium)    # legend fontsize
     plt.rc('figure', titlesize=large)   # fontsize of the figure title
 
 
@@ -480,15 +480,18 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
             raise Exception('Expected {} values; got {}'.format(len(pdf.parameters)-1, len(init_vals)))
         for par, value in zip(pdf.parameters, init_vals):
             old_range = max(abs(par.getMin()), abs(par.getMax()))
+            print('*'*50, value, old_range)
             if abs(value) > old_range:
-                new_range = 1.1*abs(value)
+                new_range = 1.5*abs(value)
+                #new_range = 50*abs(value)
                 logger.info(
                     'Increasing range for {} ({}) from ({:.3f}, {:.3f}) to ({:.3f}, {:.3f})'
-                    .format(par.GetName(), par.GetTitle(), par.getMin(), par.getMax(), -new_range, new_range)
+                   .format(par.GetName(), par.GetTitle(), par.getMin(), par.getMax(), -new_range, new_range)
                     )
                 par.setRange(-new_range, new_range)
-            elif abs(value) / old_range < .1:
-                new_range = 1.1*abs(value)
+            elif abs(value) / old_range < .01:
+                new_range = 5*abs(value)
+                #new_range = 50*abs(value)
                 logger.info(
                     'Decreasing range for {} ({}) from ({:.3f}, {:.3f}) to ({:.3f}, {:.3f})'
                     .format(par.GetName(), par.GetTitle(), par.getMin(), par.getMax(), -new_range, new_range)
@@ -551,6 +554,7 @@ def single_fit_scipy(expression, histogram, init_vals=None, cache=None, **minimi
     res.x_init = np.array(init_vals)
     res.expression = expression
     res.hash = fit_hash
+    res.nfev = 10000
     # Set approximate uncertainties; see https://stackoverflow.com/a/53489234
     # Assume ftol ~ function value
     # try:
@@ -723,7 +727,8 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
             # Alternatives to 22:
             # 13: pow(1 - @0/{0}, @1+@2*log(@0/{0})) * pow(@0/{0}, -(@3+@4*log(@0/{0})))
         elif npars == 5:
-            expression = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)) * pow(@0/{0}, -(@4+@5*log(@0/{0})))'
+            #expression = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)) * pow(@0/{0}, -(@4+@5*log(@0/{0})))'
+            expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)+@5*pow(log(@0/{0}),3)))'
             # Alternatives to 32:
             # 14: pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)+@5*pow(log(@0/{0}),3)))
             # 41: pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)+@4*pow(log(@0/{0}),3)) * pow(@0/{0}, -@5)
@@ -740,6 +745,19 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
             expression = 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})*(1+@4*log(@0/{0}))))'
         else:
             raise Exception('Unavailable npars for alt: {0}'.format(npars))
+
+    elif pdf_type == 'ua2':
+        #if npars == 1:
+        #    expression = 'pow(@0/{0}, @1)'
+        if npars == 2:
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}))'
+        if npars == 3:
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2))'
+        if npars == 4:
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3))'
+        if npars == 5:
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))'
+
     else:
         raise Exception('Unknown pdf type {0}'.format(pdf_type))
     return expression.format(mt_scale)
@@ -751,7 +769,7 @@ def pdf_parameters(pdf_type, npars, prefix=None):
         if npars == 2:
             parameters = [
                 ROOT.RooRealVar(prefix + "_p1", "p1", 1., -45., 45.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.)
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -50., 50.)
                 ]
         elif npars == 3:
             parameters = [
@@ -762,9 +780,9 @@ def pdf_parameters(pdf_type, npars, prefix=None):
         elif npars == 4:
             parameters = [
                 ROOT.RooRealVar(prefix + "_p1", "p1", 1., -95., 95.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -25., 20.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -2., 2.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -2., 2.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -50., 5.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -30., 5.),
+                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -10., 2.),
                 ]
         elif npars == 5:
             parameters = [
@@ -775,6 +793,13 @@ def pdf_parameters(pdf_type, npars, prefix=None):
                 ROOT.RooRealVar(prefix + "_p5", "p5", 1., -1.5, 1.5),
                 ]
     elif pdf_type == 'alt':
+        par_lo = -100.
+        par_up = 100.
+        parameters = [
+            ROOT.RooRealVar(prefix + '_p{0}'.format(i+1), '', 10., par_lo, par_up) \
+            for i in range(npars)
+            ]
+    elif pdf_type == 'ua2':
         par_lo = -50.
         par_up = 50.
         parameters = [
@@ -832,7 +857,7 @@ def pdf_factory(pdf_type, n_pars, mt, bkg_th1, name=None, mt_scale='1000', trige
     If `trigeff` equals 2016, 2017, or 2018, the bkg trigger efficiency as a 
     function of mT_AK15_subl is prefixed to the expression.
     """
-    if pdf_type not in {'main', 'alt'}: raise Exception('Unknown pdf_type %s' % pdf_type)
+    if pdf_type not in {'main', 'alt', 'ua2'}: raise Exception('Unknown pdf_type %s' % pdf_type)
     if name is None: name = uid()
     logger.info(
         'Building name={} pdf_type={} n_pars={} mt.GetName()="{}", bkg_th1.GetName()="{}"'
@@ -876,7 +901,10 @@ def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None
     Like pdf_factory, but returns a list for all available n_pars
     """
     if name is None: name = uid()
-    all_n_pars = [2, 3, 4, 5] if pdf_type == 'main' else [1, 2, 3, 4]
+    #all_n_pars = [2, 3, 4, 5] if pdf_type == 'main' else [1, 2, 3, 4]
+    if pdf_type == 'alt':  all_n_pars = [1, 2, 3, 4] 
+    if pdf_type == 'main': all_n_pars = [2, 3, 4, 5]
+    if pdf_type == 'ua2':  all_n_pars = [2, 3, 4, 5]
     return [ pdf_factory(pdf_type, n_pars, mt, bkg_th1, name+'_npars'+str(n_pars), mt_scale, trigeff=trigeff) for n_pars in all_n_pars]
 
 
@@ -1178,7 +1206,7 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
 def gen_datacard(
     jsonfile, bdtcut, signal,
     lock=None, injectsignal=False,
-    tag=None, mt_min=180., mt_max=720.,
+    tag=None, mt_min=200., mt_max=600.,
     trigeff=None,
     ):
     mz = signal['mz']
@@ -1196,13 +1224,15 @@ def gen_datacard(
     pdfs_dict = {
         'main' : pdfs_factory('main', mt, bkg_th1, name='bsvj_bkgfitmain', trigeff=trigeff),
         'alt' : pdfs_factory('alt', mt, bkg_th1, name='bsvj_bkgfitalt', trigeff=trigeff),
+        'ua2' : pdfs_factory('ua2', mt, bkg_th1, name='bsvj_bkgfitua2', trigeff=trigeff),
         }
     winner_pdfs = []
 
     from fit_cache import FitCache
     cache = FitCache(lock=lock)
 
-    for pdf_type in ['main', 'alt']:
+    #for pdf_type in ['main', 'alt', 'ua2']:
+    for pdf_type in ['main', 'ua2']:
         pdfs = pdfs_dict[pdf_type]
         ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
         i_winner = do_fisher_test(mt, data_datahist, pdfs)
@@ -1494,6 +1524,7 @@ class CombineCommand(object):
         '--trackErrors',
         ]
     comma_separated_arg_map = { camel_to_snake(v.strip('-')) : v for v in comma_separated_args }
+    
     comma_separated_arg_map['redefine_signal_pois'] = '--redefineSignalPOIs'
 
     def __init__(self, dc=None, method='MultiDimFit', args=None, kwargs=None, raw=None):
@@ -1572,14 +1603,19 @@ class CombineCommand(object):
         command.append('-M ' + self.method)
         if not self.dc: raise Exception('self.dc must be a valid path')
         command.append(self.dc.filename)
+        #print('*'*25, command)
         command.extend(list(self.args))
+        #print('*'*50, command)
         command.extend([k+' '+str(v) for k, v in self.kwargs.items()])
+        #print('*'*100, command)
 
         for attr, command_str in self.comma_separated_arg_map.items():
             values = getattr(self, attr)
             if not values: continue
+            #print('*'*150, values)
             command.append(command_str + ' ' + ','.join(list(sorted(values))))
-        
+        #print('*'*200, command)
+        #print('debug1000000000', self.parameters.items()) 
         if self.parameters:
             strs = ['{0}={1}'.format(k, v) for k, v in self.parameters.items()]
             command.append('--setParameters ' + ','.join(strs))
@@ -1589,6 +1625,7 @@ class CombineCommand(object):
             command.append('--setParameterRanges ' + ':'.join(strs))
 
         if self.raw: command.append(self.raw)
+        #print('*'*150, 'self.raw', self.raw)
 
         return command
 
@@ -1598,11 +1635,15 @@ def apply_combine_args(cmd):
     Takes a CombineCommand, and reads arguments 
     """
     cmd = cmd.copy()
-    pdf = pull_arg('--pdf', type=str, choices=['main', 'alt'], default='main').pdf
+    #pdf = pull_arg('--pdf', type=str, choices=['main', 'alt', 'ua2'], default='ua2').pdf
+    pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2'], default='main').pdf
     logger.info('Using pdf %s', pdf)
-    cmd.set_parameter('pdf_index', {'main':0, 'alt':1}[pdf])
+    #cmd.set_parameter('pdf_index', {'main':0, 'alt':1, 'ua2':2}[pdf])
+    cmd.set_parameter('pdf_index', {'main':0, 'ua2':1}[pdf])
     pdf_pars = cmd.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
-    other_pdf = {'main':'alt', 'alt':'main'}[pdf]
+    #other_pdf = {'main':'alt', 'alt':'main', 'main':'ua2', 'ua2':'main', 'alt':'ua2', 'ua2':'alt'}[pdf]
+    other_pdf = {'main':'ua2', 'ua2':'main'}[pdf]
+    #other_pdf = {'ua2':'alt', 'alt':'ua2'}[pdf]
     other_pdf_pars = cmd.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
     cmd.freeze_parameters.add('pdf_index')
     cmd.freeze_parameters.update(other_pdf_pars)
@@ -1657,7 +1698,8 @@ def scan(cmd):
     rmin, rmax = pull_arg('-r', '--range', type=float, default=[-1., 2.], nargs=2).range
     cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
-    cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
+    #cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
+    cmd.kwargs['--points'] = pull_arg('-n', type=int, default=500).n
     return cmd
 
 
@@ -1699,14 +1741,20 @@ def likelihood_scan_factory(
 
     cmd.freeze_parameters.append('pdf_index')
     cmd.track_parameters.append('n_exp_final_binbsvj_proc_roomultipdf')
-    if pdf_type == 'alt':
+    #if pdf_type == 'alt':
+    if pdf_type == 'ua2':
         cmd.set_parameter('pdf_index', 1)
-        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
-        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
-    elif pdf_type == 'main':
-        cmd.set_parameter('pdf_index', 0)
+        #cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
+        #cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
         cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
-        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
+        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
+    elif pdf_type == 'main':
+    #elif pdf_type == 'alt':
+        cmd.set_parameter('pdf_index', 0)
+        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
+        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
+        #cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
+        #cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
     else:
         raise Exception('Unknown pdf_type {}'.format(pdf_type))
 

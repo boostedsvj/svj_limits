@@ -24,6 +24,7 @@ def set_mpl_fontsize(small=22, medium=28, large=32, legend=None):
     plt.rc('ytick', labelsize=small)    # fontsize of the tick labels
     plt.rc('legend', fontsize=medium if legend is None else legend)    # legend fontsize
     plt.rc('figure', titlesize=large)  # fontsize of the figure title
+
 set_mpl_fontsize()
 
 cms_yellow = '#fffc54'
@@ -62,10 +63,14 @@ def quick_ax(figsize=(12,12), outfile='test.png'):
         if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
 
 
-def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):
-    name = osp.basename(rootfile).rsplit('.',3)[0].replace('higgsCombine','')
+def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):#, strip_pdfname=False):
+    name = osp.basename(rootfile).rsplit('.',4)[0].replace('higgsCombine','')
+    name = name.replace('_rinv0','')
+    name = name.replace('dc','')
     if strip_obs_asimov:
         name = name.replace('Observed_','').replace('Asimov_','')
+    '''if strip_pdfname:
+        name = name.replace('main_','').replace('ua2','')'''
     name = name.replace('.MultiDimFit','')
     return name
 
@@ -151,7 +156,10 @@ def extract_scans(rootfiles, correct_minimum=False):
                 'r' : 'mu',
                 'deltaNLL' : 'dnll',
                 'quantileExpected' : 'quantile',
-                'iToy' : 'itoy'
+                'iToy' : 'itoy',
+                #'trackedParam_bsvj_bkgfitua2_npars3_p1' : 'p1',
+                #'trackedParam_bsvj_bkgfitua2_npars3_p2' : 'p2',
+                #'trackedParam_bsvj_bkgfitua2_npars3_p3' : 'p3'
                 }
             # Add the tracked params
             listofbranches = limit.GetListOfBranches()
@@ -174,6 +182,7 @@ def extract_scans(rootfiles, correct_minimum=False):
 
                 # Take out the bestfit
                 is_bestfit = scan.df['quantile'] == -1
+                #print('*'*50, is_bestfit)
                 assert is_bestfit.sum() == 1
                 i_bestfit = is_bestfit.argmax()
                 scan.bestfit = scan[i_bestfit]
@@ -326,13 +335,17 @@ def muscan():
         ax.plot([min_mu, max_mu], [1., 1.], label='$2\sigma$')
         ax.set_xlabel('$\mu$')
         ax.set_ylabel('$\Delta NLL$')
+        ax.set_ylim(-10, 25)
         apply_ranges(ax)
-        ax.legend(framealpha=0.)
+        ax.legend(framealpha=0., fontsize=25)
 
 
 @scripter
 def trackedparam():
     param = bsvj.pull_arg('param', type=str).param
+
+    print('*'*15, param)
+
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
     clean = bsvj.pull_arg('--clean', action='store_true').clean
@@ -346,16 +359,18 @@ def trackedparam():
     with quick_ax(outfile=outfile) as ax:
         for rootfile in rootfiles:
             name = name_from_combine_rootfile(rootfile)
+            #print('*'*30, name)
             for scan in extract_scans(rootfile):
-                ax.plot(scan.df['mu'], scan.df[param], drwstr, label=name, alpha=alpha)
+                #print('*'*45, scan)
+                ax.plot(scan.df['mu'], scan.df[param], drwstr, label=name, alpha=alpha, linewidth=2)
                 if clean:
                     cln = clean_scan(scan)
-                    ax.plot(cln.df['mu'], cln.df[param], label=name)
+                    ax.plot(cln.df['mu'], cln.df[param], label=name, linewidth=2)
 
         ax.set_xlabel('$\mu$')
         ax.set_ylabel(param)
         apply_ranges(ax)
-        ax.legend(framealpha=0.)
+        ax.legend(framealpha=0., fontsize=25)
 
 
 @scripter
@@ -385,6 +400,7 @@ def mtdist():
     ws.loadSnapshot('MultiDimFit')
 
     mu = ws.var('r').getVal()
+    print(r'$\mu$ is equal to = ', mu)
 
     data = ws.data('data_obs')
     _, y_data, _ = bsvj.roodataset_values(data)
@@ -461,7 +477,7 @@ def mtdist():
 
     ax.step(mt_binning[:-1], y_sig, where='post', label=r'S ($\mu$=1)', c='g')
 
-    ax.legend(framealpha=0.0, fontsize=22)
+    ax.legend(framealpha=0.0, fontsize=25)
     ax.set_ylabel('$N_{events}$')
     ax.set_xlabel(r'$m_{T}$ (GeV)')
     ax.set_yscale('log')
@@ -851,7 +867,8 @@ def bkgfit():
     """
     jsonfile = bsvj.pull_arg('jsonfile', type=str).jsonfile
     bdtcut = bsvj.pull_arg('bdtcut', type=float).bdtcut
-    pdftype = bsvj.pull_arg('pdftype', type=str, choices=['main', 'alt']).pdftype
+    #bdtcut = bsvj.pull_arg('--bdtcut', type=str).bdtcut
+    pdftype = bsvj.pull_arg('pdftype', type=str, choices=['main', 'alt', 'ua2']).pdftype
     logscale = bsvj.pull_arg('--log', action='store_true').log
     trigeff = bsvj.pull_arg('--trigeff', type=int, default=None, choices=[2016, 2017, 2018]).trigeff
     fitmethod = bsvj.pull_arg('--fitmethod', type=str, choices=['scipy', 'auto'], default='auto').fitmethod
@@ -860,6 +877,7 @@ def bkgfit():
 
     input = bsvj.InputData(jsonfile)
     if mtrange is None: mtrange = [180., 720.]
+    #mtrange = [200., 600.]
     input = input.cut_mt(mtrange[0], mtrange[1])
 
     bdt_str = '{:.1f}'.format(bdtcut).replace('.', 'p')
@@ -919,7 +937,8 @@ def bkgfit():
     
     figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16))
 
-    ax.plot([], [], ' ', label='{}, score$\\geq${:.1f}'.format(pdftype, bdtcut))
+    #ax.plot([], [], ' ', label='{}, score$\\geq${:.1f}'.format(pdftype, bdtcut))
+    ax.plot([], [], ' ', label='{}, cutBased $\\geq${:.1f}'.format(pdftype, bdtcut))
     ax.step(input.mt[:-1], bkg_hist.vals, where='post', label=r'BKG', c='b')
     ax2.plot([input.mt[0], input.mt[-1]], [0.,0.], c='gray')
 

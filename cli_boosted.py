@@ -164,14 +164,16 @@ def gen_datacards_mp():
     parser.add_argument('-i', '--injectsignal', action='store_true')
     parser.add_argument('--nthreads', type=int, default=10)
     parser.add_argument('--tag', type=str, help='string suffix to outdir')
-    parser.add_argument('--minmt', type=float, default=180.)
-    parser.add_argument('--maxmt', type=float, default=720.)
+    parser.add_argument('--minmt', type=float, default=200.)
+    parser.add_argument('--maxmt', type=float, default=600.)
     parser.add_argument('--trigeff', type=int, default=None, choices=[2016, 2017, 2018])
     args = parser.parse_args()
 
     input = bsvj.InputData(args.jsonfile)
     bdtcuts = input.d['histograms'].keys()
-    signals = [h.metadata for h in input.d['histograms']['0.100'].values() if 'mz' in h.metadata]
+    #signals = [h.metadata for h in input.d['histograms']['0.100'].values() if 'mz' in h.metadata]
+    signals = [h.metadata for h in input.d['histograms']['0.000'].values() if 'mz' in h.metadata]
+    #signals = [h.metadata for h in input.d['histograms']['girthddt'].values() if 'mz' in h.metadata]
 
     # Filter for selected bdtcuts
     if args.bdtcut:
@@ -187,6 +189,7 @@ def gen_datacards_mp():
         signals = [s for s in signals if s['rinv'] in use_rinvs]
         
     combinations = list(itertools.product(bdtcuts, signals))
+    #print('*'*50, 'combinations: ',combinations)
     bsvj.logger.info('Running %s combinations', len(combinations))
 
     if len(combinations) == 1:
@@ -287,6 +290,7 @@ def make_bestfit_and_scan_commands(txtfile, args=None):
         bestfit.raw = ' '.join(sys.argv[1:])
         scan.name += 'Scan'
         bestfit.name += 'Bestfit'
+        cmd.args.add('--saveWorkspace')
     return bestfit, scan
 
 
@@ -313,8 +317,12 @@ def likelihood_scan(args=None):
         print(sys.argv)
 
         outdir = bsvj.pull_arg('-o', '--outdir', type=str).outdir
+        #pdf_name    = bsvj.pull_arg('-p', '--pdf_name', type=str).pdf_name
+        #print('*'*50, 'outdir: ',outdir)
         txtfile = bsvj.pull_arg('datacard', type=str).datacard
+        #print('*'*50, 'txtfile: ',txtfile)
         bestfit, scan = make_bestfit_and_scan_commands(txtfile)
+        #print('*'*50, 'bestfit: ',bestfit, ' scan: ', scan)
 
         if outdir and not osp.isdir(outdir): os.makedirs(outdir)
 
@@ -339,13 +347,15 @@ def likelihood_scan_mp():
     Like likelihood_scan, but accepts multiple datacards. 
     """
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
-    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('scans_%b%d')).outdir
+    outdir    = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('scans_%b%d')).outdir
+    #pdf_name  = bsvj.pull_arg('-p', '--pdf_name', type=str).pdf_name
     if not osp.isdir(outdir): os.makedirs(outdir)
 
     # Copy sys.argv per job, setting first argument to the datacard
     args = sys.argv[:]
     args.insert(1, datacards[0])
     args.extend(['--outdir', outdir])
+    #args.extend(['--pdf_name', pdf_name])
     jobs = []
     for txtfile in datacards:
         args[1] = txtfile
