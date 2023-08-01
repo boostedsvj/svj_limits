@@ -466,6 +466,9 @@ def make_fit_hash(expression, th1, init_vals=None, tag=None, **minimize_kwargs):
 
 
 def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
+    print('*'*50)
+    print('INIT VALS:   ',init_vals)
+    print('*'*50)
     """
     Main bkg fit entry point for fitting pdf to bkg th1 with RooFit
     """
@@ -490,7 +493,8 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                     )
                 par.setRange(-new_range, new_range)
             elif abs(value) / old_range < .01:
-                new_range = 5*abs(value)
+                new_range = 500*abs(value)
+                print('*'*15, ' new range for low values   ',new_range)
                 #new_range = 50*abs(value)
                 logger.info(
                     'Decreasing range for {} ({}) from ({:.3f}, {:.3f}) to ({:.3f}, {:.3f})'
@@ -607,7 +611,7 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
     # The simple fitting scheme failed; Brute force with many different
     # initial values
     npars = count_parameters(expression)-1 # The mT parameter is not a fit parameter
-    init_val_variations = [-1., 1.] # All the possible init values a single fit parameter can have
+    init_val_variations = [-10., 10.] # All the possible init values a single fit parameter can have
     init_vals = np.array(list(itertools.product(*[init_val_variations for i in range(npars)])))
     logger.info(
         'Fit did not converge with single try; brute forcing it with '
@@ -641,6 +645,7 @@ def fit(pdf, th1=None, cache='auto'):
     """
     if th1 is None: th1 = getattr(pdf, 'th1', None)
     res_scipy = fit_scipy_robust(pdf.expression, th1, cache=cache)
+    print('*'*15, ' res_scipy is = ', res_scipy)
     res_roofit_wscipy = fit_roofit(pdf, th1, init_vals=res_scipy.x)
     return res_roofit_wscipy
 
@@ -746,7 +751,22 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
         else:
             raise Exception('Unavailable npars for alt: {0}'.format(npars))
 
+
     elif pdf_type == 'ua2':
+        if npars == 2:
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}))'
+        if npars == 3:
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}+@3*pow(@0/{0},2)))'
+        if npars == 4:
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3))))'
+        if npars == 5:
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))))'
+
+    else:
+        raise Exception('Unknown pdf type {0}'.format(pdf_type))
+    return expression.format(mt_scale)
+
+    '''elif pdf_type == 'ua2':
         #if npars == 1:
         #    expression = 'pow(@0/{0}, @1)'
         if npars == 2:
@@ -760,7 +780,7 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
 
     else:
         raise Exception('Unknown pdf type {0}'.format(pdf_type))
-    return expression.format(mt_scale)
+    return expression.format(mt_scale)'''
 
 
 def pdf_parameters(pdf_type, npars, prefix=None):
@@ -769,7 +789,7 @@ def pdf_parameters(pdf_type, npars, prefix=None):
         if npars == 2:
             parameters = [
                 ROOT.RooRealVar(prefix + "_p1", "p1", 1., -45., 45.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -50., 50.)
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.)
                 ]
         elif npars == 3:
             parameters = [
@@ -1206,7 +1226,8 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
 def gen_datacard(
     jsonfile, bdtcut, signal,
     lock=None, injectsignal=False,
-    tag=None, mt_min=200., mt_max=600.,
+    #tag=None, mt_min=200., mt_max=600.,
+    tag=None, mt_min=180., mt_max=650.,
     trigeff=None,
     ):
     mz = signal['mz']
@@ -1603,19 +1624,13 @@ class CombineCommand(object):
         command.append('-M ' + self.method)
         if not self.dc: raise Exception('self.dc must be a valid path')
         command.append(self.dc.filename)
-        #print('*'*25, command)
         command.extend(list(self.args))
-        #print('*'*50, command)
         command.extend([k+' '+str(v) for k, v in self.kwargs.items()])
-        #print('*'*100, command)
 
         for attr, command_str in self.comma_separated_arg_map.items():
             values = getattr(self, attr)
             if not values: continue
-            #print('*'*150, values)
             command.append(command_str + ' ' + ','.join(list(sorted(values))))
-        #print('*'*200, command)
-        #print('debug1000000000', self.parameters.items()) 
         if self.parameters:
             strs = ['{0}={1}'.format(k, v) for k, v in self.parameters.items()]
             command.append('--setParameters ' + ','.join(strs))
@@ -1625,7 +1640,6 @@ class CombineCommand(object):
             command.append('--setParameterRanges ' + ':'.join(strs))
 
         if self.raw: command.append(self.raw)
-        #print('*'*150, 'self.raw', self.raw)
 
         return command
 
@@ -1635,8 +1649,8 @@ def apply_combine_args(cmd):
     Takes a CombineCommand, and reads arguments 
     """
     cmd = cmd.copy()
-    #pdf = pull_arg('--pdf', type=str, choices=['main', 'alt', 'ua2'], default='ua2').pdf
-    pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2'], default='main').pdf
+    pdf = pull_arg('--pdf', type=str, choices=['main', 'alt', 'ua2'], default='ua2').pdf
+    #pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2'], default='main').pdf
     logger.info('Using pdf %s', pdf)
     #cmd.set_parameter('pdf_index', {'main':0, 'alt':1, 'ua2':2}[pdf])
     cmd.set_parameter('pdf_index', {'main':0, 'ua2':1}[pdf])
@@ -1667,6 +1681,8 @@ def apply_combine_args(cmd):
     seed = pull_arg('-s', '--seed', type=int).seed
     if seed is not None: cmd.kwargs['-s'] = seed
     cmd.kwargs['-v'] = pull_arg('-v', '--verbosity', type=int, default=0).verbosity
+    expectSignal = pull_arg('--expectSignal', type=int).expectSignal
+    if expectSignal is not None: cmd.kwargs['--expectSignal'] = expectSignal
     
     return cmd
 
@@ -1698,11 +1714,41 @@ def scan(cmd):
     rmin, rmax = pull_arg('-r', '--range', type=float, default=[-1., 2.], nargs=2).range
     cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
-    #cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
-    cmd.kwargs['--points'] = pull_arg('-n', type=int, default=500).n
+    cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
+    #cmd.kwargs['--points'] = pull_arg('-n', type=int, default=500).n
     return cmd
 
+def gen_toys(cmd):
+    """
+    Takes a base CombineCommand, applies options to generate toys
+    """
+    cmd = cmd.copy()
+    cmd.method = 'GenerateOnly'
+    cmd.args.add('--saveToys')
+    cmd.args.add('--bypassFrequentistFit')
+    cmd.args.add('--saveWorkspace')
+    # Possibly delete some settings too
+    cmd.kwargs.pop('--algo', None)
+    cmd.track_parameters = set()
+    return cmd
 
+def fit_toys(cmd):
+    cmd = cmd.copy()
+    cmd.method = 'FitDiagnostics'
+    cmd.kwargs.pop('--algo', None)
+    cmd.args.add('--toysFrequentist')
+    cmd.args.add('--saveToys')
+    cmd.args.add('--savePredictionsPerToy')
+    cmd.args.add('--bypassFrequentistFit')
+    cmd.args.add('--robustFit=1')
+    cmd.args.add('--rMin=-5')
+    cmd.args.add('--rMax=5')
+    cmd.args.add('--plots')
+    cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
+
+    toysFile = pull_arg('--toysFile', required=True, type=str).toysFile
+    cmd.kwargs['--toysFile'] = toysFile
+    return cmd
 
 def likelihood_scan_factory(
     datacard,
@@ -1957,143 +2003,3 @@ def pdf_values(pdf, x_vals, varname='mt'):
         y.append(pdf.getVal())
     y = np.array(y)
     return y / (y.sum() if y.sum()!=0. else 1.)
-
-
-
-# # DEPRECATED: Fit cache
-
-# FIT_CACHE_FILE = 'fit_cache.pickle'
-
-# def _read_fit_cache():
-#     import pickle
-#     if osp.isfile(FIT_CACHE_FILE):
-#         logger.info('Reading cached fits from %s', FIT_CACHE_FILE)
-#         with open(FIT_CACHE_FILE, 'rb') as f:
-#             return pickle.load(f)
-#     else:
-#         return {}
-
-# def _write_fit_cache(cache_dict):
-#     import pickle
-#     with open(FIT_CACHE_FILE, 'wb') as f:
-#         pickle.dump(cache_dict, f)
-
-# def _get_from_fit_cache(fit_hash):
-#     return _read_fit_cache().get(fit_hash, None)
-
-# def _add_one_to_fit_cache(key, result):
-#     d = _read_fit_cache()
-#     d[key] = result
-#     _write_fit_cache(d)
-
-
-# # DEPRECATED: Old fitting functions
-
-# def _fit_pdf_expression_to_histogram_python(expression, histogram, init_vals=None, hash=None, **minimize_kwargs):
-#     """
-#     The actual entry point to the scipy fit
-#     """
-#     n_fit_pars = count_parameters(expression) - 1 # -1 because par 0 is mT
-#     logger.info('Fitting {0} with {1} parameters'.format(expression, n_fit_pars))
-#     from scipy.optimize import minimize
-#     chi2 = build_chi2(expression, histogram)
-#     if init_vals is None: init_vals = np.ones(n_fit_pars)
-#     res = minimize(chi2, init_vals, **minimize_kwargs)
-#     # Save some extra information in the result
-#     res.x_init = np.array(init_vals)
-#     res.expression = expression
-#     res.hash = hash
-#     # Set approximate uncertainties; see https://stackoverflow.com/a/53489234
-#     # Assume ftol ~ function value
-#     # try:
-#     #     res.dx = np.sqrt(res.fun * np.diagonal(res.hess_inv))
-#     # except:
-#     #     logger.error('Failed to set uncertainties; using found function values as proxies')
-#     #     res.dx = res.x.copy()
-#     return res
-
-
-# def brute_force_init_vals(npars, values):
-#     return np.array(list(itertools.product(*[values for i in range(npars)])))
-
-
-# def fit_expr_to_histogram_robust(expression, histogram):
-#     """
-#     Heuristic around `fit_pdf_expression_to_histogram_python`.
-#     First attempts a single fit, and only goes for the bruteforce if the single fit
-#     did not converge properly.
-#     """
-#     fit_hash = make_fit_hash(expression, histogram)
-#     res = _get_from_fit_cache(fit_hash)
-#     if res is not None:
-#         logger.warning('Returning cached robust fit')
-#         return res
-#     res = fit_pdf_expression_to_histogram_python(
-#         expression, histogram,
-#         tol=1e-3, method='BFGS'
-#         )
-#     # Refit with output from first fit
-#     res = fit_pdf_expression_to_histogram_python(
-#         expression, histogram,
-#         init_vals=res.x,
-#         tol=1e-6, method='Nelder-Mead'
-#         )
-#     if not res.success:
-#         logger.info('Fit did not converge with single try; brute forcing it')
-#         results = []
-#         for method in ['BFGS', 'Nelder-Mead']:
-#             results = fit_pdf_expression_to_histogram_python(
-#                 expression, histogram,
-#                 init_vals=brute_force_init_vals(count_parameters(expression)-1, [-1., 1.]),
-#                 tol=1e-3, method=method
-#                 )
-#         results = [ r for r in results if not(np.isnan(r.fun) or np.isposinf(r.fun) or np.isneginf(r.fun)) ]
-#         if len(results) == 0: raise Exception('Not a single fit of the brute force converged!')
-#         i_min = np.argmin([r.fun for r in results])        
-#         res = results[i_min]
-#     logger.info('Final scipy fit result:\n%s', res)
-#     _add_one_to_fit_cache(fit_hash, res)
-#     return res
-
-
-# def fit_pdf_expression_to_histogram_python(expression, histogram, init_vals=None, cache=True, cache_dict=None, **minimize_kwargs):
-#     """
-#     Fits a a background pdf expression to a TH1 histogram with scipy.optimize.minimize.
-#     Assumes @0 in the expression is mT, and the histogram is binned in mT.
-
-#     If `cache` is True, it tries to save the fit result to a file. If init_vals is
-#     a 2-dimensional array, the fit is repeated for each initial value.
-
-#     If `cache_dict` is given, no read/write to the cache file is performed.
-#     """
-#     _write_cache = False
-#     if cache and cache_dict is None:
-#         # If cache is enabled, and no cache dict was specified, treat this as one fit result
-#         # and do the read/write IO of the cache file
-#         cache_dict = _read_fit_cache()
-#         _write_cache = True
-    
-#     if init_vals is not None:
-#         init_vals = np.array(init_vals)
-#         if len(init_vals.shape) > 1:
-#             logger.info('Will run fit for %s different initial values', init_vals.shape[0])
-#             results = [
-#                 fit_pdf_expression_to_histogram_python(
-#                     expression, histogram, init_vals=x_init,
-#                     cache=cache, cache_dict=cache_dict, **minimize_kwargs
-#                     ) for x_init in init_vals
-#                 ]
-#             _write_fit_cache(cache_dict)
-#             return results
-
-#     fit_hash = make_fit_hash(expression, histogram, init_vals, **minimize_kwargs)
-
-#     if cache and fit_hash in cache_dict:
-#         # Nothing new to save, so return immediately
-#         logger.warning('Returning cached fit')
-#         return cache_dict[fit_hash]
-#     else:
-#         res = _fit_pdf_expression_to_histogram_python(expression, histogram, init_vals=init_vals, hash=fit_hash, **minimize_kwargs)
-#         cache_dict[fit_hash] = res
-#         if _write_cache: _write_fit_cache(cache_dict)
-#         return res

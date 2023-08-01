@@ -64,9 +64,11 @@ def quick_ax(figsize=(12,12), outfile='test.png'):
 
 
 def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):#, strip_pdfname=False):
-    name = osp.basename(rootfile).rsplit('.',4)[0].replace('higgsCombine','')
+    name = osp.basename(rootfile).rsplit('.',5)[0].replace('higgsCombine','')
     name = name.replace('_rinv0','')
     name = name.replace('dc','')
+    print(name)
+    #name = name.replace 
     if strip_obs_asimov:
         name = name.replace('Observed_','').replace('Asimov_','')
     '''if strip_pdfname:
@@ -876,7 +878,7 @@ def bkgfit():
     mtrange = bsvj.pull_arg('--range', type=float, nargs=2).range
 
     input = bsvj.InputData(jsonfile)
-    if mtrange is None: mtrange = [180., 720.]
+    if mtrange is None: mtrange = [180., 650.]
     #mtrange = [200., 600.]
     input = input.cut_mt(mtrange[0], mtrange[1])
 
