@@ -397,7 +397,6 @@ def mtdist():
     y_bkg_init *= bkg_norm_init
     logger.warning('y_bkg_init after norm: %s', y_bkg_init)
 
-    # y_bkg_init = np.array([417445.88530677,393394.77851794,367220.71464014,340431.57494335,314050.8399294,288729.19264226,264844.58889476,242583.76624329,222004.75258088,203082.79977358,185743.02273491,169882.91882724,155387.45868466,142138.87117872,130022.72291852,118931.46187536,108766.2604223,99437.74358479,90866.00707337,82980.20065687,75717.86203919,69024.12390646,62850.87411286,57155.92012126,51902.18952197,47056.98567565,42591.30913172,38479.24998277,34697.45271791,31224.65275109,28041.28217747,25129.14116364,22471.13053263,20051.04046289,17853.38973303,15863.30959285,14066.46612453,12449.01488083,10997.58165579,9699.26345785,8541.64411008,7512.81938378,6601.42715953,5796.67877722,5088.38845541,4466.99839893,3923.59794341,3449.93578274,3038.42496939,2682.14096017,2374.81349787,2110.81358502,1885.13724379,1693.3882103,1531.762253,1397.03654641,1286.56865402,1198.31147909,1130.85354323])
 
     ws.loadSnapshot('MultiDimFit')
 
@@ -407,11 +406,6 @@ def mtdist():
     data = ws.data('data_obs')
     _, y_data, _ = bsvj.roodataset_values(data)
     errs_data = np.sqrt(y_data)
-    # errs_data = y_data
-
-    # data_th1 = ROOT.RooAbsData.createHistogram(data, 'data_th1', mt)
-    # logger.warning('data_th1 integral: %s', data_th1.Integral())
-    # data_hist = bsvj.th1_to_hist(data_th1)
 
     bkg = ws.pdf('shapeBkg_roomultipdf_bsvj')
     y_bkg = bsvj.pdf_values(bkg, mt_bin_centers)
@@ -421,15 +415,6 @@ def mtdist():
     y_bkg *= bkg_norm
 
 
-    # logger.warning(
-    #     'sum(y_bkg) prefit: {:.4f} ; sum(y_bkg) postfit: {:.4f}'
-    #     .format(pdf_raw_norm_prefit, pdf_raw_norm_postfit)
-    #     )
-
-    # logger.warning(
-    #     'bkg_norm prefit: {:.4f} ; bkg_norm postfit: {:.4f}'
-    #     .format(bkg_norm_init, bkg_norm)
-    #     )
 
     sig = ws.embeddedData('shapeSig_sig_bsvj')
     _, y_sig, _ = bsvj.roodataset_values(sig)
@@ -494,54 +479,6 @@ def get_cls(obs, asimov):
     from scipy.stats import norm # type:ignore
     quantiles = np.array([0.025, 0.16, 0.50, 0.84, 0.975])
 
-    # def get_mu_dnll_quantiles(dct):
-    #     mu = dct.mus
-    #     dnll = dct.deltanlls
-    #     dnll -= np.min(dnll) # Correct for bad first fit
-    #     quantile = dct.quantiles
-    #     # Take out the bestfit
-    #     is_bestfit = quantile==-1.
-    #     assert is_bestfit.sum() == 1
-    #     i_bestfit = is_bestfit.argmax()
-    #     mu_best = mu[i_bestfit]
-    #     dnll_best = dnll[i_bestfit]
-    #     print(i_bestfit, mu_best, dnll_best, quantile[i_bestfit])
-    #     mu = mu[~is_bestfit]
-    #     dnll = dnll[~is_bestfit]
-    #     quantile = quantile[~is_bestfit]
-    #     # Sort by ascending mu
-    #     order = np.argsort(mu)
-    #     mu = mu[order]
-    #     dnll = dnll[order]
-    #     quantile = quantile[order]
-    #     # Get rid of duplicate mus
-    #     keep = [0]
-    #     for i in range(1, len(mu)):
-    #         if mu[i] == mu[i-1]: continue
-    #         keep.append(i)
-    #     if len(keep) < len(mu):
-    #         logger.warning('Removing {} duplicate mu values'.format(len(mu) - len(keep)))
-    #         mu = mu[keep]
-    #         dnll = dnll[keep]
-    #         quantile = quantile[keep]
-
-    #     return bsvj.AttrDict(mu_best=mu_best, dnll_best=dnll_best, mu=mu, dnll=dnll, quantile=quantile, n=mu.shape[0])
-
-    # def align_mu_values(obs, asimov):
-    #     """
-    #     Make sure all arrays in obs and asimov concern the same mu values
-    #     """
-    #     i_obs_in_asimov = np.isin(obs.mu, asimov.mu)
-    #     i_asimov_in_obs = np.isin(asimov.mu, obs.mu)
-    #     for key in ['mu', 'dnll', 'quantile']:
-    #         obs[key] = obs[key][i_obs_in_asimov]
-    #         asimov[key] = asimov[key][i_asimov_in_obs]
-    #     obs.n = obs.mu.shape[0]
-    #     asimov.n = asimov.mu.shape[0]
-
-    # obs = get_mu_dnll_quantiles(obs_scan)
-    # asimov = get_mu_dnll_quantiles(asimov_scan)
-    # align_mu_values(obs, asimov)
 
 
     # Keep only scan points where both obs and asimov have a mu
@@ -810,55 +747,6 @@ def brazil():
 
 
 
-# @scripter
-# def allplots(args):
-#     if not isinstance(args, bsvj.AttrDict):
-#         parser = quickplot_parser()
-#         parser.add_argument('rootfiles', type=str, nargs='+')
-#         args = parser.parse_args(args)
-
-#     d = namespace_to_attrdict(args)
-#     d.batch = True
-
-#     for obs_rootfiles, asimov_rootfiles in organize_rootfiles(args.rootfiles, split_bdt_wps=True):
-#         bdt_str = get_bdt_str(obs_rootfiles[0])
-#         logger.info('Making plots for bdt working point ' + bdt_str)
-
-#         outdir = strftime('plots_%b%d/{}'.format(bdt_str))
-#         if not osp.isdir(outdir): os.makedirs(outdir)
-
-#         for rootfile in obs_rootfiles+asimov_rootfiles:
-#             mtdist(bsvj.AttrDict(
-#                 d,
-#                 rootfile=rootfile,
-#                 outfile=osp.join(outdir, 'mtdist_{}.png'.format(name_from_combine_rootfile(rootfile)))
-#                 ))
-
-#         for obs_rootfile, asimov_rootfile in zip(obs_rootfiles, asimov_rootfiles):
-#             cls(bsvj.AttrDict(
-#                 d,
-#                 observed=obs_rootfile,
-#                 asimov=asimov_rootfile,
-#                 outfile=osp.join(outdir, 'cls_{}.png'.format(name_from_combine_rootfile(obs_rootfile, True))),
-#                 xmax=.5
-#                 ))
-
-#         muscan(bsvj.AttrDict(
-#             d,
-#             rootfiles=obs_rootfiles,
-#             xmin=-1., xmax=1., ymax=10.,
-#             outfile=osp.join(outdir, 'muscan_obs.png'),
-#             correctminimum=False, include_dots=False
-#             ))
-#         muscan(bsvj.AttrDict(
-#             d,
-#             rootfiles=asimov_rootfiles,
-#             xmin=-1., xmax=1., ymax=10.,
-#             outfile=osp.join(outdir, 'muscan_asimov.png'),
-#             correctminimum=False, include_dots=False
-#             ))
-
-#         brazil(bsvj.AttrDict(d, rootfiles=obs_rootfiles+asimov_rootfiles, outfile=osp.join(outdir, 'brazil.png')))
 
 
 
@@ -869,11 +757,10 @@ def bkgfit():
     """
     jsonfile = bsvj.pull_arg('jsonfile', type=str).jsonfile
     bdtcut = bsvj.pull_arg('bdtcut', type=float).bdtcut
-    #bdtcut = bsvj.pull_arg('--bdtcut', type=str).bdtcut
     pdftype = bsvj.pull_arg('pdftype', type=str, choices=['main', 'alt', 'ua2']).pdftype
     logscale = bsvj.pull_arg('--log', action='store_true').log
     trigeff = bsvj.pull_arg('--trigeff', type=int, default=None, choices=[2016, 2017, 2018]).trigeff
-    fitmethod = bsvj.pull_arg('--fitmethod', type=str, choices=['scipy', 'auto'], default='auto').fitmethod
+    fitmethod = bsvj.pull_arg('--fitmethod', type=str, choices=['scipy', 'auto'], default='scipy').fitmethod
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
     mtrange = bsvj.pull_arg('--range', type=float, nargs=2).range
 
@@ -903,12 +790,25 @@ def bkgfit():
     data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1, 1.)
 
     pdfs = bsvj.pdfs_factory(pdftype, mt, bkg_th1, name=pdftype, trigeff=None)
-    
+
+    import scipy
+    from scipy import optimize
     for pdf in pdfs:
+        ranges=[]
+        par_name=[]
+        for par in pdf.parameters:
+            ranges.append((par.getMin(), par.getMax()))
+            par_name.append(par.GetName())
+        ranges=tuple(ranges)
+        par_name=tuple(par_name)
+        par_name = '('+', '.join(map(lambda i: format(i, '14s'), par_name))+')'
+    
         if fitmethod == 'auto':
             pdf.res = bsvj.fit(pdf)
         elif fitmethod == 'scipy':
-            pdf.res = bsvj.fit_scipy_robust(pdf.expression, pdf.th1, cache=None)
+            print('par_name: ', par_name, ' type: ', type(par_name))
+            pdf.res_bf = scipy.optimize.brute(pdf.expression, ranges=ranges, Ns=20, args=par_name, full_output=True, finish=optimize.fmin)
+            #pdf.res = bsvj.fit_scipy_robust(pdf.expression, pdf.th1, cache=None)
             # Fill in the fitted parameters
             for p, val in zip(pdf.parameters, pdf.res.x):
                 p.setVal(val)
@@ -940,7 +840,7 @@ def bkgfit():
     figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16))
 
     #ax.plot([], [], ' ', label='{}, score$\\geq${:.1f}'.format(pdftype, bdtcut))
-    ax.plot([], [], ' ', label='{}, cutBased $\\geq${:.1f}'.format(pdftype, bdtcut))
+    ax.plot([], [], ' ', label='{}, cutBased'.format(pdftype))
     ax.step(input.mt[:-1], bkg_hist.vals, where='post', label=r'BKG', c='b')
     ax2.plot([input.mt[0], input.mt[-1]], [0.,0.], c='gray')
 

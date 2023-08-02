@@ -466,9 +466,6 @@ def make_fit_hash(expression, th1, init_vals=None, tag=None, **minimize_kwargs):
 
 
 def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
-    print('*'*50)
-    print('INIT VALS:   ',init_vals)
-    print('*'*50)
     """
     Main bkg fit entry point for fitting pdf to bkg th1 with RooFit
     """
@@ -558,18 +555,45 @@ def single_fit_scipy(expression, histogram, init_vals=None, cache=None, **minimi
     res.x_init = np.array(init_vals)
     res.expression = expression
     res.hash = fit_hash
-    res.nfev = 10000
-    # Set approximate uncertainties; see https://stackoverflow.com/a/53489234
-    # Assume ftol ~ function value
-    # try:
-    #     res.dx = np.sqrt(res.fun * np.diagonal(res.hess_inv))
-    # except:
-    #     logger.error('Failed to set uncertainties; using found function values as proxies')
-    #     res.dx = res.x.copy()
+    res.nfev = 1000000
+    
+    
     if cache:
         logger.info('Writing fit to cache')
         cache.write(fit_hash, res)
     return res
+
+
+def single_brute_scipy(expression, histogram, Ns, ranges, full_output=True, cache=None):
+    """
+    Fits a RooFit-style expression (as a string) to a TH1 histogram.
+
+    If cache is a FitCache object, the fit result is stored in the cache.
+    """
+    fit_hash = make_fit_hash(expression, histogram, Ns, ranges, full_output=True)
+    if cache and cache.get(fit_hash):
+        logger.info('Returning cached fit')
+        return cache.get(fit_hash) # Second call is cheap
+    # Do the fit
+    n_fit_pars = count_parameters(expression) - 1 # -1 because par 0 is mT
+    logger.info('Fitting {0} with {1} parameters'.format(expression, n_fit_pars))
+    from scipy.optimize import brute
+    res_bf = brute(chi2, ranges, **minimize_args)
+    res_bf.expression = expression
+    
+    res_bf.Ns = Ns
+    res_bf.full_output = 0
+    from scipy import optimize
+    res_bf.finish = optimize.fmin
+    res_bf.ranges = ranges
+    print(res_bf.expression, res_bf.Ns, **ranges)
+    if cache:
+        logger.info('Writing fit to cache')
+        cache.write(fit_hash, res_bf)
+
+    return res_bf
+
+
 
 
 def fit_scipy_robust(expression, histogram, cache='auto'):
@@ -598,7 +622,8 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
     res = single_fit_scipy(
         expression, histogram,
         init_vals=res.x,
-        tol=1e-6, method='Nelder-Mead',
+        #tol=1e-6, method='Nelder-Mead',
+        tol=1e-9, method='Powell',
         cache=cache
         )
 
@@ -608,10 +633,11 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
         logger.info('Converged with simple fitting strategy, result:\n%s', res)
         return res
 
+
     # The simple fitting scheme failed; Brute force with many different
     # initial values
     npars = count_parameters(expression)-1 # The mT parameter is not a fit parameter
-    init_val_variations = [-10., 10.] # All the possible init values a single fit parameter can have
+    init_val_variations = [-1., 1.] # All the possible init values a single fit parameter can have
     init_vals = np.array(list(itertools.product(*[init_val_variations for i in range(npars)])))
     logger.info(
         'Fit did not converge with single try; brute forcing it with '
@@ -629,12 +655,15 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
             # Check if fit fn val is not NaN or +/- inf
             if not(np.isnan(result.fun) or np.isposinf(result.fun) or np.isneginf(result.fun)):
                 results.append(result)
+
     if len(results) == 0: raise Exception('Not a single fit of the brute force converged!')
-    i_min = np.argmin([r.fun for r in results])        
+    i_min = np.argmin([r.fun for r in results])
     res = results[i_min]
     logger.info('Best scipy fit from brute force:\n%s', res)
     if cache: cache.write(fit_hash, res)
     return res
+ 
+
 
 
 def fit(pdf, th1=None, cache='auto'):
@@ -645,7 +674,6 @@ def fit(pdf, th1=None, cache='auto'):
     """
     if th1 is None: th1 = getattr(pdf, 'th1', None)
     res_scipy = fit_scipy_robust(pdf.expression, th1, cache=cache)
-    print('*'*15, ' res_scipy is = ', res_scipy)
     res_roofit_wscipy = fit_roofit(pdf, th1, init_vals=res_scipy.x)
     return res_roofit_wscipy
 
@@ -756,11 +784,11 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
         if npars == 2:
             expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}))'
         if npars == 3:
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}+@3*pow(@0/{0},2)))'
+            expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}(1+@3*pow(@0/{0},2)))'
         if npars == 4:
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3))))'
+            expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}(1+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3))))'
         if npars == 5:
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))))'
+            expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}(1+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))))'
 
     else:
         raise Exception('Unknown pdf type {0}'.format(pdf_type))
@@ -1649,7 +1677,7 @@ def apply_combine_args(cmd):
     Takes a CombineCommand, and reads arguments 
     """
     cmd = cmd.copy()
-    pdf = pull_arg('--pdf', type=str, choices=['main', 'alt', 'ua2'], default='ua2').pdf
+    pdf = pull_arg('--pdf', type=str, choices=['main', 'alt', 'ua2'], default='main').pdf
     #pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2'], default='main').pdf
     logger.info('Using pdf %s', pdf)
     #cmd.set_parameter('pdf_index', {'main':0, 'alt':1, 'ua2':2}[pdf])
