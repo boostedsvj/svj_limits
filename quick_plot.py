@@ -807,8 +807,8 @@ def bkgfit():
             pdf.res = bsvj.fit(pdf)
         elif fitmethod == 'scipy':
             print('par_name: ', par_name, ' type: ', type(par_name))
-            pdf.res_bf = scipy.optimize.brute(pdf.expression, ranges=ranges, Ns=20, args=par_name, full_output=True, finish=optimize.fmin)
-            #pdf.res = bsvj.fit_scipy_robust(pdf.expression, pdf.th1, cache=None)
+            #pdf.res_bf = scipy.optimize.brute(pdf.expression, ranges=ranges, Ns=20, args=par_name, full_output=True, finish=optimize.fmin)
+            pdf.res = bsvj.fit_scipy_robust(pdf.expression, pdf.th1, cache=None)
             # Fill in the fitted parameters
             for p, val in zip(pdf.parameters, pdf.res.x):
                 p.setVal(val)

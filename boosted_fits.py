@@ -784,31 +784,23 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
         if npars == 2:
             expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}))'
         if npars == 3:
-            expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}(1+@3*pow(@0/{0},2)))'
+            #expression = 'pow(@0/{0}, @1) * exp((@1+@2)*@0/{0} + (@1+@3)*pow(@0/{0},2))' #third variation
+            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*pow(@0/{0},2)))' #second variation
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2))' #first variation
         if npars == 4:
-            expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}(1+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3))))'
+            #expression = 'pow(@0/{0}, @1) * exp((@1+@2)*@0/{0} + (@1+@3)*pow(@0/{0},2) + (@1+@4)*pow(@0/{0},3))' #third variation
+            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3))))' # second variation
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3))' #first variation
+            
         if npars == 5:
-            expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}(1+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))))'
+            #expression = 'pow(@0/{0}, @1) * exp((@1+@2)*@0/{0} + (@1+@3)*pow(@0/{0},2) + (@1+@4)*pow(@0/{0},3) + (@1+@5)*pow(@0/{0},4))' #third variation
+            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))))' #second variation
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))' #first variation
 
     else:
         raise Exception('Unknown pdf type {0}'.format(pdf_type))
     return expression.format(mt_scale)
 
-    '''elif pdf_type == 'ua2':
-        #if npars == 1:
-        #    expression = 'pow(@0/{0}, @1)'
-        if npars == 2:
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}))'
-        if npars == 3:
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2))'
-        if npars == 4:
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3))'
-        if npars == 5:
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))'
-
-    else:
-        raise Exception('Unknown pdf type {0}'.format(pdf_type))
-    return expression.format(mt_scale)'''
 
 
 def pdf_parameters(pdf_type, npars, prefix=None):
