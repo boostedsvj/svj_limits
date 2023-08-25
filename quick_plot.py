@@ -760,13 +760,12 @@ def bkgfit():
     pdftype = bsvj.pull_arg('pdftype', type=str, choices=['main', 'alt', 'ua2']).pdftype
     logscale = bsvj.pull_arg('--log', action='store_true').log
     trigeff = bsvj.pull_arg('--trigeff', type=int, default=None, choices=[2016, 2017, 2018]).trigeff
-    fitmethod = bsvj.pull_arg('--fitmethod', type=str, choices=['scipy', 'auto'], default='scipy').fitmethod
+    fitmethod = bsvj.pull_arg('--fitmethod', type=str, choices=['scipy', 'auto'], default='auto').fitmethod
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
     mtrange = bsvj.pull_arg('--range', type=float, nargs=2).range
 
     input = bsvj.InputData(jsonfile)
     if mtrange is None: mtrange = [180., 650.]
-    #mtrange = [200., 600.]
     input = input.cut_mt(mtrange[0], mtrange[1])
 
     bdt_str = '{:.1f}'.format(bdtcut).replace('.', 'p')
@@ -791,8 +790,6 @@ def bkgfit():
 
     pdfs = bsvj.pdfs_factory(pdftype, mt, bkg_th1, name=pdftype, trigeff=None)
 
-    import scipy
-    from scipy import optimize
     for pdf in pdfs:
         ranges=[]
         par_name=[]
@@ -806,11 +803,12 @@ def bkgfit():
         if fitmethod == 'auto':
             pdf.res = bsvj.fit(pdf)
         elif fitmethod == 'scipy':
-            print('par_name: ', par_name, ' type: ', type(par_name))
-            #pdf.res_bf = scipy.optimize.brute(pdf.expression, ranges=ranges, Ns=20, args=par_name, full_output=True, finish=optimize.fmin)
             pdf.res = bsvj.fit_scipy_robust(pdf.expression, pdf.th1, cache=None)
             # Fill in the fitted parameters
             for p, val in zip(pdf.parameters, pdf.res.x):
+                # Make sure the newly fitted value is actually in range
+                if val < p.getMin(): p.setMin(val - 0.1*abs(val))
+                if val > p.getMax(): p.setMax(val + 0.1*abs(val))
                 p.setVal(val)
 
 

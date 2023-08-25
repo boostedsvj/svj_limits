@@ -479,7 +479,44 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
         if len(init_vals) != len(pdf.parameters):
             raise Exception('Expected {} values; got {}'.format(len(pdf.parameters)-1, len(init_vals)))
         for par, value in zip(pdf.parameters, init_vals):
-            old_range = max(abs(par.getMin()), abs(par.getMax()))
+            print('*'*50)
+            print('init_vals= ', init_vals)
+            print('*'*50)
+            print('value= ', value)
+            print('*'*50)
+            left, right = par.getMin(), par.getMax()
+
+            # First check if the init_val is *outside* of the current range:
+            if value < left:
+                #new_left = value - .3*abs(value)
+                new_left = value - 3*abs(value)
+                logger.info(
+                    f'Increasing range for {par.GetName()} on the left:'
+                    f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {right:.2f})'
+                    )
+                par.setMin(new_left)
+            elif value > right:
+                #new_right = value + .3*abs(value)
+                new_right = value + 3*abs(value)
+                logger.info(
+                    f'Increasing range for {par.GetName()} on the right:'
+                    f'({left:.2f}, {right:.2f}) -> ({left:.2f}, {new_right:.2f})'
+                    )
+                par.setMax(new_right)
+
+            # Now check if any of the ranges are needlessly large
+            if abs(value) / min(abs(left), abs(right)) < 0.01:
+                new_left = -2.*abs(value)
+                new_right = 2.*abs(value)
+                logger.info(
+                    f'Decreasing range for {par.GetName()} on both sides:'
+                    f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {new_right:.2f})'
+                    )
+                par.setMin(new_left)
+                par.setMax(new_right)
+
+            
+            '''old_range = max(abs(par.getMin()), abs(par.getMax()))
             print('*'*50, value, old_range)
             if abs(value) > old_range:
                 new_range = 1.5*abs(value)
@@ -498,7 +535,7 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                     .format(par.GetName(), par.GetTitle(), par.getMin(), par.getMax(), -new_range, new_range)
                     )
                 par.setRange(-new_range, new_range)
-            # par.setRange(value-0.01*abs(value), value+0.01*abs(value))
+            # par.setRange(value-0.01*abs(value), value+0.01*abs(value))'''
             par.setVal(value)
             logger.info(
                 'Setting {0} ({1}) value to {2}, range is {3} to {4}'
@@ -622,8 +659,8 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
     res = single_fit_scipy(
         expression, histogram,
         init_vals=res.x,
-        #tol=1e-6, method='Nelder-Mead',
-        tol=1e-9, method='Powell',
+        tol=1e-6, method='Nelder-Mead',
+        #tol=1e-9, method='Powell',
         cache=cache
         )
 
@@ -638,6 +675,7 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
     # initial values
     npars = count_parameters(expression)-1 # The mT parameter is not a fit parameter
     init_val_variations = [-1., 1.] # All the possible init values a single fit parameter can have
+    #init_val_variations = [-20., 20.]
     init_vals = np.array(list(itertools.product(*[init_val_variations for i in range(npars)])))
     logger.info(
         'Fit did not converge with single try; brute forcing it with '
@@ -772,30 +810,39 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
             expression = 'exp(@1*(@0/{0}))'
         elif npars == 2:
             expression = 'exp(@1*(@0/{0})) * pow(@0/{0},@2)'
+            #expression = 'exp(@1*@0/{0}+@2*log(@0/{0}))'  #old version
         elif npars == 3:
             expression = 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})))'
+            #expression = 'exp(@1*@0/{0} + @2*log(@0/{0}) + @3*pow(log(@0/{0}),2))' # old version
         elif npars == 4:
             expression = 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})*(1+@4*log(@0/{0}))))'
+            #expression = 'exp(@1*@0/{0} + @2*log(@0/{0}) + @3*pow(log(@0/{0}),2) + @4*pow(log(@0/{0}),3))' #old version
         else:
             raise Exception('Unavailable npars for alt: {0}'.format(npars))
 
 
     elif pdf_type == 'ua2':
         if npars == 2:
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}))'
+            expression = 'pow(@0/{0}, @1) * exp(@1*@2*(@0/{0}))'
         if npars == 3:
+            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0}))' #fifth variation
+            #expression = 'pow(@0/{0}, @1) * exp(@1*@2*@0/{0}*(1 +@3*@0/{0}))' #forth variation
             #expression = 'pow(@0/{0}, @1) * exp((@1+@2)*@0/{0} + (@1+@3)*pow(@0/{0},2))' #third variation
-            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*pow(@0/{0},2)))' #second variation
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2))' #first variation
+            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*@0/{0}))' #second variation
+            #expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2))' #first variation
         if npars == 4:
+            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2)))' #fifth variation
+            #expression = 'pow(@0/{0}, @1) * exp(@1*@2*@0/{0}*(1 + @3*@0/{0} + @3*@4*pow(@0/{0},2)))' #forth variation
             #expression = 'pow(@0/{0}, @1) * exp((@1+@2)*@0/{0} + (@1+@3)*pow(@0/{0},2) + (@1+@4)*pow(@0/{0},3))' #third variation
-            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3))))' # second variation
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3))' #first variation
+            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*@0/{0}+@4*pow(@0/{0},2)))' # second variation
+            #expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3))' #first variation
             
         if npars == 5:
+            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))' #fifth variation
+            #expression = 'pow(@0/{0}, @1) * exp(@1*@2*@0/{0}*(1 + @3*@0/{0} + @3*@4*pow(@0/{0},2)+@3*@4*@5*pow(@0/{0},3)))' #forth variation
             #expression = 'pow(@0/{0}, @1) * exp((@1+@2)*@0/{0} + (@1+@3)*pow(@0/{0},2) + (@1+@4)*pow(@0/{0},3) + (@1+@5)*pow(@0/{0},4))' #third variation
-            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*(pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))))' #second variation
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))' #first variation
+            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*@0/{0}+@4*pow(@0/{0},2)+@5*pow(@0/{0},3)))' #second variation
+            #expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))' #first variation
 
     else:
         raise Exception('Unknown pdf type {0}'.format(pdf_type))
@@ -813,9 +860,9 @@ def pdf_parameters(pdf_type, npars, prefix=None):
                 ]
         elif npars == 3:
             parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -45., 45.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -15, 15),
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -50., 50.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -50, 50),
                 ]
         elif npars == 4:
             parameters = [
@@ -833,19 +880,56 @@ def pdf_parameters(pdf_type, npars, prefix=None):
                 ROOT.RooRealVar(prefix + "_p5", "p5", 1., -1.5, 1.5),
                 ]
     elif pdf_type == 'alt':
-        par_lo = -100.
-        par_up = 100.
-        parameters = [
-            ROOT.RooRealVar(prefix + '_p{0}'.format(i+1), '', 10., par_lo, par_up) \
-            for i in range(npars)
-            ]
+        if npars == 2:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -50., 50.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.)
+                ]
+        if npars == 3:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -50., 50.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -10., 10.)
+                ]
+        if npars == 4:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -150., 150.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -10., 10.),
+                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -10., 10.)
+                ]
+
     elif pdf_type == 'ua2':
-        par_lo = -50.
-        par_up = 50.
-        parameters = [
-            ROOT.RooRealVar(prefix + '_p{0}'.format(i+1), '', 1., par_lo, par_up) \
-            for i in range(npars)
-            ]
+        if npars == 2:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.)
+                ]
+
+        elif npars == 3:
+            parameters = [
+                #ROOT.RooRealVar(prefix + "_p1", "p1", -3.8, -100., 100.),
+                #ROOT.RooRealVar(prefix + "_p2", "p2", 17.78, -100., 100.),
+                #ROOT.RooRealVar(prefix + "_p3", "p3", -1.264, -100, 100),
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1, -500., 500.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1, -50., 50.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1, -15, 15),
+                ]
+        elif npars == 4:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
+                ]
+        elif npars == 5:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p5", "p5", 1., -100., 100.),
+                ]
     object_keeper.add_multiple(parameters)    
     return parameters
 
@@ -942,7 +1026,7 @@ def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None
     """
     if name is None: name = uid()
     #all_n_pars = [2, 3, 4, 5] if pdf_type == 'main' else [1, 2, 3, 4]
-    if pdf_type == 'alt':  all_n_pars = [1, 2, 3, 4] 
+    if pdf_type == 'alt':  all_n_pars = [2, 3, 4] 
     if pdf_type == 'main': all_n_pars = [2, 3, 4, 5]
     if pdf_type == 'ua2':  all_n_pars = [2, 3, 4, 5]
     return [ pdf_factory(pdf_type, n_pars, mt, bkg_th1, name+'_npars'+str(n_pars), mt_scale, trigeff=trigeff) for n_pars in all_n_pars]
@@ -980,66 +1064,6 @@ def set_pdf_to_fitresult(pdf, res):
         return res.x
 
 
-# def plot_pdf_for_various_fitresults(pdf, fit_results, data_obs, outfile='test.pdf', labels=None, title=''):
-#     """
-#     Plots the fitted bkg pdfs on top of the data histogram.
-#     """
-#     # First find the mT Roo variable in one of the pdfs
-#     mt = pdf.parameters[0]
-#     mt_min = mt.getMin()
-#     mt_max = mt.getMax()
-
-#     # Open the frame
-#     xframe = mt.frame(ROOT.RooFit.Title(title))
-#     c1 = ROOT.TCanvas(str(uuid.uuid4()), '', 1000, 800)
-#     c1.cd()
-
-#     # Plot the data histogram
-#     data_obs.plotOn(xframe, ROOT.RooFit.Name("data_obs"))
-#     norm = data_obs.sumEntries()
-
-#     # Plot the pdfs (its parameters already at fit result)
-#     colors = [ROOT.kPink+6, ROOT.kBlue-4, ROOT.kRed-4, ROOT.kGreen+1]
-
-#     py_chi2 = build_chi2(pdf.expression, data_obs.createHistogram(mt.GetName()))
-
-#     base_pdf = pdf
-#     for i, res in enumerate(fit_results):
-#         pdf = rebuild_rpsbp(base_pdf)
-#         vals = set_pdf_to_fitresult(pdf, res)
-#         logger.info(
-#             'i=%s; Manual chi2=%.5f, chi2_via_frame=%.5f',
-#             i, py_chi2(vals), get_chi2_viaframe(mt, pdf.pdf, data_obs, len(vals))[1]
-#             )
-#         pdf.plotOn(
-#             xframe,
-#             ROOT.RooFit.Normalization(norm, ROOT.RooAbsReal.NumEvent),
-#             ROOT.RooFit.LineColor(colors[i]),
-#             # ROOT.RooFit.FillColor(ROOT.kOrange),
-#             ROOT.RooFit.FillStyle(1001),
-#             ROOT.RooFit.DrawOption("L"),
-#             ROOT.RooFit.Name(pdf.GetName()),
-#             ROOT.RooFit.Range("Full")
-#             )
-#         chi2 = xframe.chiSquare(pdf.GetName(), "data_obs", len(pdf.parameters)-1)
-#         par_value_str = ', '.join(['p{}={:.3f}'.format(iv, v) for iv, v in enumerate(vals)])
-#         label = labels[i] if labels else 'fit'+str(i)
-#         txt = ROOT.TText(
-#             .13, 0.13+i*.045,
-#             "{}, chi2={:.4f}, {}".format(label, chi2, par_value_str)
-#             )
-#         txt.SetNDC()
-#         txt.SetTextSize(0.03)
-#         txt.SetTextColor(colors[i])
-#         xframe.addObject(txt) 
-#         txt.Draw()
-
-#     xframe.SetMinimum(0.002)
-#     xframe.Draw()
-#     c1.SetLogy()
-#     c1.SaveAs(outfile)
-#     if outfile.endswith('.pdf'): c1.SaveAs(outfile.replace('.pdf', '.png'))
-#     del xframe, c1
 
 
 def plot_fits(pdfs, fit_results, data_obs, outfile='test.pdf'):
@@ -1274,6 +1298,8 @@ def gen_datacard(
 
     #for pdf_type in ['main', 'alt', 'ua2']:
     for pdf_type in ['main', 'ua2']:
+    #for pdf_type in ['alt','ua2','main']:
+    #for pdf_type in ['main','alt']:
         pdfs = pdfs_dict[pdf_type]
         ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
         i_winner = do_fisher_test(mt, data_datahist, pdfs)
@@ -1292,17 +1318,6 @@ def gen_datacard(
     sig_th1 = input.sig_th1(sig_name, bdtcut, mz, rinv)
     sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
 
-    # Some checks
-    # assert bkg_th1.GetNbinsX() == sig_th1.GetNbinsX()
-    # assert bkg_th1.GetBinLowEdge(1) == sig_th1.GetBinLowEdge(1)
-    # n = bkg_th1.GetNbinsX()
-    # assert bkg_th1.GetBinLowEdge(n+1) == sig_th1.GetBinLowEdge(n+1)
-    # assert sig_th1.GetBinLowEdge(n+1) == mt.getMax()
-    # x_sig_datahist, y_sig_datahist = roodataset_values(sig_datahist)
-    # np.testing.assert_almost_equal(x_sig_datahist, input.mt_centers)
-    # np.testing.assert_almost_equal(y_sig_datahist, input.sighist(bdtcut, mz).vals, decimal=3)
-    # print('All passed')
-    # return
 
     if injectsignal:
         logger.info('Injecting signal in data_obs')
@@ -1669,15 +1684,26 @@ def apply_combine_args(cmd):
     Takes a CombineCommand, and reads arguments 
     """
     cmd = cmd.copy()
-    pdf = pull_arg('--pdf', type=str, choices=['main', 'alt', 'ua2'], default='main').pdf
-    #pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2'], default='main').pdf
+    #pdf = pull_arg('--pdf', type=str, choices=['main', 'alt', 'ua2'], default='ua2').pdf
+    pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2'], default='ua2').pdf
     logger.info('Using pdf %s', pdf)
     #cmd.set_parameter('pdf_index', {'main':0, 'alt':1, 'ua2':2}[pdf])
+
+
+
     cmd.set_parameter('pdf_index', {'main':0, 'ua2':1}[pdf])
+    #cmd.set_parameter('pdf_index', {'alt':2, 'ua2':1}[pdf])
+
+
+
+    #cmd.set_parameter('pdf_index', {'main':0, 'alt':1}[pdf])
     pdf_pars = cmd.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
     #other_pdf = {'main':'alt', 'alt':'main', 'main':'ua2', 'ua2':'main', 'alt':'ua2', 'ua2':'alt'}[pdf]
+
     other_pdf = {'main':'ua2', 'ua2':'main'}[pdf]
-    #other_pdf = {'ua2':'alt', 'alt':'ua2'}[pdf]
+    #other_pdf = {'alt':'ua2', 'ua2':'alt'}[pdf]
+
+    #other_pdf = {'main':'alt', 'alt':'main'}[pdf]
     other_pdf_pars = cmd.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
     cmd.freeze_parameters.add('pdf_index')
     cmd.freeze_parameters.update(other_pdf_pars)
@@ -1774,7 +1800,7 @@ def likelihood_scan_factory(
     datacard,
     rmin=0., rmax=2., n=40,
     verbosity=0, asimov=False,
-    pdf_type='alt',
+    pdf_type='ua2',
     n_toys=None,
     raw=None,
     ):
@@ -1808,19 +1834,20 @@ def likelihood_scan_factory(
     cmd.freeze_parameters.append('pdf_index')
     cmd.track_parameters.append('n_exp_final_binbsvj_proc_roomultipdf')
     #if pdf_type == 'alt':
+    #    cmd.set_parameter('pdf_index', 2)
+    #    #cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
+    #    #cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
+    #    cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
+    #    cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
+
     if pdf_type == 'ua2':
         cmd.set_parameter('pdf_index', 1)
-        #cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
-        #cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
-        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
+        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
         cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
     elif pdf_type == 'main':
-    #elif pdf_type == 'alt':
         cmd.set_parameter('pdf_index', 0)
         cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
-        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
-        #cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
-        #cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
+        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
     else:
         raise Exception('Unknown pdf_type {}'.format(pdf_type))
 
