@@ -792,17 +792,26 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
         if npars == 2:
             expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2))'
         elif npars == 3:
-            expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})))'
+            #expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})))'
+            #Alternative to f12 --> f21
+            expression = 'pow(1 - @0/{0}, (@1+@2*log(@0/{0}))) * pow(@0/{0}, -@3)'
         elif npars == 4:
-            expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)))'
-            # Alternatives to 22:
-            # 13: pow(1 - @0/{0}, @1+@2*log(@0/{0})) * pow(@0/{0}, -(@3+@4*log(@0/{0})))
+            #expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)))'
+            # Alternatives to 13 --> 22:
+            expression  = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})) * pow(@0/{0}, -(@3+@4*log(@0/{0})))'
+            # Alternatives to 13, 22 --> 31:
+            #expression  = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)) * pow(@0/{0}, -@4)'
         elif npars == 5:
             #expression = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)) * pow(@0/{0}, -(@4+@5*log(@0/{0})))'
-            expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)+@5*pow(log(@0/{0}),3)))'
+            #expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)+@5*pow(log(@0/{0}),3)))'
+
+            #Alternative to 14 --> 23:
+            expression = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})) * pow(@0/{0}, -(@3+@4*log(@0/{0})+@5*pow(log(@0/{0}),2)))'
+
             # Alternatives to 32:
             # 14: pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)+@5*pow(log(@0/{0}),3)))
-            # 41: pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)+@4*pow(log(@0/{0}),3)) * pow(@0/{0}, -@5)
+            # Alternatives to 14, 23 --> 41
+            #expression  = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)+@4*pow(log(@0/{0}),3)) * pow(@0/{0}, -@5)'
         else:
             raise Exception('Unavailable npars for main: {0}'.format(npars))
     elif pdf_type == 'alt':
