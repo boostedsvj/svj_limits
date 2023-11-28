@@ -15,6 +15,7 @@ logger = bsvj.setup_logger('quickplot')
 
 import numpy as np
 import matplotlib.pyplot as plt # type:ignore
+import mplhep as hep
 
 def set_mpl_fontsize(small=22, medium=28, large=32, legend=None):
     plt.rc('font', size=small)          # controls default text sizes
@@ -79,6 +80,10 @@ def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):#, strip_pdfnam
 def namespace_to_attrdict(args):
     return bsvj.AttrDict(**vars(args))
 
+def get_xsec(mz):
+    xsec = {200:7.412*0.47, 250:7.044*0.47, 300:6.781*0.47, 350:6.158*0.47, 400:5.566*0.47, 450:5.021*0.47, 500:4.439*0.47, 550:3.795*0.47, }
+    return xsec[mz]
+
 def get_mz(path):
     return int(re.search(r'mz(\d+)', osp.basename(path)).group(1))
 
@@ -123,6 +128,7 @@ def organize_rootfiles(rootfiles, split_bdt_wps=False):
 
     obs_rootfiles = [f for f in rootfiles if 'Observed' in osp.basename(f)]
     asimov_rootfiles = [f for f in rootfiles if 'Asimov' in osp.basename(f)]
+    #print(obs_rootfiles, asimov_rootfiles)
     assert [get_mz(f) for f in obs_rootfiles] == [get_mz(f) for f in asimov_rootfiles]
     return obs_rootfiles, asimov_rootfiles
 
@@ -546,10 +552,10 @@ def interpolate_95cl_limit(cls):
     mu = cls.obs.df['mu']
     def interpolate(cl, thing):
         # print('Interpolating')
-        # select = ((cl < .20) & (mu>0))
-        select = ((cl < .50) & (cl > .001) & (mu>0))
+        #select = ((cl < .20) & (mu>0))
+        select = ((cl < .75) & (cl > .001) & (mu>0))
         if select.sum() == 0:
-            logger.error('0.01<cl<0.20 & mu>0 yields NO scan points; can\'t interpolate %s', thing)
+            logger.error('0.01<cl<0.65 & mu>0 yields NO scan points; can\'t interpolate %s', thing)
             return None
 
         # print('  {} values left'.format(select.sum()))
@@ -571,7 +577,6 @@ def interpolate_95cl_limit(cls):
             res = None
         # print('Interpolation result: cl=0.05, mu={}'.format(res))
         return res
-
     d = bsvj.AttrDict()
     d['twosigma_down'] = interpolate(cls.s_exp[0.975], 'twosigma_down')
     d['onesigma_down'] = interpolate(cls.s_exp[0.84], 'onesigma_down')
@@ -663,8 +668,10 @@ def brazil():
     obs_rootfiles, asimov_rootfiles = organize_rootfiles(rootfiles)
 
     points = []
+
     for obs_rootfile, asimov_rootfile in zip(obs_rootfiles, asimov_rootfiles):
         mz = get_mz(obs_rootfile)
+        xsec = get_xsec(mz)
         assert mz == get_mz(asimov_rootfile)
         obs, asimov = extract_scans([obs_rootfile, asimov_rootfile])
         if clean:
@@ -674,10 +681,10 @@ def brazil():
         limit = interpolate_95cl_limit(cls)
         points.append(bsvj.AttrDict(
             mz = mz,
+            xsec = xsec,
             limit = limit,
-            cls = cls
+            cls = cls,
             ))
-
     print(
         '{:<5s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s} | {:>8s}'
         .format(
@@ -696,52 +703,59 @@ def brazil():
             return '{:+{w}.3f}'.format(nr, w=w)
         else:
             return '{:>{w}s}'.format('err', w=w)
-        
     for p in points:
         print(
-            '{:<5.0f} {} {} {} {} {} | {}'
+            '{:<5.0f} {:<5.0f} {} {} {} {} {} | {}'
             .format(
                 p.mz,
+                p.xsec,
                 format(p.limit.twosigma_down),
                 format(p.limit.onesigma_down),
                 format(p.limit.expected),
                 format(p.limit.onesigma_up),
                 format(p.limit.twosigma_up),
-                format(p.limit.observed)
+                format(p.limit.observed),
                 )
             )
 
     fig = plt.figure(figsize=(12,10))
     ax = fig.gca()
-    
     with quick_ax(figsize=(12,10), outfile=outfile) as ax:
-
         ax.fill_between(
             [p.mz for p in points if p.limit.twosigma_success],
-            [p.limit.twosigma_down for p in points if p.limit.twosigma_success],
-            [p.limit.twosigma_up for p in points if p.limit.twosigma_success],
-            color=cms_yellow
+            [p.limit.twosigma_down*p.xsec for p in points if p.limit.twosigma_success],
+            [p.limit.twosigma_up*p.xsec for p in points if p.limit.twosigma_success],
+            color=cms_yellow,
+            label='95% expected'
             )
         ax.fill_between(
             [p.mz for p in points if p.limit.onesigma_success],
-            [p.limit.onesigma_down for p in points if p.limit.onesigma_success],
-            [p.limit.onesigma_up for p in points if p.limit.onesigma_success],
-            color=cms_green
+            [p.limit.onesigma_down*p.xsec for p in points if p.limit.onesigma_success],
+            [p.limit.onesigma_up*p.xsec for p in points if p.limit.onesigma_success],
+            color=cms_green,
+            label='68% expected'
             )
 
         ax.plot(
             [p.mz for p in points if p.limit.expected is not None],
-            [p.limit.expected for p in points if p.limit.expected is not None],
+            [p.limit.expected*p.xsec for p in points if p.limit.expected is not None],
             c='black', linestyle='--', label='Exp'
             )
         ax.plot(
             [p.mz for p in points if p.limit.observed is not None],
-            [p.limit.observed for p in points if p.limit.observed is not None],
+            [p.limit.observed*p.xsec for p in points if p.limit.observed is not None],
             c='black', linestyle='-', label='Obs'
             )
+        ax.plot(
+            [p.mz for p in points if p.limit.observed is not None],
+            [p.xsec for p in points if p.limit.observed is not None],
+            c='magenta', linestyle='-',label='Theoretical'
+        )
 
         ax.set_xlabel(r'$m_{Z\prime}$ (GeV)')
-        ax.set_ylabel(r'$\mu$')
+        #ax.set_ylabel(r'$\mu$')
+        ax.set_ylabel(r'$\sigma \times BR$')
+        ax.set_yscale('log')
         apply_ranges(ax)
         ax.legend(framealpha=0.0)
 
@@ -761,7 +775,7 @@ def bkgfit():
     logscale = bsvj.pull_arg('--log', action='store_true').log
     trigeff = bsvj.pull_arg('--trigeff', type=int, default=None, choices=[2016, 2017, 2018]).trigeff
     fitmethod = bsvj.pull_arg('--fitmethod', type=str, choices=['scipy', 'auto'], default='auto').fitmethod
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.pdf').outfile
     mtrange = bsvj.pull_arg('--range', type=float, nargs=2).range
 
     input = bsvj.InputData(jsonfile)

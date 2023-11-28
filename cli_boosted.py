@@ -172,7 +172,8 @@ def gen_datacards_mp():
 
     input = bsvj.InputData(args.jsonfile)
     bdtcuts = input.d['histograms'].keys()
-    signals = [h.metadata for h in input.d['histograms']['0.000'].values() if 'mz' in h.metadata]
+    #signals = [h.metadata for h in input.d['histograms']['0.000'].values() if 'mz' in h.metadata]
+    signals = [h.metadata for h in input.d['histograms']['0.0'].values() if 'mz' in h.metadata]
 
     # Filter for selected bdtcuts
     if args.bdtcut:
@@ -227,7 +228,7 @@ def simple_test_fit():
     cmd = bsvj.CombineCommand(args.datacard, 'AsymptoticLimits')
     cmd.track_parameters.extend(['r'])
     cmd.args.add('--saveWorkspace')
-    cmd.set_parameter('pdf_index', 1)
+    #cmd.set_parameter.extend('pdf_index', 1)
     cmd.freeze_parameters.extend([
         'pdf_index',
         'bsvj_bkgfitmain_npars4_p1', 'bsvj_bkgfitmain_npars4_p2', 'bsvj_bkgfitmain_npars4_p3',
@@ -246,6 +247,7 @@ def make_bestfit_and_scan_commands(txtfile, args=None):
         dc = bsvj.Datacard.from_txt(txtfile)
         cmd = bsvj.CombineCommand(dc)
         cmd = bsvj.apply_combine_args(cmd)
+        #cmd = bsvj.apply_sigpars(cmd)
         cmd.name += osp.basename(dc.filename).replace('.txt','')
         scan = bsvj.scan(cmd)
         bestfit = bsvj.bestfit(cmd)

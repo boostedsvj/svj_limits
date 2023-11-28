@@ -81,6 +81,10 @@ def read_arg(*args, **kwargs):
     return args
 
 
+def get_xs(mz):
+    xsec = {200:3.48, 250:3.31, 300:3.19, 350:2.89, 400:2.62, 450:2.36, 500:2.09, 550:1.78}
+    return xsec[mz]
+
 @contextmanager
 def set_args(args):
     _old_sys_args = sys.argv
@@ -298,24 +302,26 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
+
     def bkg_hist(self, bdt):
         bdt = float(bdt)
         if self.version == 1:
             # Backward compatibility with the first json implementation
             return self.d['histograms']['{:.1f}/bkg'.format(bdt)]
         else:
-            return self.d['histograms']['{:.3f}'.format(bdt)]['bkg']
+            return self.d['histograms']['{:.1f}'.format(bdt)]['bkg']
 
     def bkg_th1(self, name, bdt):
         return hist_to_th1(name, self.bkg_hist(bdt))
 
-    def sig_hist(self, bdt, mz, rinv=.3, mdark=10):
+    #def sig_hist(self, bdt, mz, rinv=.3, mdark=10):
+    def sig_hist(self, bdt, mz, rinv, mdark=10):
         bdt = float(bdt)
         if self.version == 1:
             # Backward compatibility with the first json implementation
             return self.d['histograms']['{:.1f}/mz{:.0f}'.format(bdt, mz)]
         else:
-            for h in self.d['histograms']['{:.3f}'.format(bdt)].values():
+            for h in self.d['histograms']['{:.1f}'.format(bdt)].values():
                 if 'mz' not in h.metadata: continue
                 if (
                     h.metadata['mz'] == mz
@@ -328,7 +334,7 @@ class InputData(object):
                 .format(mz, rinv, mdark)
                 )
 
-    def sig_th1(self, name, bdt, mz, rinv=.3, mdark=10):
+    def sig_th1(self, name, bdt, mz, rinv, mdark=10):
         return hist_to_th1(name, self.sig_hist(bdt, mz, rinv, mdark))
 
 
@@ -479,17 +485,12 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
         if len(init_vals) != len(pdf.parameters):
             raise Exception('Expected {} values; got {}'.format(len(pdf.parameters)-1, len(init_vals)))
         for par, value in zip(pdf.parameters, init_vals):
-            print('*'*50)
-            print('init_vals= ', init_vals)
-            print('*'*50)
-            print('value= ', value)
-            print('*'*50)
             left, right = par.getMin(), par.getMax()
 
             # First check if the init_val is *outside* of the current range:
             if value < left:
                 #new_left = value - .3*abs(value)
-                new_left = value - 3*abs(value)
+                new_left = value - 30.*abs(value)
                 logger.info(
                     f'Increasing range for {par.GetName()} on the left:'
                     f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {right:.2f})'
@@ -497,7 +498,7 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                 par.setMin(new_left)
             elif value > right:
                 #new_right = value + .3*abs(value)
-                new_right = value + 3*abs(value)
+                new_right = value + 30.*abs(value)
                 logger.info(
                     f'Increasing range for {par.GetName()} on the right:'
                     f'({left:.2f}, {right:.2f}) -> ({left:.2f}, {new_right:.2f})'
@@ -505,9 +506,11 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                 par.setMax(new_right)
 
             # Now check if any of the ranges are needlessly large
-            if abs(value) / min(abs(left), abs(right)) < 0.01:
-                new_left = -2.*abs(value)
-                new_right = 2.*abs(value)
+            if abs(value) / min(abs(left), abs(right)) < 0.5:
+                #new_left = -2.*abs(value)
+                #new_right = 2.*abs(value)
+                new_left = -20.*abs(value)
+                new_right=  20.*abs(value)
                 logger.info(
                     f'Decreasing range for {par.GetName()} on both sides:'
                     f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {new_right:.2f})'
@@ -592,7 +595,7 @@ def single_fit_scipy(expression, histogram, init_vals=None, cache=None, **minimi
     res.x_init = np.array(init_vals)
     res.expression = expression
     res.hash = fit_hash
-    res.nfev = 1000000
+    res.nfev = 10000
     
     
     if cache:
@@ -870,8 +873,8 @@ def pdf_parameters(pdf_type, npars, prefix=None):
         elif npars == 3:
             parameters = [
                 ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -50., 50.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -50, 50),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100, 100),
                 ]
         elif npars == 4:
             parameters = [
@@ -897,8 +900,8 @@ def pdf_parameters(pdf_type, npars, prefix=None):
         if npars == 3:
             parameters = [
                 ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -50., 50.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -10., 10.)
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.)
                 ]
         if npars == 4:
             parameters = [
@@ -917,12 +920,9 @@ def pdf_parameters(pdf_type, npars, prefix=None):
 
         elif npars == 3:
             parameters = [
-                #ROOT.RooRealVar(prefix + "_p1", "p1", -3.8, -100., 100.),
-                #ROOT.RooRealVar(prefix + "_p2", "p2", 17.78, -100., 100.),
-                #ROOT.RooRealVar(prefix + "_p3", "p3", -1.264, -100, 100),
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1, -500., 500.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1, -50., 50.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1, -15, 15),
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100),
                 ]
         elif npars == 4:
             parameters = [
@@ -1279,12 +1279,13 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
 def gen_datacard(
     jsonfile, bdtcut, signal,
     lock=None, injectsignal=False,
-    #tag=None, mt_min=200., mt_max=600.,
     tag=None, mt_min=180., mt_max=650.,
     trigeff=None,
     ):
     mz = signal['mz']
     rinv = signal['rinv']
+    mdark = signal['mdark']
+    xsec  = get_xs(mz) 
 
     input = InputData(jsonfile)
     input = input.cut_mt(mt_min, mt_max)
@@ -1305,10 +1306,7 @@ def gen_datacard(
     from fit_cache import FitCache
     cache = FitCache(lock=lock)
 
-    #for pdf_type in ['main', 'alt', 'ua2']:
     for pdf_type in ['main', 'ua2']:
-    #for pdf_type in ['alt','ua2','main']:
-    #for pdf_type in ['main','alt']:
         pdfs = pdfs_dict[pdf_type]
         ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
         i_winner = do_fisher_test(mt, data_datahist, pdfs)
@@ -1321,6 +1319,10 @@ def gen_datacard(
         ['trigger', 'lnN', 1.02, '-'],
         ['pdf', 'lnN', 1.05, '-'],
         ['mcstat', 'lnN', 1.07, '-'],
+        ['mZprime','extArg', mz],
+        ['mDark',  'extArg', mdark],
+        ['rinv',   'extArg', rinv],
+        ['xsec',   'extArg', xsec],
         ]
 
     sig_name = 'mz{:.0f}_rinv{:.1f}'.format(mz, rinv)
@@ -1337,7 +1339,7 @@ def gen_datacard(
     compile_datacard_macro(
         winner_pdfs, data_datahist, sig_datahist,
         outfile,
-        systs=systs
+        systs=systs,
         )
 
 
@@ -1405,6 +1407,7 @@ def read_dc_txt(txt):
             continue
         block.append(line)
     blocks.append(block)
+ 
     if len(blocks) != 5:
         raise Exception('Found {} blocks, expected 5'.format(len(blocks)))
 
@@ -1435,7 +1438,6 @@ def read_dc_txt(txt):
                 pass
         dc.systs.append(syst)
     # pprint(dc.systs)
-
     return dc
 
 
@@ -1587,6 +1589,7 @@ class CombineCommand(object):
         '--freezeParameters',
         '--trackParameters',
         '--trackErrors',
+        #'--setParameters',
         ]
     comma_separated_arg_map = { camel_to_snake(v.strip('-')) : v for v in comma_separated_args }
     
@@ -1687,36 +1690,31 @@ class CombineCommand(object):
 
         return command
 
-
 def apply_combine_args(cmd):
     """
     Takes a CombineCommand, and reads arguments 
     """
     cmd = cmd.copy()
-    #pdf = pull_arg('--pdf', type=str, choices=['main', 'alt', 'ua2'], default='ua2').pdf
     pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2'], default='ua2').pdf
+    #mz  = pull_arg('--mz', type=float, default=300).mz
+    #mdark  = pull_arg('--mdark', type=float, default=10).mdark
+    #rinv = pull_arg('--rinv', type=float, default=0.3).rinv
+
+    #xsec = get_xs(mz)
     logger.info('Using pdf %s', pdf)
-    #cmd.set_parameter('pdf_index', {'main':0, 'alt':1, 'ua2':2}[pdf])
 
-
-
-    cmd.set_parameter('pdf_index', {'main':0, 'ua2':1}[pdf])
-    #cmd.set_parameter('pdf_index', {'alt':2, 'ua2':1}[pdf])
-
-
-
-    #cmd.set_parameter('pdf_index', {'main':0, 'alt':1}[pdf])
+    #cmd.set_parameter('pdf_index', {'main':0, 'ua2':1}[pdf])
     pdf_pars = cmd.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
-    #other_pdf = {'main':'alt', 'alt':'main', 'main':'ua2', 'ua2':'main', 'alt':'ua2', 'ua2':'alt'}[pdf]
-
     other_pdf = {'main':'ua2', 'ua2':'main'}[pdf]
-    #other_pdf = {'alt':'ua2', 'ua2':'alt'}[pdf]
 
-    #other_pdf = {'main':'alt', 'alt':'main'}[pdf]
     other_pdf_pars = cmd.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
     cmd.freeze_parameters.add('pdf_index')
     cmd.freeze_parameters.update(other_pdf_pars)
     cmd.track_parameters.update(['r'] + pdf_pars)
+    #cmd.set_parameter('mZprime',mz)
+    #cmd.set_parameter('rinv',rinv)
+    #cmd.set_parameter('mDark',10)
+    #cmd.set_parameter('xsec',xsec)
 
     asimov = pull_arg('-a', '--asimov', action='store_true').asimov
     if asimov:
@@ -1766,9 +1764,14 @@ def scan(cmd):
     cmd = bestfit(cmd)
     cmd.kwargs['--algo'] = 'grid'
     cmd.kwargs['--alignEdges'] = 1
-    rmin, rmax = pull_arg('-r', '--range', type=float, default=[-1., 2.], nargs=2).range
+    rmin, rmax = pull_arg('-r', '--range', type=float, default=[0., 2.], nargs=2).range
     cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
+    cmd.track_parameters.add('mZprime')
+    cmd.track_parameters.add('mDark')
+    cmd.track_parameters.add('rinv')
+    cmd.track_parameters.add('xsec')
+    #cmd.track_parameters.add()
     cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
     #cmd.kwargs['--points'] = pull_arg('-n', type=int, default=500).n
     return cmd
