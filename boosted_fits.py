@@ -205,7 +205,7 @@ class Histogram:
         Converts histogram to a ROOT.TH1F
         """
         n_bins = len(self.binning)-1
-        th1 = ROOT.TH1F(name, name, n_bins, array('f', list(self.binning)))
+        th1 = ROOT.TH1F(name, name, n_bins, self.binning)
         ROOT.SetOwnership(th1, False)
         assert len(self.vals) == n_bins
         assert len(self.errs) == n_bins
@@ -214,6 +214,36 @@ class Histogram:
             th1.SetBinError(i+1, self.errs[i])
         return th1
 
+    @property
+    def nbins(self):
+        return len(self.binning)-1
+
+    def __repr__(self):
+        d = np.column_stack((self.vals, self.errs))
+        return (
+            f'<H n={self.nbins} int={self.vals.sum():.3f}'
+            f' binning={self.binning[0]:.1f}-{self.binning[-1]:.1f}'
+            f' vals/errs=\n{d}'
+            '>'
+            )
+
+    def cut(self, xmin=-np.inf, xmax=np.inf):
+        """
+        Throws away all bins with left boundary < xmin or right boundary > xmax.
+        Mostly useful for plotting purposes.
+        Returns a copy.
+        """
+        # safety checks
+        if xmin>xmax:
+            raise ValueError("xmin ({}) greater than xmax ({})".format(xmin,xmax))
+
+        h = self.copy()
+        imin = np.argmin(self.binning < xmin) if xmin > self.binning[0] else 0
+        imax = np.argmax(self.binning > xmax) if xmax < self.binning[-1] else self.nbins+1
+        h.binning = h.binning[imin:imax]
+        h.vals = h.vals[imin:imax-1]
+        h.errs = h.errs[imin:imax-1]
+        return h
 
 def build_histograms_in_dict_tree(d, parent=None, key=None):
     """
@@ -389,27 +419,17 @@ class InputDataV2(InputData):
     one signal model parameter variation.
     That way, datacard generation can be made class methods.
     """
-    def __init__(self, jsonfile, mt_min=180., mt_max=720.):
+    def __init__(self, jsonfile, mt_min=180., mt_max=650.):
         self.jsonfile = jsonfile
         with open(jsonfile, 'r') as f:
             self.d = json.load(f, cls=Decoder)
 
+        # Cut mt range
+        for h in iter_histograms(self.d):
+            h = h.cut(mt_min, mt_max)
+
         self.mt = self.d['central'].binning
         self.metadata = self.d['central'].metadata
-
-        # Cut mt range
-        i_bin_min = 0
-        i_bin_max = len(self.mt)-1
-        if mt_min is not None:
-            i_bin_min = np.argmax(self.mt_array >= mt_min)
-        if mt_max is not None:
-            i_bin_max = np.argmax(self.mt_array >= mt_max)
-        self.mt = self.mt[i_bin_min:i_bin_max]
-        for h in iter_histograms(self.d):
-            h.binning = self.mt
-            h.vals = h.vals[i_bin_min:i_bin_max-1]
-            h.errs = h.errs[i_bin_min:i_bin_max-1]
-
 
     def gen_datacard(self, use_cache=True, fit_cache_lock=None):
         mz = int(self.metadata['mz'])
