@@ -482,6 +482,7 @@ def fittoys():
 
 @scripter
 def impacts(dc_file=None):
+    norm = bsvj.pull_arg('--norm', type=float, nargs=2, default=[0.1,2.0]).norm
     nfits = bsvj.pull_arg('--nfits', type=int, default=1).nfits
     expectSignal = bsvj.pull_arg('--expectSignal', type=float, default=0.2).expectSignal
     if dc_file is None:
@@ -521,7 +522,7 @@ def impacts(dc_file=None):
     cmd.kwargs['-t'] = -1
     cmd.kwargs['--expectSignal'] = expectSignal
     cmd.args.add('--saveWorkspace')
-    cmd.add_range('shapeBkg_roomultipdf_bsvj__norm', 0.1, 2.0)
+    cmd.add_range('shapeBkg_roomultipdf_bsvj__norm', norm[0], norm[1])
     cmd.name = '_initialFit_Test'
     if osp.isfile(cmd.outfile):
         bsvj.logger.warning(
