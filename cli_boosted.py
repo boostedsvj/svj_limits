@@ -13,6 +13,7 @@ import boosted_fits as bsvj
 
 import ROOT # type: ignore
 ROOT.RooMsgService.instance().setSilentMode(True)
+ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.ERROR)
 
 scripter = bsvj.Scripter()
 

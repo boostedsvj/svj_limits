@@ -3,11 +3,13 @@ Some scripts to quickly plot basic outcomes from combine scans
 """
 from __future__ import print_function
 import ROOT # type:ignore
+ROOT.RooMsgService.instance().setSilentMode(True)
+ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.ERROR)
 from time import strftime
 import argparse
 
 # Add the directory of this file to the path so the boosted tools can be imported
-import sys, os, os.path as osp, pprint, re, traceback, copy, fnmatch
+import sys, os, os.path as osp, pprint, re, traceback, copy, fnmatch, shutil
 from contextlib import contextmanager
 sys.path.append(osp.dirname(osp.abspath(__file__)))
 import boosted_fits as bsvj
@@ -33,12 +35,10 @@ cms_green = '#74f94c'
 scripter = bsvj.Scripter()
 
 def cmd_exists(executable):
-    """
-    Checks if a command can be found on the system path.
-    Not a very smart implementation but does the job usually.
-    See https://stackoverflow.com/a/28909933/9209944 .
-    """
-    return any(os.access(os.path.join(path, executable), os.X_OK) for path in os.environ["PATH"].split(os.pathsep))
+    if shutil.which(executable):
+        return True
+    else:
+        return False
 
 BATCH_MODE = False
 def batch_mode(flag=True):
