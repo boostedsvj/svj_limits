@@ -30,7 +30,7 @@ You first need a `histograms.json` file; see https://github.com/boostedsvj/svj_u
 Then:
 
 ```bash
-python cli_boosted.py gen_datacards_mp histograms_Mar14.json
+python cli_boosted.py gen_datacards_v2 histograms_Mar14.json
 ```
 
 
