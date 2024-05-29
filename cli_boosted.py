@@ -5,7 +5,7 @@ Scripts using building blocks in boosted_fits.py to create datacards
 import argparse, inspect, os, os.path as osp, re, json, itertools, sys, shutil
 from pprint import pprint
 from time import strftime, sleep
-from copy import copy
+from copy import copy, deepcopy
 
 import numpy as np
 
@@ -498,7 +498,6 @@ def impacts(dc_file=None):
     dc = bsvj.Datacard.from_txt(dc_file)
     base_cmd = bsvj.CombineCommand(dc)
     base_cmd.configure_from_command_line()
-    # HIER VERDER
 
     workdir = strftime(f'impacts_cli_%Y%m%d_{osp.basename(dc_file).replace(".txt","")}')
     bsvj.logger.info(f'Executing from {workdir}')
@@ -533,61 +532,46 @@ def impacts(dc_file=None):
         if 'mcstat' in syst: continue
         if syst in base_cmd.freeze_parameters: continue
         systs.append(syst)
+    systs.append('shapeBkg_roomultipdf_bsvj__norm')
     bsvj.logger.info(f'Doing systematics: {" ".join(systs)}')
 
-    # Individual systs
-    cmd = base_cmd.copy()
-    cmd.kwargs['--algo'] = 'impact'
-    cmd.kwargs['--redefineSignalPOIs'] = 'r'
-    cmd.kwargs['--floatOtherPOIs'] = 1
-    cmd.kwargs['--saveInactivePOI'] = 1
-    cmd.kwargs['--robustFit'] = 1
-    cmd.kwargs['--rMin'] = -10.
-    cmd.kwargs['--rMax'] = 10.
-    cmd.kwargs['-t'] = -1
-    cmd.kwargs['--expectSignal'] = 0.2
-    cmd.add_range('shapeBkg_roomultipdf_bsvj__norm', 0.1, 2.0)
-
-    name = '_paramFit_Test_{0}'
-    for syst in systs:
-        if 'bkg_' in syst: continue # Ignore the bkg parameters
-        cmd.name = name.format(syst)
-        cmd.kwargs['-P'] = syst
-        # bsvj.run_combine_command(cmd, logfile=cmd.logfile)
-
-    # Create the impacts.json file
+    # calculate all impacts
+    impact_file = 'impacts.json'
     combinetool_json_cmd = (
         f'combineTool.py -M Impacts'
-        f' -d {initial_fit_outfile} -m 120 -o impacts.json'
-        f' --named {",".join(systs)} --redefineSignalPOIs r'
-        )
-    # bsvj.run_command(combinetool_json_cmd)
-
-    # Create the pdf
-    plot_impacts_cmd = (
-        f'plotImpacts.py'
-        f' -i impacts.json --label-size 0.047'
-        f' -o impacts'
-        )
-    # bsvj.run_command(plot_impacts_cmd)
-
-    # Also a version without the bkg parameters
-    systs = [s for s in systs if 'bkgfit' not in s]
-    combinetool_json_cmd = (
-        f'combineTool.py -M Impacts'
-        f' -d {initial_fit_outfile} -m 120 -o impacts_nobkg.json'
+        f' -d {initial_fit_outfile} -m 120 -o {impact_file}'
         f' --named {",".join(systs)} --redefineSignalPOIs r'
         )
     bsvj.run_command(combinetool_json_cmd)
 
+    # default impact plot w/ all systs
     plot_impacts_cmd = (
         f'plotImpacts.py'
-        f' -i impacts_nobkg.json --label-size 0.047'
-        f' -o impacts_nobkg'
+        f' -i {impact_file} --label-size 0.047'
+        f' -o impacts'
         )
     bsvj.run_command(plot_impacts_cmd)
 
-
+    # modify impact json to remove bkg systs
+    with open(impact_file,'r') as ifile:
+        impacts = json.load(ifile)
+    impacts_nobkg = deepcopy(impacts)
+    impacts_nobkg["params"] = []
+    for param in impacts["params"]:
+        if 'bkg' in param["name"]:
+            continue
+        else:
+            impacts_nobkg["params"].append(param)
+    # dump in the format used by combineTool/Impacts
+    impact_file_nobkg = 'impacts_nobkg.json'
+    with open(impact_file_nobkg,'w') as ofile:
+        json.dump(impacts_nobkg, ofile, sort_keys=True, indent=2, separators=(',', ': '))
+    plot_impacts_nobkg_cmd = (
+        f'plotImpacts.py'
+        f' -i {impact_file_nobkg} --label-size 0.047'
+        f' -o impacts_nobkg'
+        )
+    bsvj.run_command(plot_impacts_nobkg_cmd)
 
 @scripter
 def likelihood_scan(args=None):
