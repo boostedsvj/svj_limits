@@ -482,14 +482,17 @@ def fittoys():
 
 @scripter
 def impacts(dc_file=None):
+    nfits = bsvj.pull_arg('--nfits', type=int, default=1).nfits
+    expectSignal = bsvj.pull_arg('--expectSignal', type=float, default=0.2).expectSignal
     if dc_file is None:
+        npool = bsvj.pull_arg('--npool', type=int, default=1).npool
         # Allow multiprocessing if multiple datacards are passed on the command line
         dc_files = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
         if len(dc_files) > 1:
             # Call this function in a pool instead
             import multiprocessing as mp
             with mp.Manager() as manager:
-                pool = mp.Pool(8)
+                pool = mp.Pool(npool)
                 pool.map(impacts, dc_files)
                 pool.close()
             return
@@ -516,7 +519,7 @@ def impacts(dc_file=None):
     cmd.kwargs['--rMin'] = -2.4
     # cmd.kwargs['--rMax'] = 10.
     cmd.kwargs['-t'] = -1
-    cmd.kwargs['--expectSignal'] = 0.2
+    cmd.kwargs['--expectSignal'] = expectSignal
     cmd.args.add('--saveWorkspace')
     cmd.add_range('shapeBkg_roomultipdf_bsvj__norm', 0.1, 2.0)
     cmd.name = '_initialFit_Test'
@@ -537,6 +540,15 @@ def impacts(dc_file=None):
     bsvj.logger.info(f'Doing systematics: {" ".join(systs)}')
 
     # calculate all impacts
+    combinetool_dofit_cmd = (
+        f'combineTool.py -M Impacts'
+        f' -d {initial_fit_outfile} -m 120 --doFits --parallel {nfits}'
+        f' --named {",".join(systs)} --redefineSignalPOIs r'
+        f' -t -1 --expectSignal {expectSignal}'
+        )
+    bsvj.run_command(combinetool_dofit_cmd)
+
+    # combine all impacts
     impact_file = 'impacts.json'
     combinetool_json_cmd = (
         f'combineTool.py -M Impacts'
@@ -559,7 +571,7 @@ def impacts(dc_file=None):
     impacts_nobkg = deepcopy(impacts)
     impacts_nobkg["params"] = []
     for param in impacts["params"]:
-        if 'bkg' in param["name"]:
+        if 'bkg' in param["name"].lower():
             continue
         else:
             impacts_nobkg["params"].append(param)
