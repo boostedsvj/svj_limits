@@ -1918,7 +1918,7 @@ class CombineCommand(object):
             if expectSignal is not None: self.kwargs['--expectSignal'] = expectSignal
 
             # Pass-through: Anything that's left is simply tagged on to the combine command as is
-            self.raw = ' '.join(sys.argv)
+            self.pass_through = ' '.join(sys.argv[1:])
 
 
     def parse(self):
@@ -1945,7 +1945,7 @@ class CombineCommand(object):
             strs = ['{0}={1},{2}'.format(parname, *ranges) for parname, ranges in self.parameter_ranges.items()]
             command.append('--setParameterRanges ' + ':'.join(strs))
 
-        if self.pass_through: command.append(' '.join(self.pass_through))
+        if self.pass_through: command.append(self.pass_through)
 
         return command
 

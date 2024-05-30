@@ -488,6 +488,8 @@ def impacts():
     dc = bsvj.Datacard.from_txt(osp.abspath(dc_file))
     base_cmd = bsvj.CombineCommand(dc)
     base_cmd.configure_from_command_line()
+    if '--toysFrequentist' in base_cmd.args:
+        base_cmd.args.remove('--toysFrequentist')
 
     workdir = strftime(f'impacts_cli_%Y%m%d_{osp.basename(dc_file).replace(".txt","")}')
     bsvj.logger.info(f'Executing from {workdir}')
@@ -530,8 +532,6 @@ def impacts():
     combinetool_dofit_cmd.named.update(systs)
     combinetool_dofit_cmd.kwargs['--redefineSignalPOIs'] = 'r'
     combinetool_dofit_cmd.name = 'Test'
-    if '--toysFrequentist' in combinetool_dofit_cmd.args:
-        combinetool_dofit_cmd.args.remove('--toysFrequentist')
     bsvj.run_combine_command(combinetool_dofit_cmd, logfile=cmd.logfile)
 
     # combine all impacts
