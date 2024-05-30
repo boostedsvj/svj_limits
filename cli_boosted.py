@@ -481,26 +481,11 @@ def fittoys():
 
 
 @scripter
-def impacts(dc_file=None):
-    norm = bsvj.pull_arg('--norm', type=float, nargs=2, default=[0.1,2.0]).norm
+def impacts():
+    dc_file = bsvj.pull_arg('datacard', type=str).datacard
     nfits = bsvj.pull_arg('--nfits', type=int, default=1).nfits
-    expectSignal = bsvj.pull_arg('--expectSignal', type=float, default=0.2).expectSignal
-    if dc_file is None:
-        npool = bsvj.pull_arg('--npool', type=int, default=1).npool
-        # Allow multiprocessing if multiple datacards are passed on the command line
-        dc_files = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
-        if len(dc_files) > 1:
-            # Call this function in a pool instead
-            import multiprocessing as mp
-            with mp.Manager() as manager:
-                pool = mp.Pool(npool)
-                pool.map(impacts, dc_files)
-                pool.close()
-            return
-        else:
-            dc_file = osp.abspath(dc_files[0])
 
-    dc = bsvj.Datacard.from_txt(dc_file)
+    dc = bsvj.Datacard.from_txt(osp.abspath(dc_file))
     base_cmd = bsvj.CombineCommand(dc)
     base_cmd.configure_from_command_line()
 
@@ -516,13 +501,7 @@ def impacts(dc_file=None):
     cmd.kwargs['--redefineSignalPOIs'] = 'r'
     cmd.kwargs['--floatOtherPOIs'] = 1
     cmd.kwargs['--saveInactivePOI'] = 1
-    cmd.kwargs['--robustFit'] = 1
-    cmd.kwargs['--rMin'] = -2.4
-    # cmd.kwargs['--rMax'] = 10.
-    cmd.kwargs['-t'] = -1
-    cmd.kwargs['--expectSignal'] = expectSignal
     cmd.args.add('--saveWorkspace')
-    cmd.add_range('shapeBkg_roomultipdf_bsvj__norm', norm[0], norm[1])
     cmd.name = '_initialFit_Test'
     if osp.isfile(cmd.outfile):
         bsvj.logger.warning(
@@ -541,13 +520,19 @@ def impacts(dc_file=None):
     bsvj.logger.info(f'Doing systematics: {" ".join(systs)}')
 
     # calculate all impacts
-    combinetool_dofit_cmd = (
-        f'combineTool.py -M Impacts'
-        f' -d {initial_fit_outfile} -m 120 --doFits --parallel {nfits}'
-        f' --named {",".join(systs)} --redefineSignalPOIs r'
-        f' -t -1 --expectSignal {expectSignal}'
-        )
-    bsvj.run_command(combinetool_dofit_cmd)
+    combinetool_dofit_cmd = base_cmd.copy()
+    combinetool_dofit_cmd.exe = 'combineTool.py'
+    combinetool_dofit_cmd.method = 'Impacts'
+    combinetool_dofit_cmd.dc.filename = osp.abspath(initial_fit_outfile)
+    combinetool_dofit_cmd.kwargs['-m'] = 120
+    combinetool_dofit_cmd.args.add('--doFits')
+    combinetool_dofit_cmd.kwargs['--parallel'] = nfits
+    combinetool_dofit_cmd.named.update(systs)
+    combinetool_dofit_cmd.kwargs['--redefineSignalPOIs'] = 'r'
+    combinetool_dofit_cmd.name = 'Test'
+    if '--toysFrequentist' in combinetool_dofit_cmd.args:
+        combinetool_dofit_cmd.args.remove('--toysFrequentist')
+    bsvj.run_combine_command(combinetool_dofit_cmd, logfile=cmd.logfile)
 
     # combine all impacts
     impact_file = 'impacts.json'
@@ -568,10 +553,10 @@ def impacts(dc_file=None):
 
     # modify impact json to remove bkg systs
     with open(impact_file,'r') as ifile:
-        impacts = json.load(ifile)
-    impacts_nobkg = deepcopy(impacts)
+        impacts_orig = json.load(ifile)
+    impacts_nobkg = deepcopy(impacts_orig)
     impacts_nobkg["params"] = []
-    for param in impacts["params"]:
+    for param in impacts_orig["params"]:
         if 'bkg' in param["name"].lower():
             continue
         else:

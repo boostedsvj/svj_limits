@@ -1784,11 +1784,13 @@ class CombineCommand(object):
         '--freezeParameters',
         '--trackParameters',
         '--trackErrors',
+        '--named',
         ]
     comma_separated_arg_map = { camel_to_snake(v.strip('-')) : v for v in comma_separated_args }
     comma_separated_arg_map['redefine_signal_pois'] = '--redefineSignalPOIs'
 
-    def __init__(self, dc=None, method='MultiDimFit', args=None, kwargs=None, pass_through=None):
+    def __init__(self, dc=None, method='MultiDimFit', args=None, kwargs=None, pass_through=None, exe='combine'):
+        self.exe = exe
         self.dc = dc
         self.method = method
         self.args = set() if args is None else args
@@ -1893,7 +1895,7 @@ class CombineCommand(object):
             self.asimov(asimov)
 
             logger.info('Taking pdf from command line (default is ua2)')
-            pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2'], default='ua2').pdf
+            pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2', 'alt'], default='ua2').pdf
             self.pick_pdf(pdf)
 
             toyseed = pull_arg('-t', type=int).t
@@ -1907,7 +1909,11 @@ class CombineCommand(object):
             if seed is not None: self.kwargs['-s'] = seed
 
             self.kwargs['-v'] = pull_arg('-v', '--verbosity', type=int, default=0).verbosity
-            
+
+            normRange = pull_arg('--normRange', type=float, nargs=2, default=[]).normRange
+            if len(normRange)>0:
+                self.add_range('shapeBkg_roomultipdf_bsvj__norm', normRange[0], normRange[1])
+
             expectSignal = pull_arg('--expectSignal', type=float).expectSignal
             if expectSignal is not None: self.kwargs['--expectSignal'] = expectSignal
 
@@ -1919,10 +1925,10 @@ class CombineCommand(object):
         """
         Returns the command as a list
         """
-        command = ['combine']
+        command = [self.exe]
         command.append('-M ' + self.method)
         if not self.dc: raise Exception('self.dc must be a valid path')
-        command.append(self.dc.filename)
+        command.append('-d ' + self.dc.filename)
         command.extend(list(self.args))
         command.extend([k+' '+str(v) for k, v in self.kwargs.items()])
 
