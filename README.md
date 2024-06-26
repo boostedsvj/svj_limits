@@ -4,6 +4,7 @@
 
 1. Follow the `combine` instructions: https://cms-analysis.github.io/HiggsAnalysis-CombinedLimit/#setting-up-the-environment-and-installation .
 Current results are using release `CMSSW_11_3_4`, tag v9.1.0.
+Make sure to install `CombineHarvester` as well (bottom of that page).
 
 2. Clone this repository:
 
@@ -30,7 +31,7 @@ You first need a `histograms.json` file; see https://github.com/boostedsvj/svj_u
 Then:
 
 ```bash
-python cli_boosted.py gen_datacards_mp histograms_Mar14.json
+python cli_boosted.py gen_datacards_v2 histograms_Mar14.json
 ```
 
 
@@ -66,6 +67,15 @@ Fit the toys:
 python cli_boosted.py fittoys dc_Jun08/dc_mz350_rinv0.3_bdt0p300.txt --toysFile toys_Jul25/higgsCombineObserveddc_mz350_rinv0.3_bdt0p300.GenerateOnly.mH120.1001.root --expectSignal 0
 ```
 
+## Nuisance impacts
+
+The nuisance impacts show how much each systematic uncertainty impacts the fit, and whether any systematics are pulled or constrained.
+The input is a datacard txt file.
+Signal injection is required to see the effects of signal systematics (the uncertainty variations are checked at the likelihood minimum, which is `r=0` without signal injection).
+
+```bash
+python3 cli_boosted.py impacts dc.txt --nfits 16 --asimov --normRange 0.1 2.0 --rMin -10 --rMax 10 --robustFit 1 --expectSignal 0.2
+```
 
 ## Plotting
 
