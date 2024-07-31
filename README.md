@@ -26,12 +26,12 @@ The commands below assume you are using this alias; if you're not, replace `pyth
 
 ## Generating the datacards
 
-You first need a `histograms.json` file; see https://github.com/boostedsvj/svj_uboost .
+You first need json files for signal, background, and (optionally) data; see https://github.com/boostedsvj/svj_uboost.
 
 Then:
 
 ```bash
-python cli_boosted.py gen_datacards_v2 histograms_Mar14.json
+python cli_boosted.py gen_datacards --bkg merged_20240729/bkg_sel-cutbased.json --sig smooth_20240729/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json
 ```
 
 
