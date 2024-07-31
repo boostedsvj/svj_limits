@@ -770,7 +770,7 @@ def brazil():
 
 
 @scripter
-def bkgfitv2():
+def bkgfit():
     """
     Bkg fit plots
     """
@@ -787,7 +787,11 @@ def bkgfitv2():
     bin_width = input.mt[1] - input.mt[0]
     bkg_hist = input.bkg['bkg']
     bkg_th1 = bkg_hist.th1('bkg')
-    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), input.data.th1('data'), 1.)
+    if input.data is not None:
+        data_th1 = input.data['data'].th1('data')
+    else:
+       data_th1 = bkg_th1
+    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
     pdfs = bsvj.pdfs_factory(pdftype, mt, bkg_th1, name=pdftype)
 
