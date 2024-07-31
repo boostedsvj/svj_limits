@@ -151,7 +151,7 @@ def this_fn_name():
 
 @scripter
 def gen_datacards():
-    jsons = get_jsons()
+    jsons = bsvj.get_jsons()
     bsvj.InputData(**jsons).gen_datacard()
 
 @scripter

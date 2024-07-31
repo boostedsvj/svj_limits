@@ -312,11 +312,10 @@ class Decoder(json.JSONDecoder):
 # get set of json files from command line (used for datacard creation)
 def get_jsons():
     result = dict(
-        sigfile = pull_arg('--sig', type=str, required=True).sig
-        bkgfile = pull_arg('--bkg', type=str, required=True).bkg
-        datafile = pull_arg('--data', type=str, default=None).data
-    }
-    result['datafile'] = result['bkgfile']
+        sigfile = pull_arg('--sig', type=str, required=True).sig,
+        bkgfile = pull_arg('--bkg', type=str, required=True).bkg,
+        datafile = pull_arg('--data', type=str, default=None).data,
+    )
     return result
 
 class InputData(object):
@@ -327,10 +326,14 @@ class InputData(object):
     That way, datacard generation can be made class methods.
     """
     def __init__(self, **kwargs):
-        for fn in ['sigfile','bkgfile','datafile']:
-            setattr(self, fn, kwargs.pop(fn))
-            with open(getattr(self,fn), 'r') as f:
-                setattr(self, fn.replace('file',''), json.load(f, cls=Decoder))
+        for file in ['sigfile','bkgfile','datafile']:
+            setattr(self, file, kwargs.pop(file))
+            obj = file.replace('file','')
+            if getattr(self, file) is None:
+                setattr(self, obj, None)
+            else:
+                with open(getattr(self,file), 'r') as f:
+                    setattr(self, obj, json.load(f, cls=Decoder))
 
         self.mt = self.sig['central'].binning
         self.metadata = self.sig['central'].metadata
@@ -351,10 +354,13 @@ class InputData(object):
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
 
-        bkg_th1 = self.bkg.th1('bkg')
+        bkg_th1 = self.bkg['bkg'].th1('bkg')
         mt = get_mt(self.mt[0], self.mt[-1], self.n_bins, name='mt')
 
-        data_th1 = self.data.th1('data')
+        if self.data is not None:
+            data_th1 = self.data['data'].th1('data')
+        else:
+            data_th1 = bkg_th1
         data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
         pdfs_dict = {
@@ -405,7 +411,7 @@ class InputData(object):
                 used_systs.add(syst_name)
             syst_th1s.append(hist.th1(f'{sig_name}_{syst_name}{direction}'))
 
-        outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}/dc_{osp.basename(self.jsonfile).replace(".json","")}.txt')
+        outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}/dc_{osp.basename(self.sigfile).replace(".json","")}.txt')
         compile_datacard_macro(
             winner_pdfs, data_datahist, sig_datahist,
             outfile,
