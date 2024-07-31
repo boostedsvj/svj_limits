@@ -1321,6 +1321,7 @@ class Datacard:
         self.channels = [] # Expects len-2 iterables as elements, (name, rate)
         self.rates = OrderedDict() # Expects str as key, OrderedDict as value
         self.systs = []
+        self.extargs = []
 
     def __eq__(self, other):
         return (
@@ -1328,6 +1329,7 @@ class Datacard:
             and self.channels == other.channels
             and self.rates == other.rates
             and self.systs == other.systs
+            and self.extargs == other.extargs
             )
 
     @property
@@ -1394,7 +1396,7 @@ def read_dc_txt(txt):
         dc.rates[ch][name] = int(rate)
     # pprint(dc.rates)
 
-    # Systs
+    # Systs and extargs
     for line in blocks[4]:
         syst = line.split()
         if len(syst) >= 3:
@@ -1402,8 +1404,12 @@ def read_dc_txt(txt):
                 syst[2] = float(syst[2])
             except TypeError:
                 pass
-        dc.systs.append(syst)
+        if len(syst)>1 and syst[1]=='extArg':
+            dc.extargs.append(syst)
+        else:
+            dc.systs.append(syst)
     # pprint(dc.systs)
+    # pprint(dc.extargs)
 
     return dc
 
