@@ -101,18 +101,6 @@ def organize_rootfiles(rootfiles, split_bdt_wps=False):
         return out
 
     rootfiles.sort(key=get_mz)
- 
-    # mzs = {get_mz(rootfile) for rootfile in rootfiles}
-
-    # for rootfile in rootfiles:
-    #     mz = get_mz(rootfile)
-    #     bdt = get_bdt_str(rootfile)
-
-    # out = {}
-
-    # for rootfile in rootfiles:
-    #     mz = get_mz(rootfile)
-    #     bdt = get_bdt_str(rootfile)
 
     obs_rootfiles = [f for f in rootfiles if 'Observed' in osp.basename(f)]
     asimov_rootfiles = [f for f in rootfiles if 'Asimov' in osp.basename(f)]
@@ -191,63 +179,6 @@ def extract_scans(rootfiles, correct_minimum=False):
                 scans.append(scan)
 
     return scans
-
-
-# def extract_scans(rootfiles, correct_minimum=False):
-#     if isinstance(rootfiles, str): rootfiles = [rootfiles]
-#     scans = []
-
-#     for rootfile in rootfiles:
-#         with bsvj.open_root(rootfile) as tf:
-#             limit = tf.Get('limit')
-
-#             tracked_params = {}
-#             listofbranches = limit.GetListOfBranches()
-#             for i_branch in range(listofbranches.GetEntries()):
-#                 branch = listofbranches[i_branch].GetName()
-#                 if branch.startswith('trackedParam_'):
-#                     tracked_params[branch.replace('trackedParam_', '')] = []
-
-#             all_mus = []
-#             all_deltanlls = []
-#             all_quantiles = []
-#             i_toys = []
-#             for _ in limit:
-#                 if limit.deltaNLL < 1.e5:
-#                     all_mus.append(limit.r)
-#                     all_deltanlls.append(limit.deltaNLL)
-#                     all_quantiles.append(limit.quantileExpected)
-#                     i_toys.append(limit.iToy)
-#                     for key, vals in tracked_params.items():
-#                         vals.append(getattr(limit, 'trackedParam_'+key))
-
-#         all_mus = np.array(all_mus)
-#         all_deltanlls = np.array(all_deltanlls)
-#         all_quantiles = np.array(all_quantiles)
-#         i_toys = np.array(i_toys)
-#         for key, vals in list(tracked_params.items()):
-#             tracked_params[key] = np.array(vals)
-
-#         for i_toy in sorted(set(i_toys)):
-#             scan = bsvj.AttrDict()
-#             sel = (i_toys == i_toy)
-#             mus = all_mus[sel]
-#             deltanlls = all_deltanlls[sel]
-#             quantiles = all_quantiles[sel]
-#             order = np.argsort(mus)
-#             mus = mus[order]
-#             deltanlls = deltanlls[order]
-#             quantiles[order]
-#             if correct_minimum:
-#                 minimum = np.min(deltanlls)
-#                 logger.warning('Shifting curve by {0:.4f}'.format(minimum))
-#                 deltanlls = deltanlls - minimum
-#             scan.mus = mus
-#             scan.deltanlls = deltanlls
-#             scan.quantiles = quantiles
-#             for key, vals in tracked_params.items(): scan[key] = vals
-#             scans.append(scan)
-#     return scans
 
 
 def clean_scan(scan):
@@ -366,7 +297,7 @@ def mtdist():
     #toyrootfile = bsvj.pull_arg('--toyrootfile', type=str).toyrootfile
 
     from scipy.interpolate import make_interp_spline # type:ignore
-    
+
     with bsvj.open_root(rootfile) as f:
         ws = bsvj.get_ws(f)
 
@@ -406,7 +337,7 @@ def mtdist():
     logger.info(f'Prefit signal norm = {y_sig.sum():.2f}, should match with datacard')
 
     # Get the data histogram
-    data = ws.data('data_obs')    
+    data = ws.data('data_obs')
     y_data = bsvj.roodataset_values(data)[1]
 
     # Get histogram from generated toy
@@ -714,7 +645,7 @@ def cls():
             ax.fill_between(mu, cls.s_exp[0.84], cls.s_exp[0.16], color=cms_green, alpha=0.25)
             ax.fill_between(mu, cls.s_exp[0.16], cls.s_exp[0.025], color=cms_yellow, alpha=0.25)
             ax.plot(mu, cls.s_exp[0.5], c='black', linestyle='--', label=r'$s_{exp}$')
-            
+
             # Limit points
             s = 45
             if limit.twosigma_success:
@@ -737,7 +668,7 @@ def brazil():
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
     clean = bsvj.pull_arg('--clean', action='store_true').clean
-    
+
     obs_rootfiles, asimov_rootfiles = organize_rootfiles(rootfiles)
 
     points = []
@@ -776,7 +707,7 @@ def brazil():
             return '{:+{w}.3f}'.format(nr, w=w)
         else:
             return '{:>{w}s}'.format('err', w=w)
-        
+
     for p in points:
         print(
             '{:<5.0f} {} {} {} {} {} | {}'
@@ -793,7 +724,7 @@ def brazil():
 
     fig = plt.figure(figsize=(12,10))
     ax = fig.gca()
-    
+
     with quick_ax(figsize=(12,10), outfile=outfile) as ax:
         ax.plot([],[],label='95% CL upper limits (cut-based)',color='white')
         ax.plot([],[],label=r'$m_{dark}$=10 GeV, $r_{inv}$=0.3',color='white')
@@ -838,59 +769,6 @@ def brazil():
         ax.legend(framealpha=0.0)
 
 
-
-# @scripter
-# def allplots(args):
-#     if not isinstance(args, bsvj.AttrDict):
-#         parser = quickplot_parser()
-#         parser.add_argument('rootfiles', type=str, nargs='+')
-#         args = parser.parse_args(args)
-
-#     d = namespace_to_attrdict(args)
-#     d.batch = True
-
-#     for obs_rootfiles, asimov_rootfiles in organize_rootfiles(args.rootfiles, split_bdt_wps=True):
-#         bdt_str = get_bdt_str(obs_rootfiles[0])
-#         logger.info('Making plots for bdt working point ' + bdt_str)
-
-#         outdir = strftime('plots_%b%d/{}'.format(bdt_str))
-#         if not osp.isdir(outdir): os.makedirs(outdir)
-
-#         for rootfile in obs_rootfiles+asimov_rootfiles:
-#             mtdist(bsvj.AttrDict(
-#                 d,
-#                 rootfile=rootfile,
-#                 outfile=osp.join(outdir, 'mtdist_{}.png'.format(name_from_combine_rootfile(rootfile)))
-#                 ))
-
-#         for obs_rootfile, asimov_rootfile in zip(obs_rootfiles, asimov_rootfiles):
-#             cls(bsvj.AttrDict(
-#                 d,
-#                 observed=obs_rootfile,
-#                 asimov=asimov_rootfile,
-#                 outfile=osp.join(outdir, 'cls_{}.png'.format(name_from_combine_rootfile(obs_rootfile, True))),
-#                 xmax=.5
-#                 ))
-
-#         muscan(bsvj.AttrDict(
-#             d,
-#             rootfiles=obs_rootfiles,
-#             xmin=-1., xmax=1., ymax=10.,
-#             outfile=osp.join(outdir, 'muscan_obs.png'),
-#             correctminimum=False, include_dots=False
-#             ))
-#         muscan(bsvj.AttrDict(
-#             d,
-#             rootfiles=asimov_rootfiles,
-#             xmin=-1., xmax=1., ymax=10.,
-#             outfile=osp.join(outdir, 'muscan_asimov.png'),
-#             correctminimum=False, include_dots=False
-#             ))
-
-#         brazil(bsvj.AttrDict(d, rootfiles=obs_rootfiles+asimov_rootfiles, outfile=osp.join(outdir, 'brazil.png')))
-
-
-
 @scripter
 def bkgfitv2():
     """
@@ -925,8 +803,6 @@ def bkgfitv2():
         else:
             pdf.res = bsvj.fit(pdf)
 
-
-    # bsvj.plot_fits(pdfs, [p.res for p in pdfs], data_datahist, 'qp_' + pdftype + '.pdf')
 
     if not scipyonly:
         # Make sure pdfs are really fitted

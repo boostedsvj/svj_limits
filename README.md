@@ -80,13 +80,6 @@ python3 cli_boosted.py impacts dc.txt --nfits 16 --asimov --normRange 0.1 2.0 --
 ## Plotting
 
 
-To do all plots at once (takes a while):
-
-```bash
-python quick_plot.py allplots scans_Dec07/*.root
-```
-
-
 ΔNNL as a function of mu:
 
 ```bash
