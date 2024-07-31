@@ -236,6 +236,9 @@ class Histogram:
             '>'
             )
 
+    def __eq__(self,other):
+        return (self.vals==other.vals).all() and (self.errs==other.errs).all() and (self.binning==other.binning).all()
+
     def cut(self, xmin=-np.inf, xmax=np.inf):
         """
         Throws away all bins with left boundary < xmin or right boundary > xmax.
@@ -281,6 +284,17 @@ def iter_histograms(d):
             for _ in iter_histograms(v):
                 yield _
 
+def cut_histograms(d,mt_min,mt_max):
+    """
+    Traverses a dict-of-dicts, and cuts all the Histogram instances
+    """
+    if isinstance(d, Histogram):
+        return d.cut(mt_min,mt_max)
+    elif isinstance(d, dict):
+        for k,v in d.items():
+            d[k] = cut_histograms(v,mt_min,mt_max)
+        return d
+
 def ls_inputdata(d, depth=0, key='<root>'):
     """
     Prints a dict of dicts recursively
@@ -325,7 +339,7 @@ class InputData(object):
     one signal model parameter variation.
     That way, datacard generation can be made class methods.
     """
-    def __init__(self, **kwargs):
+    def __init__(self, mt_min=180., mt_max=650., **kwargs):
         for file in ['sigfile','bkgfile','datafile']:
             setattr(self, file, kwargs.pop(file))
             obj = file.replace('file','')
@@ -333,7 +347,15 @@ class InputData(object):
                 setattr(self, obj, None)
             else:
                 with open(getattr(self,file), 'r') as f:
-                    setattr(self, obj, json.load(f, cls=Decoder))
+                    d = json.load(f, cls=Decoder)
+                    # cut mt range
+                    d = cut_histograms(d,mt_min,mt_max)
+                    # check for unneeded signal systematics
+                    if obj=='sig':
+                        c = d['central']
+                        # drop mcstat histograms that have no difference from central
+                        d = {k:v for k,v in d.items() if not k.startswith('mcstat') or v!=c}
+                    setattr(self, obj, d)
 
         self.mt = self.sig['central'].binning
         self.metadata = self.sig['central'].metadata
