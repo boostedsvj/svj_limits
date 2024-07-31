@@ -149,99 +149,10 @@ def this_fn_name():
     """
     return inspect.stack()[1][3]
 
-
-def gen_datacard_worker(args):
-    kwargs = args.pop()
-    bsvj.gen_datacard(*args, **kwargs)
-
-
 @scripter
-def gen_datacards_mp():
-    parser = argparse.ArgumentParser(this_fn_name())
-    parser.add_argument('jsonfile', type=str)
-    parser.add_argument('--bdtcut', type=float, nargs='*')
-    parser.add_argument('--mz', type=int, nargs='*')
-    parser.add_argument('--rinv', type=float, nargs='*')
-    parser.add_argument('--mdark', type=int, nargs='*')
-    parser.add_argument('-i', '--injectsignal', action='store_true')
-    parser.add_argument('--nthreads', type=int, default=10)
-    parser.add_argument('--tag', type=str, help='string suffix to outdir')
-    parser.add_argument('--minmt', type=float, default=180.)
-    parser.add_argument('--maxmt', type=float, default=650.)
-    parser.add_argument('--trigeff', type=int, default=None, choices=[2016, 2017, 2018])
-    args = parser.parse_args()
-
-    input = bsvj.InputData(args.jsonfile)
-    bdtcuts = input.d['histograms'].keys()
-
-    signals = []
-    for key, hist in input.d['histograms']['0.000'].items():
-    #for key, hist in input.d['histograms']['0.0'].items():
-        if 'mz' in hist.metadata and not key.startswith('SYST_'):
-            signals.append(hist.metadata)
-
-    # Filter for selected bdtcuts
-    if args.bdtcut:
-        use_bdtcuts = set('{:.3f}'.format(b) for b in args.bdtcut)
-        bdtcuts = [b for b in bdtcuts if b in use_bdtcuts]
-    # Filter for selected mzs
-    if args.mz:
-        use_mzs = set(args.mz)
-        signals = [s for s in signals if int(s['mz']) in use_mzs]
-    # Filter for selected rinvs
-    if args.rinv:
-        use_rinvs = set(args.rinv)
-        signals = [s for s in signals if float(s['rinv']) in use_rinvs]
-    # Filter for selected mdarks
-    if args.mdark:
-        use_mdarks = set(args.mdark)
-        signals = [s for s in signals if int(s['mdark']) in use_mdarks]
-
-    combinations = list(itertools.product(bdtcuts, signals))
-    bsvj.logger.info('Running %s combinations', len(combinations))
-
-    if len(combinations) == 1:
-        bsvj.gen_datacard(args.jsonfile, *combinations[0], trigeff=args.trigeff)
-    else:
-        import multiprocessing as mp
-        with mp.Manager() as manager:
-            pool = mp.Pool(args.nthreads)
-            lock = manager.Lock()
-            mp_args = []
-            for bdtcut, signal in combinations:
-                mp_args.append([
-                    args.jsonfile, bdtcut, signal,
-                    dict(
-                        lock = lock,
-                        injectsignal = args.injectsignal,
-                        mt_min = args.minmt,
-                        mt_max = args.maxmt,
-                        tag = args.tag,
-                        trigeff=args.trigeff
-                        )
-                    ])
-            pool.map(gen_datacard_worker, mp_args)
-            pool.close()
-
-@scripter
-def gen_datacards_v2(args=None):
-    if args is None:
-        lock = None
-        json_files = bsvj.pull_arg('jsonfiles', nargs='+', type=str).jsonfiles
-    else:
-        json_files, lock = args
-
-    if len(json_files) == 1:
-        bsvj.InputDataV2(json_files[0]).gen_datacard(fit_cache_lock=lock)
-    else:
-        import multiprocessing as mp
-        with mp.Manager() as manager:
-            pool = mp.Pool(8)
-            lock = manager.Lock()
-            mp_args = [ ([f], lock) for f in json_files ]
-            pool.map(gen_datacards_v2, mp_args)
-            pool.close()
-
+def gen_datacards():
+    jsons = get_jsons()
+    bsvj.InputData(**jsons).gen_datacard()
 
 @scripter
 def simple_test_fit():

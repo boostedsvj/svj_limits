@@ -81,8 +81,18 @@ def read_arg(*args, **kwargs):
     return args
 
 def get_xs(mz):
-    xsec = {200:3.48, 250:3.31, 300:3.19, 350:2.89, 400:2.62, 450:2.36, 500:2.09, 550:1.78}
-    return xsec[mz]
+    signal_xsecs = {
+        200 : 7.412,
+        250 : 7.044,
+        300 : 6.781,
+        350 : 6.158,
+        400 : 5.566,
+        450 : 5.021,
+        500 : 4.439,
+        550 : 3.795,
+    }
+    br = 0.47 # branching fraction to dark
+    return signal_xsecs[mz]*br
 
 @contextmanager
 def set_args(args):
@@ -300,63 +310,34 @@ class Decoder(json.JSONDecoder):
             return Histogram(d)
         return d
 
+# get set of json files from command line (used for datacard creation)
+def get_jsons():
+    result = dict(
+        sigfile = pull_arg('--sig', type=str, required=True).sig
+        bkgfile = pull_arg('--bkg', type=str, required=True).bkg
+        datafile = pull_arg('--data', type=str, default=None).data
+    }
+    result['datafile'] = result['bkgfile']
+    return result
 
 class InputData(object):
     """
-    Interface class for a JSON file that contains histograms
+    9 Feb 2024: Reworked .json input format.
+    Now only one signal model per .json file, so one InputDataV2 instance represents
+    one signal model parameter variation.
+    That way, datacard generation can be made class methods.
     """
-    def __init__(self, jsonfile):
-        self.jsonfile = jsonfile
-        with open(jsonfile, 'r') as f:
-            self.d = json.load(f, cls=Decoder)
+    def __init__(self, **kwargs):
+        for fn in ['sigfile','bkgfile','datafile']:
+            setattr(self, fn, kwargs.pop(fn))
+            with open(getattr(self,fn), 'r') as f:
+                setattr(self, fn.replace('file',''), json.load(f, cls=Decoder))
+
+        self.mt = self.sig['central'].binning
+        self.metadata = self.sig['central'].metadata
 
     def copy(self):
         return copy.deepcopy(self)
-
-    def ls(self):
-        ls_inputdata(self.d, key=self.jsonfile)
-
-    @property
-    def version(self):
-        return self.d.get('version', 1)
-
-    def cut_mt(self, min_mt=None, max_mt=None):
-        """
-        Returns a copy of the InputData object with a limited mt range.
-        """
-        copy = self.copy()
-        i_bin_min = 0
-        i_bin_max = len(copy.mt)-1
-        if min_mt is not None:
-            i_bin_min = np.argmax(copy.mt_array >= min_mt)
-        if max_mt is not None:
-            i_bin_max = np.argmax(copy.mt_array >= max_mt)
-        copy.mt = copy.mt[i_bin_min:i_bin_max]
-        #logger.info(
-        #    'Cutting histograms {}<mt<{}, i_bin_min={}, i_bin_max={}'
-        #    .format(min_mt, max_mt, i_bin_min, i_bin_max)
-        #    )
-        for h in iter_histograms(copy.d):
-            h.binning = copy.mt
-            h.vals = h.vals[i_bin_min:i_bin_max-1]
-            h.errs = h.errs[i_bin_min:i_bin_max-1]
-        return copy
-
-    @property
-    def mt(self):
-        return self.d['mt']
-
-    @property
-    def mt_centers(self):
-        return .5*(self.mt_array[:-1] + self.mt_array[1:])
-
-    @property
-    def mt_binwidth(self, i=0):
-        return self.mt[i+1] - self.mt[i]
-
-    @mt.setter
-    def mt(self, val):
-        self.d['mt'] = val
 
     @property
     def mt_array(self):
@@ -366,80 +347,16 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def bkg_hist(self, bdt):
-        bdt = float(bdt)
-        if self.version == 1:
-            # Backward compatibility with the first json implementation
-            return self.d['histograms']['{:.1f}/bkg'.format(bdt)]
-        else:
-            return self.d['histograms']['{:.3f}'.format(bdt)]['bkg']
-
-    def bkg_th1(self, name, bdt):
-        return hist_to_th1(name, self.bkg_hist(bdt))
-
-    def sig_hist(self, bdt, mz, rinv=.3, mdark=10):
-        bdt = float(bdt)
-        if self.version == 1:
-            # Backward compatibility with the first json implementation
-            return self.d['histograms']['{:.1f}/mz{:.0f}'.format(bdt, mz)]
-        else:
-            for h in self.d['histograms']['{:.3f}'.format(bdt)].values():
-                if 'mz' not in h.metadata: continue
-                if (
-                    h.metadata['mz'] == mz
-                    and h.metadata['rinv'] == rinv
-                    and h.metadata['mdark'] == mdark
-                    ):
-                    return h
-            raise Exception(
-                'Could not find a histogram for mz={}, rinv={}, mdark={}'
-                .format(mz, rinv, mdark)
-                )
-
-    def sig_th1(self, name, bdt, mz, rinv=.3, mdark=10):
-        return hist_to_th1(name, self.sig_hist(bdt, mz, rinv, mdark))
-
-    def systematics_hists(self, bdt, mz, rinv=.3, mdark=10):
-        for key, hist in self.d['histograms'][bdt].items():
-            if not key.startswith('SYST_'): continue
-            if (
-                hist.metadata['mz'] == mz
-                and hist.metadata['rinv'] == rinv
-                and hist.metadata['mdark'] == mdark
-                ):
-                direction = 'Up' if '_up' in hist.metadata['systname'] else 'Down'
-                systname = hist.metadata['systname'].replace('_up','').replace('_down','')
-                yield systname, direction, hist
-
-
-class InputDataV2(InputData):
-    """
-    9 Feb 2024: Reworked .json input format.
-    Now only one signal model per .json file, so one InputDataV2 instance represents
-    one signal model parameter variation.
-    That way, datacard generation can be made class methods.
-    """
-    def __init__(self, jsonfile, mt_min=180., mt_max=650.):
-        self.jsonfile = jsonfile
-        with open(jsonfile, 'r') as f:
-            self.d = json.load(f, cls=Decoder)
-
-        # Cut mt range
-        for h in iter_histograms(self.d):
-            h = h.cut(mt_min, mt_max)
-
-        self.mt = self.d['central'].binning
-        self.metadata = self.d['central'].metadata
-
     def gen_datacard(self, use_cache=True, fit_cache_lock=None):
         mz = int(self.metadata['mz'])
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
 
-        bkg_th1 = self.d['bkg'].th1('bkg')
+        bkg_th1 = self.bkg.th1('bkg')
         mt = get_mt(self.mt[0], self.mt[-1], self.n_bins, name='mt')
 
-        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1, 1.)
+        data_th1 = self.data.th1('data')
+        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
         pdfs_dict = {
             'main' : pdfs_factory('main', mt, bkg_th1, name='bsvj_bkgfitmain'),
@@ -463,15 +380,19 @@ class InputDataV2(InputData):
             ['lumi', 'lnN', 1.016, '-'],
             ['trigger_cr', 'lnN', 1.02, '-'],
             ['trigger_sim', 'lnN', 1.021, '-'],
+            ['mZprime','extArg', mz],
+            ['mDark',  'extArg', mdark],
+            ['rinv',   'extArg', rinv],
+            ['xsec',   'extArg', get_xs(mz)],
             ]
 
         sig_name = 'mz{:.0f}_rinv{:.1f}_mdark{:.0f}'.format(mz, rinv, mdark)
-        sig_th1 = self.d['central'].th1(sig_name)
+        sig_th1 = self.sig['central'].th1(sig_name)
         sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
 
         syst_th1s = []
         used_systs = set()
-        for key, hist in self.d.items():
+        for key, hist in self.sig.items():
             if '_up' in key:
                 direction = 'Up'
             elif '_down' in key:
@@ -491,7 +412,7 @@ class InputDataV2(InputData):
             outfile,
             systs=systs,
             syst_th1s=syst_th1s,
-            )    
+        )
 
 
 
@@ -1440,94 +1361,6 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
 
 # _______________________________________________________________________
 # For combine
-
-def gen_datacard(
-    jsonfile, bdtcut, signal,
-    lock=None, injectsignal=False,
-    tag=None, mt_min=180., mt_max=650.,
-    trigeff=None,
-    ):
-    mz = int(signal['mz'])
-    rinv = float(signal['rinv'])
-    mdark = float(signal['mdark'])
-    xsec  = get_xs(mz)
-
-    input = InputData(jsonfile)
-    input = input.cut_mt(mt_min, mt_max)
-
-    bdt_str = bdtcut.replace('.', 'p')
-    mt = get_mt(input.mt[0], input.mt[-1], input.n_bins, name='mt')
-    bkg_th1 = input.bkg_th1('bkg', bdtcut)
-
-    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1, 1.)
-
-    pdfs_dict = {
-        'main' : pdfs_factory('main', mt, bkg_th1, name='bsvj_bkgfitmain', trigeff=trigeff),
-        'alt' : pdfs_factory('alt', mt, bkg_th1, name='bsvj_bkgfitalt', trigeff=trigeff),
-        'ua2' : pdfs_factory('ua2', mt, bkg_th1, name='bsvj_bkgfitua2', trigeff=trigeff),
-        }
-    winner_pdfs = []
-
-    from fit_cache import FitCache
-    cache = FitCache(lock=lock)
-
-    for pdf_type in ['main', 'ua2']:
-        pdfs = pdfs_dict[pdf_type]
-        ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-        i_winner = do_fisher_test(mt, data_datahist, pdfs)
-        winner_pdfs.append(pdfs[i_winner])
-        # plot_fits(pdfs, ress, data_datahist, pdf_type + '.pdf')
-
-    systs = [
-        ['lumi', 'lnN', 1.016, '-'],
-        # Place holders
-        #['trigger', 'lnN', 1.02, '-'],
-        #['pdf', 'lnN', 1.05, '-'],
-        #['mcstat', 'lnN', 1.07, '-'],
-        ['mZprime','extArg', mz],
-        ['mDark',  'extArg', mdark],
-        ['rinv',   'extArg', rinv],
-        ['xsec',   'extArg', xsec],
-        ]
-
-    sig_name = 'mz{:.0f}_rinv{:.1f}_mdark{:.0f}'.format(mz, rinv, mdark)
-    sig_th1 = input.sig_th1(sig_name, bdtcut, mz, rinv, mdark)
-    sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
-
-    syst_th1s = []
-    used_systs = set()
-    for systname, direction, hist in input.systematics_hists(bdtcut, mz, rinv, mdark):
-        th1 = hist_to_th1(f'{sig_name}_{systname}{direction}', hist)
-        syst_th1s.append(th1)
-        if systname not in used_systs:
-            systs.append([systname, 'shape', 1, '-'])
-            used_systs.add(systname     )
-
-    # Some checks
-    # assert bkg_th1.GetNbinsX() == sig_th1.GetNbinsX()
-    # assert bkg_th1.GetBinLowEdge(1) == sig_th1.GetBinLowEdge(1)
-    # n = bkg_th1.GetNbinsX()
-    # assert bkg_th1.GetBinLowEdge(n+1) == sig_th1.GetBinLowEdge(n+1)
-    # assert sig_th1.GetBinLowEdge(n+1) == mt.getMax()
-    # x_sig_datahist, y_sig_datahist = roodataset_values(sig_datahist)
-    # np.testing.assert_almost_equal(x_sig_datahist, input.mt_centers)
-    # np.testing.assert_almost_equal(y_sig_datahist, input.sighist(bdtcut, mz).vals, decimal=3)
-    # print('All passed')
-    # return
-
-    if injectsignal:
-        logger.info('Injecting signal in data_obs')
-        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1+sig_th1, 1.)
-
-    outfile = strftime('dc_%b%d{}/dc_mz{}_rinv{:.1f}_mdark{}_bdt{}.txt'.format('_'+tag if tag else '', mz, rinv, mdark, bdt_str))
-    if injectsignal: outfile = outfile.replace('.txt', '_injectsig.txt')
-    compile_datacard_macro(
-        winner_pdfs, data_datahist, sig_datahist,
-        outfile,
-        systs=systs,
-        syst_th1s=syst_th1s,
-        )
-
 
 class Datacard:
 
