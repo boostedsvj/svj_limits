@@ -69,7 +69,7 @@ def plot_scipy_fits():
                 ax.set_xlabel(r'$m_{T}$ (GeV)')
                 ax.set_ylabel(r'$N_{events}$')
                 ax.set_yscale('log')
-                plt.savefig(osp.join(plotdir, tdir_name + '_' + pdf_type + '.png'), bbox_inches='tight')        
+                plt.savefig(osp.join(plotdir, tdir_name + '_' + pdf_type + '.png'), bbox_inches='tight')
 
         bdtcut = None
         if args.bdtcut is not None:
@@ -149,99 +149,10 @@ def this_fn_name():
     """
     return inspect.stack()[1][3]
 
-
-def gen_datacard_worker(args):
-    kwargs = args.pop()
-    bsvj.gen_datacard(*args, **kwargs)
-
-
 @scripter
-def gen_datacards_mp():
-    parser = argparse.ArgumentParser(this_fn_name())
-    parser.add_argument('jsonfile', type=str)
-    parser.add_argument('--bdtcut', type=float, nargs='*')
-    parser.add_argument('--mz', type=int, nargs='*')
-    parser.add_argument('--rinv', type=float, nargs='*')
-    parser.add_argument('--mdark', type=int, nargs='*')
-    parser.add_argument('-i', '--injectsignal', action='store_true')
-    parser.add_argument('--nthreads', type=int, default=10)
-    parser.add_argument('--tag', type=str, help='string suffix to outdir')
-    parser.add_argument('--minmt', type=float, default=180.)
-    parser.add_argument('--maxmt', type=float, default=650.)
-    parser.add_argument('--trigeff', type=int, default=None, choices=[2016, 2017, 2018])
-    args = parser.parse_args()
-
-    input = bsvj.InputData(args.jsonfile)
-    bdtcuts = input.d['histograms'].keys()
-
-    signals = []
-    for key, hist in input.d['histograms']['0.000'].items():
-    #for key, hist in input.d['histograms']['0.0'].items():
-        if 'mz' in hist.metadata and not key.startswith('SYST_'):
-            signals.append(hist.metadata)
-
-    # Filter for selected bdtcuts
-    if args.bdtcut:
-        use_bdtcuts = set('{:.3f}'.format(b) for b in args.bdtcut)
-        bdtcuts = [b for b in bdtcuts if b in use_bdtcuts]
-    # Filter for selected mzs
-    if args.mz:
-        use_mzs = set(args.mz)
-        signals = [s for s in signals if int(s['mz']) in use_mzs]
-    # Filter for selected rinvs
-    if args.rinv:
-        use_rinvs = set(args.rinv)
-        signals = [s for s in signals if float(s['rinv']) in use_rinvs]
-    # Filter for selected mdarks
-    if args.mdark:
-        use_mdarks = set(args.mdark)
-        signals = [s for s in signals if int(s['mdark']) in use_mdarks]
-
-    combinations = list(itertools.product(bdtcuts, signals))
-    bsvj.logger.info('Running %s combinations', len(combinations))
-
-    if len(combinations) == 1:
-        bsvj.gen_datacard(args.jsonfile, *combinations[0], trigeff=args.trigeff)
-    else:
-        import multiprocessing as mp
-        with mp.Manager() as manager:
-            pool = mp.Pool(args.nthreads)
-            lock = manager.Lock()
-            mp_args = []
-            for bdtcut, signal in combinations:
-                mp_args.append([
-                    args.jsonfile, bdtcut, signal,
-                    dict(
-                        lock = lock,
-                        injectsignal = args.injectsignal,
-                        mt_min = args.minmt,
-                        mt_max = args.maxmt,
-                        tag = args.tag,
-                        trigeff=args.trigeff
-                        )
-                    ])
-            pool.map(gen_datacard_worker, mp_args)
-            pool.close()
-
-@scripter
-def gen_datacards_v2(args=None):
-    if args is None:
-        lock = None
-        json_files = bsvj.pull_arg('jsonfiles', nargs='+', type=str).jsonfiles
-    else:
-        json_files, lock = args
-
-    if len(json_files) == 1:
-        bsvj.InputDataV2(json_files[0]).gen_datacard(fit_cache_lock=lock)
-    else:
-        import multiprocessing as mp
-        with mp.Manager() as manager:
-            pool = mp.Pool(8)
-            lock = manager.Lock()
-            mp_args = [ ([f], lock) for f in json_files ]
-            pool.map(gen_datacards_v2, mp_args)
-            pool.close()
-
+def gen_datacards():
+    jsons = bsvj.get_jsons()
+    bsvj.InputData(**jsons).gen_datacard()
 
 @scripter
 def simple_test_fit():
@@ -261,47 +172,8 @@ def simple_test_fit():
         'pdf_index',
         'bsvj_bkgfitmain_npars4_p1', 'bsvj_bkgfitmain_npars4_p2', 'bsvj_bkgfitmain_npars4_p3',
         'bsvj_bkgfitmain_npars4_p4',
-        # 'bsvj_bkgfitalt_npars3_p1', 'bsvj_bkgfitalt_npars3_p2', 'bsvj_bkgfitalt_npars3_p3'
         ])
     bsvj.run_combine_command(cmd, args.chdir)
-
-
-# @scripter
-# def multidimfit():
-#     """
-#     Runs a single MultiDimFit on a datacard
-#     """
-#     parser = argparse.ArgumentParser(inspect.stack()[0][3])
-#     parser.add_argument('datacard', type=str)
-#     parser.add_argument('pdf', type=str, choices=['main', 'alt'])
-#     parser.add_argument('-c', '--chdir', type=str, default=None)
-#     parser.add_argument('-a', '--asimov', action='store_true')
-#     args, other_args = parser.parse_known_args()
-
-#     dc = bsvj.read_dc(args.datacard)
-
-#     cmd = bsvj.CombineCommand(args.datacard, 'MultiDimFit', raw=' '.join(other_args))
-#     cmd.args.add('--saveWorkspace')
-#     cmd.args.add('--saveNLL')
-#     if args.asimov:
-#         cmd.kwargs['-t'] = '-1'
-#         cmd.args.add('--toysFrequentist')
-#     cmd.set_parameter('pdf_index', 1 if args.pdf=='alt' else 0)
-    
-#     pdf_pars = dc.syst_rgx('bsvj_bkgfit%s_npars*' % args.pdf)
-#     other_pdf = 'main' if args.pdf == 'alt' else 'alt'
-#     other_pdf_pars = dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
-
-#     cmd.freeze_parameters.append('pdf_index')
-#     cmd.freeze_parameters.extend(pdf_pars)
-
-#     cmd.redefine_signal_pois.append('r')
-#     cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
-#     cmd.track_parameters.extend(['r'] + other_pdf_pars)
-
-#     bsvj.run_combine_command(cmd, args.chdir)
-
-
 
 
 def make_bestfit_and_scan_commands(txtfile, args=None):
@@ -324,7 +196,7 @@ def bestfit(txtfile=None):
         # Allow multiprocessing if multiple datacards are passed on the command line
         txtfiles = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
         if len(txtfiles) > 1:
-            # Call this function in a pool instead            
+            # Call this function in a pool instead
             import multiprocessing as mp
             with mp.Manager() as manager:
                 pool = mp.Pool(8)
@@ -627,51 +499,6 @@ def likelihood_scan_mp():
     p.close()
     p.join()
     bsvj.logger.info('Finished pool')
-
-
-
-# def likelihood_scan_multiple_worker(input):
-#     """
-#     Worker function for likelihood_scan_multiple multiprocessing
-#     """
-#     datacard, args, other_args = input
-#     cmd = bsvj.likelihood_scan_factory(
-#         datacard, args.minmu, args.maxmu, args.npoints,
-#         args.verbosity, args.asimov,
-#         raw = ' '.join(other_args)
-#         )
-#     cmd.name = cmd.name + '_' + osp.basename(datacard).replace('.txt', '')
-#     output = bsvj.run_combine_command(cmd)
-#     # Stageout
-#     output_file = osp.join(args.outdir, cmd.outfile.replace('.root','') + '.out')
-#     with open(output_file, 'w') as f:
-#         f.write(''.join(output))
-#     if osp.isfile(cmd.outfile): os.rename(cmd.outfile, osp.join(args.outdir, cmd.outfile))
-#     bsvj.logger.info('Finished scan for %s', datacard)
-
-
-# @scripter
-# def likelihood_scan_multiple():
-#     parser = argparse.ArgumentParser(inspect.stack()[0][3])
-#     parser.add_argument('datacards', type=str, nargs='+')
-#     parser.add_argument('-c', '--chdir', type=str, default=None)
-#     parser.add_argument('-a', '--asimov', action='store_true')
-#     parser.add_argument('-v', '--verbosity', type=int, default=0)
-#     parser.add_argument('-n', '--npoints', type=int, default=201)
-#     parser.add_argument('--minmu', type=float, default=-.5)
-#     parser.add_argument('--maxmu', type=float, default=.5)
-#     parser.add_argument('-o', '--outdir', type=str, default=strftime('scans_%b%d'))
-#     args, other_args = parser.parse_known_args()
-
-#     if not osp.isdir(args.outdir): os.makedirs(args.outdir)
-#     data = [ (d, args, other_args) for d in args.datacards ]
-
-#     import multiprocessing
-#     p = multiprocessing.Pool(16)
-#     p.map(likelihood_scan_multiple_worker, data)
-#     p.close()
-#     p.join()
-#     bsvj.logger.info('Finished pool')
 
 
 @scripter

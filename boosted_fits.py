@@ -81,8 +81,18 @@ def read_arg(*args, **kwargs):
     return args
 
 def get_xs(mz):
-    xsec = {200:3.48, 250:3.31, 300:3.19, 350:2.89, 400:2.62, 450:2.36, 500:2.09, 550:1.78}
-    return xsec[mz]
+    signal_xsecs = {
+        200 : 7.412,
+        250 : 7.044,
+        300 : 6.781,
+        350 : 6.158,
+        400 : 5.566,
+        450 : 5.021,
+        500 : 4.439,
+        550 : 3.795,
+    }
+    br = 0.47 # branching fraction to dark
+    return signal_xsecs[mz]*br
 
 @contextmanager
 def set_args(args):
@@ -113,7 +123,6 @@ def timeit(msg):
         yield None
     finally:
         logger.info('  Done, took %s secs', time.time() - t0)
-    
 
 class Scripter:
     def __init__(self):
@@ -227,6 +236,9 @@ class Histogram:
             '>'
             )
 
+    def __eq__(self,other):
+        return (self.vals==other.vals).all() and (self.errs==other.errs).all() and (self.binning==other.binning).all()
+
     def cut(self, xmin=-np.inf, xmax=np.inf):
         """
         Throws away all bins with left boundary < xmin or right boundary > xmax.
@@ -272,6 +284,17 @@ def iter_histograms(d):
             for _ in iter_histograms(v):
                 yield _
 
+def cut_histograms(d,mt_min,mt_max):
+    """
+    Traverses a dict-of-dicts, and cuts all the Histogram instances
+    """
+    if isinstance(d, Histogram):
+        return d.cut(mt_min,mt_max)
+    elif isinstance(d, dict):
+        for k,v in d.items():
+            d[k] = cut_histograms(v,mt_min,mt_max)
+        return d
+
 def ls_inputdata(d, depth=0, key='<root>'):
     """
     Prints a dict of dicts recursively
@@ -300,63 +323,45 @@ class Decoder(json.JSONDecoder):
             return Histogram(d)
         return d
 
+# get set of json files from command line (used for datacard creation)
+def get_jsons():
+    result = dict(
+        sigfile = pull_arg('--sig', type=str, required=True).sig,
+        bkgfile = pull_arg('--bkg', type=str, required=True).bkg,
+        datafile = pull_arg('--data', type=str, default=None).data,
+    )
+    return result
 
 class InputData(object):
     """
-    Interface class for a JSON file that contains histograms
+    9 Feb 2024: Reworked .json input format.
+    Now only one signal model per .json file, so one InputDataV2 instance represents
+    one signal model parameter variation.
+    That way, datacard generation can be made class methods.
     """
-    def __init__(self, jsonfile):
-        self.jsonfile = jsonfile
-        with open(jsonfile, 'r') as f:
-            self.d = json.load(f, cls=Decoder)
+    def __init__(self, mt_min=180., mt_max=650., **kwargs):
+        for file in ['sigfile','bkgfile','datafile']:
+            setattr(self, file, kwargs.pop(file))
+            obj = file.replace('file','')
+            if getattr(self, file) is None:
+                setattr(self, obj, None)
+            else:
+                with open(getattr(self,file), 'r') as f:
+                    d = json.load(f, cls=Decoder)
+                    # cut mt range
+                    d = cut_histograms(d,mt_min,mt_max)
+                    # check for unneeded signal systematics
+                    if obj=='sig':
+                        c = d['central']
+                        # drop mcstat histograms that have no difference from central
+                        d = {k:v for k,v in d.items() if not k.startswith('mcstat') or v!=c}
+                    setattr(self, obj, d)
+
+        self.mt = self.sig['central'].binning
+        self.metadata = self.sig['central'].metadata
 
     def copy(self):
         return copy.deepcopy(self)
-
-    def ls(self):
-        ls_inputdata(self.d, key=self.jsonfile)
-
-    @property
-    def version(self):
-        return self.d.get('version', 1)
-
-    def cut_mt(self, min_mt=None, max_mt=None):
-        """
-        Returns a copy of the InputData object with a limited mt range.
-        """
-        copy = self.copy()
-        i_bin_min = 0
-        i_bin_max = len(copy.mt)-1
-        if min_mt is not None:
-            i_bin_min = np.argmax(copy.mt_array >= min_mt)
-        if max_mt is not None:
-            i_bin_max = np.argmax(copy.mt_array >= max_mt)
-        copy.mt = copy.mt[i_bin_min:i_bin_max]
-        #logger.info(
-        #    'Cutting histograms {}<mt<{}, i_bin_min={}, i_bin_max={}'
-        #    .format(min_mt, max_mt, i_bin_min, i_bin_max)
-        #    )
-        for h in iter_histograms(copy.d):
-            h.binning = copy.mt
-            h.vals = h.vals[i_bin_min:i_bin_max-1]
-            h.errs = h.errs[i_bin_min:i_bin_max-1]
-        return copy
-
-    @property
-    def mt(self):
-        return self.d['mt']
-
-    @property
-    def mt_centers(self):
-        return .5*(self.mt_array[:-1] + self.mt_array[1:])
-
-    @property
-    def mt_binwidth(self, i=0):
-        return self.mt[i+1] - self.mt[i]
-
-    @mt.setter
-    def mt(self, val):
-        self.d['mt'] = val
 
     @property
     def mt_array(self):
@@ -366,80 +371,19 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def bkg_hist(self, bdt):
-        bdt = float(bdt)
-        if self.version == 1:
-            # Backward compatibility with the first json implementation
-            return self.d['histograms']['{:.1f}/bkg'.format(bdt)]
-        else:
-            return self.d['histograms']['{:.3f}'.format(bdt)]['bkg']
-
-    def bkg_th1(self, name, bdt):
-        return hist_to_th1(name, self.bkg_hist(bdt))
-
-    def sig_hist(self, bdt, mz, rinv=.3, mdark=10):
-        bdt = float(bdt)
-        if self.version == 1:
-            # Backward compatibility with the first json implementation
-            return self.d['histograms']['{:.1f}/mz{:.0f}'.format(bdt, mz)]
-        else:
-            for h in self.d['histograms']['{:.3f}'.format(bdt)].values():
-                if 'mz' not in h.metadata: continue
-                if (
-                    h.metadata['mz'] == mz
-                    and h.metadata['rinv'] == rinv
-                    and h.metadata['mdark'] == mdark
-                    ):
-                    return h
-            raise Exception(
-                'Could not find a histogram for mz={}, rinv={}, mdark={}'
-                .format(mz, rinv, mdark)
-                )
-
-    def sig_th1(self, name, bdt, mz, rinv=.3, mdark=10):
-        return hist_to_th1(name, self.sig_hist(bdt, mz, rinv, mdark))
-
-    def systematics_hists(self, bdt, mz, rinv=.3, mdark=10):
-        for key, hist in self.d['histograms'][bdt].items():
-            if not key.startswith('SYST_'): continue
-            if (
-                hist.metadata['mz'] == mz
-                and hist.metadata['rinv'] == rinv
-                and hist.metadata['mdark'] == mdark
-                ):
-                direction = 'Up' if '_up' in hist.metadata['systname'] else 'Down'
-                systname = hist.metadata['systname'].replace('_up','').replace('_down','')
-                yield systname, direction, hist
-
-
-class InputDataV2(InputData):
-    """
-    9 Feb 2024: Reworked .json input format.
-    Now only one signal model per .json file, so one InputDataV2 instance represents
-    one signal model parameter variation.
-    That way, datacard generation can be made class methods.
-    """
-    def __init__(self, jsonfile, mt_min=180., mt_max=650.):
-        self.jsonfile = jsonfile
-        with open(jsonfile, 'r') as f:
-            self.d = json.load(f, cls=Decoder)
-
-        # Cut mt range
-        for h in iter_histograms(self.d):
-            h = h.cut(mt_min, mt_max)
-
-        self.mt = self.d['central'].binning
-        self.metadata = self.d['central'].metadata
-
     def gen_datacard(self, use_cache=True, fit_cache_lock=None):
         mz = int(self.metadata['mz'])
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
 
-        bkg_th1 = self.d['bkg'].th1('bkg')
+        bkg_th1 = self.bkg['bkg'].th1('bkg')
         mt = get_mt(self.mt[0], self.mt[-1], self.n_bins, name='mt')
 
-        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1, 1.)
+        if self.data is not None:
+            data_th1 = self.data['data'].th1('data')
+        else:
+            data_th1 = bkg_th1
+        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
         pdfs_dict = {
             'main' : pdfs_factory('main', mt, bkg_th1, name='bsvj_bkgfitmain'),
@@ -463,15 +407,19 @@ class InputDataV2(InputData):
             ['lumi', 'lnN', 1.016, '-'],
             ['trigger_cr', 'lnN', 1.02, '-'],
             ['trigger_sim', 'lnN', 1.021, '-'],
+            ['mZprime','extArg', mz],
+            ['mDark',  'extArg', mdark],
+            ['rinv',   'extArg', rinv],
+            ['xsec',   'extArg', get_xs(mz)],
             ]
 
         sig_name = 'mz{:.0f}_rinv{:.1f}_mdark{:.0f}'.format(mz, rinv, mdark)
-        sig_th1 = self.d['central'].th1(sig_name)
+        sig_th1 = self.sig['central'].th1(sig_name)
         sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
 
         syst_th1s = []
         used_systs = set()
-        for key, hist in self.d.items():
+        for key, hist in self.sig.items():
             if '_up' in key:
                 direction = 'Up'
             elif '_down' in key:
@@ -485,13 +433,13 @@ class InputDataV2(InputData):
                 used_systs.add(syst_name)
             syst_th1s.append(hist.th1(f'{sig_name}_{syst_name}{direction}'))
 
-        outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}/dc_{osp.basename(self.jsonfile).replace(".json","")}.txt')
+        outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}/dc_{osp.basename(self.sigfile).replace(".json","")}.txt')
         compile_datacard_macro(
             winner_pdfs, data_datahist, sig_datahist,
             outfile,
             systs=systs,
             syst_th1s=syst_th1s,
-            )    
+        )
 
 
 
@@ -544,7 +492,7 @@ def eval_pdf_python(pdf, parameters, mt_array=None):
     if mt_array is None:
         mt = pdf.parameters[0]
         binning = mt.getBinning()
-        mt_array = np.array([ binning.binCenter(i) for i in range(binning.numBins()) ])    
+        mt_array = np.array([ binning.binCenter(i) for i in range(binning.numBins()) ])
     parameters = list(copy.copy(parameters))
     parameters.insert(0, mt_array)
     return eval_expression(pdf.expression, parameters)
@@ -677,7 +625,7 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                 'Setting {0} ({1}) value to {2}, range is {3} to {4}'
                 .format(par.GetName(), par.GetTitle(), value, par.getMin(), par.getMax())
                 )
-            
+
     if init_ranges is not None:
         if len(init_ranges) != len(pdf.parameters):
             raise Exception('Expected {} values; got {}'.format(len(pdf.parameters), len(init_ranges)))
@@ -757,7 +705,7 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
         res = cache.get(fit_hash) # Second call is cheap
         logger.info('Returning cached fit:\n%s', res)
         return res
-    
+
     # Attempt 1: Fit with loose tolerance BFGS, then strict tolerance Nelder-Mead
     res = single_fit_scipy(
         expression, histogram,
@@ -800,7 +748,7 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
             if not(np.isnan(result.fun) or np.isposinf(result.fun) or np.isneginf(result.fun)):
                 results.append(result)
     if len(results) == 0: raise Exception('Not a single fit of the brute force converged!')
-    i_min = np.argmin([r.fun for r in results])        
+    i_min = np.argmin([r.fun for r in results])
     res = results[i_min]
     logger.info('Best scipy fit from brute force:\n%s', res)
     if cache: cache.write(fit_hash, res)
@@ -847,21 +795,6 @@ def get_mt_from_th1(histogram, name=None):
         )
     object_keeper.add(mt)
     return mt
-
-
-# def rebuild_rpsbp(pdf):
-#     name = uid()
-#     def remake_parameter(parameter):
-#         variable = ROOT.RooRealVar(
-#             name + '_' + parameter.GetName(), parameter.GetTitle(),
-#             1., parameter.getMin(), parameter.getMax()
-#             )
-#         object_keeper.add(variable)
-#         return variable
-#     return build_rpsbp(
-#         name, pdf.expression, pdf.mt,
-#         [remake_parameter(p) for p in pdf.parameters], pdf.th1
-#         )
 
 
 def trigeff_expression(year=2018, max_fit_range=1000.):
@@ -1012,7 +945,7 @@ def pdf_parameters(pdf_type, npars, prefix=None):
                 ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
                 ROOT.RooRealVar(prefix + "_p5", "p5", 1., -100., 100.),
                 ]
-    object_keeper.add_multiple(parameters)    
+    object_keeper.add_multiple(parameters)
     return parameters
 
 
@@ -1144,68 +1077,6 @@ def set_pdf_to_fitresult(pdf, res):
         return res.x
 
 
-# def plot_pdf_for_various_fitresults(pdf, fit_results, data_obs, outfile='test.pdf', labels=None, title=''):
-#     """
-#     Plots the fitted bkg pdfs on top of the data histogram.
-#     """
-#     # First find the mT Roo variable in one of the pdfs
-#     mt = pdf.parameters[0]
-#     mt_min = mt.getMin()
-#     mt_max = mt.getMax()
-
-#     # Open the frame
-#     xframe = mt.frame(ROOT.RooFit.Title(title))
-#     c1 = ROOT.TCanvas(str(uuid.uuid4()), '', 1000, 800)
-#     c1.cd()
-
-#     # Plot the data histogram
-#     data_obs.plotOn(xframe, ROOT.RooFit.Name("data_obs"))
-#     norm = data_obs.sumEntries()
-
-#     # Plot the pdfs (its parameters already at fit result)
-#     colors = [ROOT.kPink+6, ROOT.kBlue-4, ROOT.kRed-4, ROOT.kGreen+1]
-
-#     py_chi2 = build_chi2(pdf.expression, data_obs.createHistogram(mt.GetName()))
-
-#     base_pdf = pdf
-#     for i, res in enumerate(fit_results):
-#         pdf = rebuild_rpsbp(base_pdf)
-#         vals = set_pdf_to_fitresult(pdf, res)
-#         logger.info(
-#             'i=%s; Manual chi2=%.5f, chi2_via_frame=%.5f',
-#             i, py_chi2(vals), get_chi2_viaframe(mt, pdf.pdf, data_obs, len(vals))[1]
-#             )
-#         pdf.plotOn(
-#             xframe,
-#             ROOT.RooFit.Normalization(norm, ROOT.RooAbsReal.NumEvent),
-#             ROOT.RooFit.LineColor(colors[i]),
-#             # ROOT.RooFit.FillColor(ROOT.kOrange),
-#             ROOT.RooFit.FillStyle(1001),
-#             ROOT.RooFit.DrawOption("L"),
-#             ROOT.RooFit.Name(pdf.GetName()),
-#             ROOT.RooFit.Range("Full")
-#             )
-#         chi2 = xframe.chiSquare(pdf.GetName(), "data_obs", len(pdf.parameters)-1)
-#         par_value_str = ', '.join(['p{}={:.3f}'.format(iv, v) for iv, v in enumerate(vals)])
-#         label = labels[i] if labels else 'fit'+str(i)
-#         txt = ROOT.TText(
-#             .13, 0.13+i*.045,
-#             "{}, chi2={:.4f}, {}".format(label, chi2, par_value_str)
-#             )
-#         txt.SetNDC()
-#         txt.SetTextSize(0.03)
-#         txt.SetTextColor(colors[i])
-#         xframe.addObject(txt) 
-#         txt.Draw()
-
-#     xframe.SetMinimum(0.002)
-#     xframe.Draw()
-#     c1.SetLogy()
-#     c1.SaveAs(outfile)
-#     if outfile.endswith('.pdf'): c1.SaveAs(outfile.replace('.pdf', '.png'))
-#     del xframe, c1
-
-
 def plot_fits(pdfs, fit_results, data_obs, outfile='test.pdf'):
     """
     Plots the fitted bkg pdfs on top of the data histogram.
@@ -1245,7 +1116,6 @@ def plot_fits(pdfs, fit_results, data_obs, outfile='test.pdf'):
 
         par_values = [ 'p{}={:.3f}'.format(i, v.getVal()) for i, v in enumerate(pdfs[i].parameters)]
         par_value_str = ', '.join(par_values)
-        
         txt = ROOT.TText(
             .12, 0.12+i*.05,
             "model {}, nP {}, chi2: {:.4f}, {}".format(i, n_fit_pars, chi2, par_value_str)
@@ -1253,7 +1123,7 @@ def plot_fits(pdfs, fit_results, data_obs, outfile='test.pdf'):
         txt.SetNDC()
         txt.SetTextSize(0.04)
         txt.SetTextColor(colors[i])
-        xframe.addObject(txt) 
+        xframe.addObject(txt)
         txt.Draw()
 
     xframe.SetMinimum(0.0002)
@@ -1370,7 +1240,7 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
     """
     Does a Fisher test. First computes the cl_vals for all combinations
     of pdfs, then picks the winner.
-    
+
     Returns the pdf that won.
     """
     rsss = [ get_rss_viaframe(mt, pdf.pdf, data, return_n_bins=True) for pdf in pdfs ]
@@ -1436,98 +1306,9 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
     logger.info(f'Tex-formatted table:\n{tabelize(tex_table)}')
 
     return winner
-    
 
 # _______________________________________________________________________
 # For combine
-
-def gen_datacard(
-    jsonfile, bdtcut, signal,
-    lock=None, injectsignal=False,
-    tag=None, mt_min=180., mt_max=650.,
-    trigeff=None,
-    ):
-    mz = int(signal['mz'])
-    rinv = float(signal['rinv'])
-    mdark = float(signal['mdark'])
-    xsec  = get_xs(mz)
-
-    input = InputData(jsonfile)
-    input = input.cut_mt(mt_min, mt_max)
-
-    bdt_str = bdtcut.replace('.', 'p')
-    mt = get_mt(input.mt[0], input.mt[-1], input.n_bins, name='mt')
-    bkg_th1 = input.bkg_th1('bkg', bdtcut)
-
-    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1, 1.)
-
-    pdfs_dict = {
-        'main' : pdfs_factory('main', mt, bkg_th1, name='bsvj_bkgfitmain', trigeff=trigeff),
-        'alt' : pdfs_factory('alt', mt, bkg_th1, name='bsvj_bkgfitalt', trigeff=trigeff),
-        'ua2' : pdfs_factory('ua2', mt, bkg_th1, name='bsvj_bkgfitua2', trigeff=trigeff),
-        }
-    winner_pdfs = []
-
-    from fit_cache import FitCache
-    cache = FitCache(lock=lock)
-
-    for pdf_type in ['main', 'ua2']:
-        pdfs = pdfs_dict[pdf_type]
-        ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-        i_winner = do_fisher_test(mt, data_datahist, pdfs)
-        winner_pdfs.append(pdfs[i_winner])
-        # plot_fits(pdfs, ress, data_datahist, pdf_type + '.pdf')
-
-    systs = [
-        ['lumi', 'lnN', 1.016, '-'],
-        # Place holders
-        #['trigger', 'lnN', 1.02, '-'],
-        #['pdf', 'lnN', 1.05, '-'],
-        #['mcstat', 'lnN', 1.07, '-'],
-        ['mZprime','extArg', mz],
-        ['mDark',  'extArg', mdark],
-        ['rinv',   'extArg', rinv],
-        ['xsec',   'extArg', xsec],
-        ]
-
-    sig_name = 'mz{:.0f}_rinv{:.1f}_mdark{:.0f}'.format(mz, rinv, mdark)
-    sig_th1 = input.sig_th1(sig_name, bdtcut, mz, rinv, mdark)
-    sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
-
-    syst_th1s = []
-    used_systs = set()
-    for systname, direction, hist in input.systematics_hists(bdtcut, mz, rinv, mdark):
-        th1 = hist_to_th1(f'{sig_name}_{systname}{direction}', hist)
-        syst_th1s.append(th1)
-        if systname not in used_systs:
-            systs.append([systname, 'shape', 1, '-'])
-            used_systs.add(systname     )
-
-    # Some checks
-    # assert bkg_th1.GetNbinsX() == sig_th1.GetNbinsX()
-    # assert bkg_th1.GetBinLowEdge(1) == sig_th1.GetBinLowEdge(1)
-    # n = bkg_th1.GetNbinsX()
-    # assert bkg_th1.GetBinLowEdge(n+1) == sig_th1.GetBinLowEdge(n+1)
-    # assert sig_th1.GetBinLowEdge(n+1) == mt.getMax()
-    # x_sig_datahist, y_sig_datahist = roodataset_values(sig_datahist)
-    # np.testing.assert_almost_equal(x_sig_datahist, input.mt_centers)
-    # np.testing.assert_almost_equal(y_sig_datahist, input.sighist(bdtcut, mz).vals, decimal=3)
-    # print('All passed')
-    # return
-
-    if injectsignal:
-        logger.info('Injecting signal in data_obs')
-        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1+sig_th1, 1.)
-
-    outfile = strftime('dc_%b%d{}/dc_mz{}_rinv{:.1f}_mdark{}_bdt{}.txt'.format('_'+tag if tag else '', mz, rinv, mdark, bdt_str))
-    if injectsignal: outfile = outfile.replace('.txt', '_injectsig.txt')
-    compile_datacard_macro(
-        winner_pdfs, data_datahist, sig_datahist,
-        outfile,
-        systs=systs,
-        syst_th1s=syst_th1s,
-        )
-
 
 class Datacard:
 
@@ -1540,6 +1321,7 @@ class Datacard:
         self.channels = [] # Expects len-2 iterables as elements, (name, rate)
         self.rates = OrderedDict() # Expects str as key, OrderedDict as value
         self.systs = []
+        self.extargs = []
 
     def __eq__(self, other):
         return (
@@ -1547,6 +1329,7 @@ class Datacard:
             and self.channels == other.channels
             and self.rates == other.rates
             and self.systs == other.systs
+            and self.extargs == other.extargs
             )
 
     @property
@@ -1613,7 +1396,7 @@ def read_dc_txt(txt):
         dc.rates[ch][name] = int(rate)
     # pprint(dc.rates)
 
-    # Systs
+    # Systs and extargs
     for line in blocks[4]:
         syst = line.split()
         if len(syst) >= 3:
@@ -1621,8 +1404,12 @@ def read_dc_txt(txt):
                 syst[2] = float(syst[2])
             except TypeError:
                 pass
-        dc.systs.append(syst)
+        if len(syst)>1 and syst[1]=='extArg':
+            dc.extargs.append(syst)
+        else:
+            dc.systs.append(syst)
     # pprint(dc.systs)
+    # pprint(dc.extargs)
 
     return dc
 
@@ -1811,7 +1598,7 @@ class CombineCommand(object):
             return '-n'
         else:
             return '--name'
-            
+
     @property
     def name(self):
         return self.kwargs.get(self.get_name_key(), '')
@@ -1936,7 +1723,7 @@ class CombineCommand(object):
             values = getattr(self, attr)
             if not values: continue
             command.append(command_str + ' ' + ','.join(list(sorted(values))))
-        
+
         if self.parameters:
             strs = ['{0}={1}'.format(k, v) for k, v in self.parameters.items()]
             command.append('--setParameters ' + ','.join(strs))
@@ -1958,7 +1745,7 @@ def bestfit(cmd):
     cmd = cmd.copy()
     cmd.method = 'MultiDimFit'
     cmd.args.add('--saveWorkspace')
-    cmd.args.add('--saveNLL')    
+    cmd.args.add('--saveNLL')
     cmd.redefine_signal_pois.add('r')
     cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
     # Possibly delete some settings too
@@ -2009,7 +1796,6 @@ def fit_toys(cmd):
     #    --savePredictionsPerToy
     #    --bypassFrequentistFit
     #    --X-rtd MINIMIZER_MaxCalls=100000
-    # 
     #    --setParameters $SetArgFitAll
     #    --freezeParameters $FrzArgFitAll
     #    --trackParameters $TrkArgFitAll"
@@ -2167,7 +1953,7 @@ class ROOTObjectKeeper:
     """
     def __init__(self):
         self.objects = {}
-    
+
     def add(self, thing):
         try:
             key = thing.GetName()
@@ -2282,143 +2068,3 @@ def pdf_values(pdf, x_vals, varname='mt'):
         y.append(pdf.getVal())
     y = np.array(y)
     return y / (y.sum() if y.sum()!=0. else 1.)
-
-
-
-# # DEPRECATED: Fit cache
-
-# FIT_CACHE_FILE = 'fit_cache.pickle'
-
-# def _read_fit_cache():
-#     import pickle
-#     if osp.isfile(FIT_CACHE_FILE):
-#         logger.info('Reading cached fits from %s', FIT_CACHE_FILE)
-#         with open(FIT_CACHE_FILE, 'rb') as f:
-#             return pickle.load(f)
-#     else:
-#         return {}
-
-# def _write_fit_cache(cache_dict):
-#     import pickle
-#     with open(FIT_CACHE_FILE, 'wb') as f:
-#         pickle.dump(cache_dict, f)
-
-# def _get_from_fit_cache(fit_hash):
-#     return _read_fit_cache().get(fit_hash, None)
-
-# def _add_one_to_fit_cache(key, result):
-#     d = _read_fit_cache()
-#     d[key] = result
-#     _write_fit_cache(d)
-
-
-# # DEPRECATED: Old fitting functions
-
-# def _fit_pdf_expression_to_histogram_python(expression, histogram, init_vals=None, hash=None, **minimize_kwargs):
-#     """
-#     The actual entry point to the scipy fit
-#     """
-#     n_fit_pars = count_parameters(expression) - 1 # -1 because par 0 is mT
-#     logger.info('Fitting {0} with {1} parameters'.format(expression, n_fit_pars))
-#     from scipy.optimize import minimize
-#     chi2 = build_chi2(expression, histogram)
-#     if init_vals is None: init_vals = np.ones(n_fit_pars)
-#     res = minimize(chi2, init_vals, **minimize_kwargs)
-#     # Save some extra information in the result
-#     res.x_init = np.array(init_vals)
-#     res.expression = expression
-#     res.hash = hash
-#     # Set approximate uncertainties; see https://stackoverflow.com/a/53489234
-#     # Assume ftol ~ function value
-#     # try:
-#     #     res.dx = np.sqrt(res.fun * np.diagonal(res.hess_inv))
-#     # except:
-#     #     logger.error('Failed to set uncertainties; using found function values as proxies')
-#     #     res.dx = res.x.copy()
-#     return res
-
-
-# def brute_force_init_vals(npars, values):
-#     return np.array(list(itertools.product(*[values for i in range(npars)])))
-
-
-# def fit_expr_to_histogram_robust(expression, histogram):
-#     """
-#     Heuristic around `fit_pdf_expression_to_histogram_python`.
-#     First attempts a single fit, and only goes for the bruteforce if the single fit
-#     did not converge properly.
-#     """
-#     fit_hash = make_fit_hash(expression, histogram)
-#     res = _get_from_fit_cache(fit_hash)
-#     if res is not None:
-#         logger.warning('Returning cached robust fit')
-#         return res
-#     res = fit_pdf_expression_to_histogram_python(
-#         expression, histogram,
-#         tol=1e-3, method='BFGS'
-#         )
-#     # Refit with output from first fit
-#     res = fit_pdf_expression_to_histogram_python(
-#         expression, histogram,
-#         init_vals=res.x,
-#         tol=1e-6, method='Nelder-Mead'
-#         )
-#     if not res.success:
-#         logger.info('Fit did not converge with single try; brute forcing it')
-#         results = []
-#         for method in ['BFGS', 'Nelder-Mead']:
-#             results = fit_pdf_expression_to_histogram_python(
-#                 expression, histogram,
-#                 init_vals=brute_force_init_vals(count_parameters(expression)-1, [-1., 1.]),
-#                 tol=1e-3, method=method
-#                 )
-#         results = [ r for r in results if not(np.isnan(r.fun) or np.isposinf(r.fun) or np.isneginf(r.fun)) ]
-#         if len(results) == 0: raise Exception('Not a single fit of the brute force converged!')
-#         i_min = np.argmin([r.fun for r in results])        
-#         res = results[i_min]
-#     logger.info('Final scipy fit result:\n%s', res)
-#     _add_one_to_fit_cache(fit_hash, res)
-#     return res
-
-
-# def fit_pdf_expression_to_histogram_python(expression, histogram, init_vals=None, cache=True, cache_dict=None, **minimize_kwargs):
-#     """
-#     Fits a a background pdf expression to a TH1 histogram with scipy.optimize.minimize.
-#     Assumes @0 in the expression is mT, and the histogram is binned in mT.
-
-#     If `cache` is True, it tries to save the fit result to a file. If init_vals is
-#     a 2-dimensional array, the fit is repeated for each initial value.
-
-#     If `cache_dict` is given, no read/write to the cache file is performed.
-#     """
-#     _write_cache = False
-#     if cache and cache_dict is None:
-#         # If cache is enabled, and no cache dict was specified, treat this as one fit result
-#         # and do the read/write IO of the cache file
-#         cache_dict = _read_fit_cache()
-#         _write_cache = True
-    
-#     if init_vals is not None:
-#         init_vals = np.array(init_vals)
-#         if len(init_vals.shape) > 1:
-#             logger.info('Will run fit for %s different initial values', init_vals.shape[0])
-#             results = [
-#                 fit_pdf_expression_to_histogram_python(
-#                     expression, histogram, init_vals=x_init,
-#                     cache=cache, cache_dict=cache_dict, **minimize_kwargs
-#                     ) for x_init in init_vals
-#                 ]
-#             _write_fit_cache(cache_dict)
-#             return results
-
-#     fit_hash = make_fit_hash(expression, histogram, init_vals, **minimize_kwargs)
-
-#     if cache and fit_hash in cache_dict:
-#         # Nothing new to save, so return immediately
-#         logger.warning('Returning cached fit')
-#         return cache_dict[fit_hash]
-#     else:
-#         res = _fit_pdf_expression_to_histogram_python(expression, histogram, init_vals=init_vals, hash=fit_hash, **minimize_kwargs)
-#         cache_dict[fit_hash] = res
-#         if _write_cache: _write_fit_cache(cache_dict)
-#         return res

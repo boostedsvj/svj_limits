@@ -26,12 +26,12 @@ The commands below assume you are using this alias; if you're not, replace `pyth
 
 ## Generating the datacards
 
-You first need a `histograms.json` file; see https://github.com/boostedsvj/svj_uboost .
+You first need json files for signal, background, and (optionally) data; see https://github.com/boostedsvj/svj_uboost.
 
 Then:
 
 ```bash
-python cli_boosted.py gen_datacards_v2 histograms_Mar14.json
+python cli_boosted.py gen_datacards --bkg merged_20240729/bkg_sel-cutbased.json --sig smooth_20240729/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json
 ```
 
 
@@ -80,21 +80,16 @@ python3 cli_boosted.py impacts dc.txt --nfits 16 --asimov --normRange 0.1 2.0 --
 ## Plotting
 
 
-To do all plots at once (takes a while):
-
-```bash
-python quick_plot.py allplots scans_Dec07/*.root
-```
-
-
 ΔNNL as a function of mu:
 
 ```bash
 python quick_plot.py muscan scans_Dec07/*bdt0p3*Scan*.root
 ```
 
-![muscan](example_plots/muscan.png)
-
+Fit to background distribution:
+```bash
+python3 quick_plot.py bkgfit ua2 --bkg merged_20240729/bkg_sel-cutbased.json --sig smooth_20240729/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json --outfile fit_bkg.png
+```
 
 MT histogram, with bkg-only fit and and sig+bkg fit:
 
@@ -106,8 +101,6 @@ Note you should use the `Bestfit`-tagged file, not `Scan`.
 Apparently, the single snapshot stored in the `Scan` files is _not_ the best fit.
 
 
-![mtdist](example_plots/mtdist.png)
-
 _Warning: Below here, readme outdated; need to check_
 
 CLS:
@@ -116,13 +109,9 @@ CLS:
 python quick_plot.py cls scans_Dec07/higgsCombineObserved_dc_mz450_rinv0.3_bdt0p300.MultiDimFit.mH120.root scans_Dec07/higgsCombineAsimov_dc_mz450_rinv0.3_bdt0p300.MultiDimFit.mH120.root
 ```
 
-![cls](example_plots/cls.png)
-
 
 Brazil band (relies on good interpolation; always check the CLs plots to double check!):
 
 ```bash
 python quick_plot.py brazil scans_Dec07/higgsCombine*bdt0p3*.root
 ```
-
-![brazil](example_plots/brazil.png)

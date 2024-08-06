@@ -72,10 +72,6 @@ def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):
 def namespace_to_attrdict(args):
     return bsvj.AttrDict(**vars(args))
 
-def get_xsec(mz):
-    xsec = {200:7.412*0.47, 250:7.044*0.47, 300:6.781*0.47, 350:6.158*0.47, 400:5.566*0.47, 450:5.021*0.47, 500:4.439*0.47, 550:3.795*0.47, }
-    return xsec[mz]
-
 def get_mz(path):
     return int(re.search(r'mz(\d+)', osp.basename(path)).group(1))
 
@@ -105,18 +101,6 @@ def organize_rootfiles(rootfiles, split_bdt_wps=False):
         return out
 
     rootfiles.sort(key=get_mz)
- 
-    # mzs = {get_mz(rootfile) for rootfile in rootfiles}
-
-    # for rootfile in rootfiles:
-    #     mz = get_mz(rootfile)
-    #     bdt = get_bdt_str(rootfile)
-
-    # out = {}
-
-    # for rootfile in rootfiles:
-    #     mz = get_mz(rootfile)
-    #     bdt = get_bdt_str(rootfile)
 
     obs_rootfiles = [f for f in rootfiles if 'Observed' in osp.basename(f)]
     asimov_rootfiles = [f for f in rootfiles if 'Asimov' in osp.basename(f)]
@@ -195,63 +179,6 @@ def extract_scans(rootfiles, correct_minimum=False):
                 scans.append(scan)
 
     return scans
-
-
-# def extract_scans(rootfiles, correct_minimum=False):
-#     if isinstance(rootfiles, str): rootfiles = [rootfiles]
-#     scans = []
-
-#     for rootfile in rootfiles:
-#         with bsvj.open_root(rootfile) as tf:
-#             limit = tf.Get('limit')
-
-#             tracked_params = {}
-#             listofbranches = limit.GetListOfBranches()
-#             for i_branch in range(listofbranches.GetEntries()):
-#                 branch = listofbranches[i_branch].GetName()
-#                 if branch.startswith('trackedParam_'):
-#                     tracked_params[branch.replace('trackedParam_', '')] = []
-
-#             all_mus = []
-#             all_deltanlls = []
-#             all_quantiles = []
-#             i_toys = []
-#             for _ in limit:
-#                 if limit.deltaNLL < 1.e5:
-#                     all_mus.append(limit.r)
-#                     all_deltanlls.append(limit.deltaNLL)
-#                     all_quantiles.append(limit.quantileExpected)
-#                     i_toys.append(limit.iToy)
-#                     for key, vals in tracked_params.items():
-#                         vals.append(getattr(limit, 'trackedParam_'+key))
-
-#         all_mus = np.array(all_mus)
-#         all_deltanlls = np.array(all_deltanlls)
-#         all_quantiles = np.array(all_quantiles)
-#         i_toys = np.array(i_toys)
-#         for key, vals in list(tracked_params.items()):
-#             tracked_params[key] = np.array(vals)
-
-#         for i_toy in sorted(set(i_toys)):
-#             scan = bsvj.AttrDict()
-#             sel = (i_toys == i_toy)
-#             mus = all_mus[sel]
-#             deltanlls = all_deltanlls[sel]
-#             quantiles = all_quantiles[sel]
-#             order = np.argsort(mus)
-#             mus = mus[order]
-#             deltanlls = deltanlls[order]
-#             quantiles[order]
-#             if correct_minimum:
-#                 minimum = np.min(deltanlls)
-#                 logger.warning('Shifting curve by {0:.4f}'.format(minimum))
-#                 deltanlls = deltanlls - minimum
-#             scan.mus = mus
-#             scan.deltanlls = deltanlls
-#             scan.quantiles = quantiles
-#             for key, vals in tracked_params.items(): scan[key] = vals
-#             scans.append(scan)
-#     return scans
 
 
 def clean_scan(scan):
@@ -370,7 +297,7 @@ def mtdist():
     #toyrootfile = bsvj.pull_arg('--toyrootfile', type=str).toyrootfile
 
     from scipy.interpolate import make_interp_spline # type:ignore
-    
+
     with bsvj.open_root(rootfile) as f:
         ws = bsvj.get_ws(f)
 
@@ -410,7 +337,7 @@ def mtdist():
     logger.info(f'Prefit signal norm = {y_sig.sum():.2f}, should match with datacard')
 
     # Get the data histogram
-    data = ws.data('data_obs')    
+    data = ws.data('data_obs')
     y_data = bsvj.roodataset_values(data)[1]
 
     # Get histogram from generated toy
@@ -718,7 +645,7 @@ def cls():
             ax.fill_between(mu, cls.s_exp[0.84], cls.s_exp[0.16], color=cms_green, alpha=0.25)
             ax.fill_between(mu, cls.s_exp[0.16], cls.s_exp[0.025], color=cms_yellow, alpha=0.25)
             ax.plot(mu, cls.s_exp[0.5], c='black', linestyle='--', label=r'$s_{exp}$')
-            
+
             # Limit points
             s = 45
             if limit.twosigma_success:
@@ -741,13 +668,13 @@ def brazil():
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
     clean = bsvj.pull_arg('--clean', action='store_true').clean
-    
+
     obs_rootfiles, asimov_rootfiles = organize_rootfiles(rootfiles)
 
     points = []
     for obs_rootfile, asimov_rootfile in zip(obs_rootfiles, asimov_rootfiles):
         mz = get_mz(obs_rootfile)
-        xsec = get_xsec(mz)
+        xsec = bsvj.get_xs(mz)
         assert mz == get_mz(asimov_rootfile)
         obs, asimov = extract_scans([obs_rootfile, asimov_rootfile])
         if clean:
@@ -780,7 +707,7 @@ def brazil():
             return '{:+{w}.3f}'.format(nr, w=w)
         else:
             return '{:>{w}s}'.format('err', w=w)
-        
+
     for p in points:
         print(
             '{:<5.0f} {} {} {} {} {} | {}'
@@ -797,7 +724,7 @@ def brazil():
 
     fig = plt.figure(figsize=(12,10))
     ax = fig.gca()
-    
+
     with quick_ax(figsize=(12,10), outfile=outfile) as ax:
         ax.plot([],[],label='95% CL upper limits (cut-based)',color='white')
         ax.plot([],[],label=r'$m_{dark}$=10 GeV, $r_{inv}$=0.3',color='white')
@@ -842,81 +769,32 @@ def brazil():
         ax.legend(framealpha=0.0)
 
 
-
-# @scripter
-# def allplots(args):
-#     if not isinstance(args, bsvj.AttrDict):
-#         parser = quickplot_parser()
-#         parser.add_argument('rootfiles', type=str, nargs='+')
-#         args = parser.parse_args(args)
-
-#     d = namespace_to_attrdict(args)
-#     d.batch = True
-
-#     for obs_rootfiles, asimov_rootfiles in organize_rootfiles(args.rootfiles, split_bdt_wps=True):
-#         bdt_str = get_bdt_str(obs_rootfiles[0])
-#         logger.info('Making plots for bdt working point ' + bdt_str)
-
-#         outdir = strftime('plots_%b%d/{}'.format(bdt_str))
-#         if not osp.isdir(outdir): os.makedirs(outdir)
-
-#         for rootfile in obs_rootfiles+asimov_rootfiles:
-#             mtdist(bsvj.AttrDict(
-#                 d,
-#                 rootfile=rootfile,
-#                 outfile=osp.join(outdir, 'mtdist_{}.png'.format(name_from_combine_rootfile(rootfile)))
-#                 ))
-
-#         for obs_rootfile, asimov_rootfile in zip(obs_rootfiles, asimov_rootfiles):
-#             cls(bsvj.AttrDict(
-#                 d,
-#                 observed=obs_rootfile,
-#                 asimov=asimov_rootfile,
-#                 outfile=osp.join(outdir, 'cls_{}.png'.format(name_from_combine_rootfile(obs_rootfile, True))),
-#                 xmax=.5
-#                 ))
-
-#         muscan(bsvj.AttrDict(
-#             d,
-#             rootfiles=obs_rootfiles,
-#             xmin=-1., xmax=1., ymax=10.,
-#             outfile=osp.join(outdir, 'muscan_obs.png'),
-#             correctminimum=False, include_dots=False
-#             ))
-#         muscan(bsvj.AttrDict(
-#             d,
-#             rootfiles=asimov_rootfiles,
-#             xmin=-1., xmax=1., ymax=10.,
-#             outfile=osp.join(outdir, 'muscan_asimov.png'),
-#             correctminimum=False, include_dots=False
-#             ))
-
-#         brazil(bsvj.AttrDict(d, rootfiles=obs_rootfiles+asimov_rootfiles, outfile=osp.join(outdir, 'brazil.png')))
-
-
-
 @scripter
-def bkgfitv2():
+def bkgfit():
     """
     Bkg fit plots
     """
-    jsonfile = bsvj.pull_arg('jsonfile', type=str).jsonfile
+    jsons = bsvj.get_jsons()
     pdftype = bsvj.pull_arg('pdftype', type=str, choices=['main', 'alt', 'ua2']).pdftype
     linscale = bsvj.pull_arg('--lin', action='store_true').lin
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
 
-    input = bsvj.InputDataV2(jsonfile)
+    input = bsvj.InputData(**jsons)
 
     mt = bsvj.get_mt(input.mt[0], input.mt[-1], input.n_bins, name='mt')
     bin_centers = .5*(input.mt_array[:-1]+input.mt_array[1:])
     bin_width = input.mt[1] - input.mt[0]
-    bkg_hist = input.d['bkg'] 
+    bkg_hist = input.bkg['bkg']
     bkg_th1 = bkg_hist.th1('bkg')
-    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1, 1.)
+    if input.data is not None:
+        data_th1 = input.data['data'].th1('data')
+    else:
+       data_th1 = bkg_th1
+    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
     pdfs = bsvj.pdfs_factory(pdftype, mt, bkg_th1, name=pdftype)
-    
+
     for pdf in pdfs:
         if scipyonly:
             pdf.res = bsvj.fit_scipy_robust(pdf.expression, pdf.th1, cache=None)
@@ -929,8 +807,6 @@ def bkgfitv2():
         else:
             pdf.res = bsvj.fit(pdf)
 
-
-    # bsvj.plot_fits(pdfs, [p.res for p in pdfs], data_datahist, 'qp_' + pdftype + '.pdf')
 
     if not scipyonly:
         # Make sure pdfs are really fitted
@@ -952,7 +828,7 @@ def bkgfitv2():
 
     bkg_hist.vals = np.array(bkg_hist.vals)
     bkg_hist.shape = bkg_hist.vals / (bkg_hist.vals.sum()*bin_width)
-    
+
     figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16))
 
     ax.plot([], [], ' ', label=f'{pdftype}, {input.metadata["selection"]}')
@@ -990,7 +866,7 @@ def bkgfitv2():
         bin_scale = bin_width / (fine_mt_axis[1]-fine_mt_axis[0])
         y_pdf_fine = y_pdf_fine / y_pdf_fine.sum() * sum(bkg_hist.vals) * bin_scale
         line = ax.plot(fine_mt_axis, y_pdf_fine, label=label)[0]
-        
+
         pulls = (y_pdf - bkg_hist.vals) / bkg_hist.errs
         ax2.scatter(bin_centers, pulls, color=line.get_color())
 
@@ -1006,143 +882,6 @@ def bkgfitv2():
 
 
 @scripter
-def bkgfit():
-    """
-    Bkg fit plots
-    """
-    jsonfile = bsvj.pull_arg('jsonfile', type=str).jsonfile
-    bdtcut = bsvj.pull_arg('bdtcut', type=float).bdtcut
-    pdftype = bsvj.pull_arg('pdftype', type=str, choices=['main', 'alt', 'ua2']).pdftype
-    logscale = bsvj.pull_arg('--log', action='store_true').log
-    trigeff = bsvj.pull_arg('--trigeff', type=int, default=None, choices=[2016, 2017, 2018]).trigeff
-    fitmethod = bsvj.pull_arg('--fitmethod', type=str, choices=['scipy', 'auto'], default='auto').fitmethod
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
-    mtrange = bsvj.pull_arg('--range', type=float, nargs=2).range
-    npars = bsvj.pull_arg('--npars', type=int, default=None).npars
-
-    input = bsvj.InputData(jsonfile)
-    if mtrange is None: mtrange = [180., 650.]
-    input = input.cut_mt(mtrange[0], mtrange[1])
-
-    bdt_str = '{:.1f}'.format(bdtcut).replace('.', 'p')
-    mt = bsvj.get_mt(input.mt[0], input.mt[-1], input.n_bins, name='mt')
-    bin_centers = .5*(input.mt_array[:-1]+input.mt_array[1:])
-    bin_width = input.mt[1] - input.mt[0]
-    bkg_hist = input.bkg_hist(bdtcut)
-
-    if trigeff:
-        import requests
-        parameters = np.array(requests.get('https://raw.githubusercontent.com/boostedsvj/triggerstudy/main/bkg/bkg_trigeff_fit_2018.txt').json())
-        poly = np.poly1d(parameters)
-        f_trig_eff = lambda x: np.where(x<1000., 1./(1.+np.exp(-poly(x))), 1.)
-        binning = np.array(bkg_hist.binning)
-        mt_bin_centers = .5*(binning[:-1]+binning[1:])
-        bkg_hist.vals *= f_trig_eff(mt_bin_centers)
-        logger.info('Adjusted bkg histogram for trigger eff')
-
-    bkg_th1 = input.bkg_th1('bkg', bdtcut)
-
-    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1, 1.)
-
-    pdfs = bsvj.pdfs_factory(pdftype, mt, bkg_th1, name=pdftype, trigeff=None, npars=npars)
-    
-    for pdf in pdfs:
-        if fitmethod == 'auto':
-            pdf.res = bsvj.fit(pdf)
-        elif fitmethod == 'scipy':
-            pdf.res = bsvj.fit_scipy_robust(pdf.expression, pdf.th1, cache=None)
-            # Fill in the fitted parameters
-            for p, val in zip(pdf.parameters, pdf.res.x):
-                # Make sure the newly fitted value is actually in range
-                if val < p.getMin(): p.setMin(val - 0.1*abs(val))
-                if val > p.getMax(): p.setMax(val + 0.1*abs(val))
-                p.setVal(val)
-
-
-    # bsvj.plot_fits(pdfs, [p.res for p in pdfs], data_datahist, 'qp_' + pdftype + '.pdf')
-
-    if fitmethod == 'auto':
-        # Make sure pdfs are really fitted
-        pdf = pdfs[0]
-        res_par_set = pdf.res.floatParsFinal()
-        np.testing.assert_almost_equal(
-            [p.getVal() for p in pdf.parameters],
-            [res_par_set.at(i).getVal() for i in range(pdf.n_pars)]
-            )
-
-    # Make sure evaluation makes sense
-    y_pdf_eval = bsvj.eval_expression(pdf.expression, [bin_centers] + [p.getVal() for p in pdf.parameters])
-    y_pdf_eval /= y_pdf_eval.sum()
-    np.testing.assert_almost_equal(y_pdf_eval, pdf.evaluate(bin_centers), decimal=2)
-
-    if npars is None:
-        # Do the fisher test and mark the winner pdf
-        winner = bsvj.do_fisher_test(mt, data_datahist, pdfs)
-        pdfs[winner].is_winner = True
-
-    bkg_hist.vals = np.array(bkg_hist.vals)
-    bkg_hist.shape = bkg_hist.vals / (bkg_hist.vals.sum()*bin_width)
-    
-    figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16))
-
-    ax.plot([], [], ' ', label='{}, score$\\geq${:.1f}'.format(pdftype, bdtcut))
-    ax.step(input.mt[:-1], bkg_hist.vals, where='post', label=r'BKG', c='b')
-    ax2.plot([input.mt[0], input.mt[-1]], [0.,0.], c='gray')
-
-    def fit_norm(y, y_data):
-        from scipy.optimize import minimize # type:ignore
-        def fom(norm):
-            y_norm = y * norm
-            return ((y_norm-y_data)**2 / y_norm).sum()
-        res = minimize(fom, 1.)
-        return res.x
-
-    fine_mt_axis = np.linspace(input.mt[0], input.mt[-1], 100)
-    for pdf in pdfs:
-        par_vals = [p.getVal() for p in pdf.parameters]
-
-        y_pdf = pdf.evaluate(bin_centers)
-        if abs(1. - y_pdf.sum()) > 0.01: logger.error('PDF norm is off from 1.:', y_pdf.sum())
-
-        if getattr(pdf, 'is_winner', False):
-            logger.warning('par vals: %s', par_vals)
-            logger.warning('y_pdf pre norm: %s (norm=%s)', y_pdf, y_pdf.sum())
-
-        y_pdf *= bkg_hist.vals.sum()
-        # y_pdf *= fit_norm(y_pdf, bkg_hist.vals) # Should be close to 1.0
-
-        if getattr(pdf, 'is_winner', False):
-            logger.warning('y_pdf post norm: %s (norm=%s)', y_pdf, y_pdf.sum())
-
-        chi2 = ((y_pdf-bkg_hist.vals)**2 / y_pdf).sum()
-        # chi2 /= (len(bin_centers) - pdf.npars)
-
-        label = (
-            '{}, $\\chi^{{2}}={:.5f}$: ['.format(pdf.n_pars, chi2)
-            + ', '.join(['{:.2f}'.format(v) for v in par_vals]) + ']'
-            )
-        if getattr(pdf, 'is_winner', False): label += ' WINNER'
-
-        y_pdf_fine = bsvj.eval_expression(pdf.expression, [fine_mt_axis] + par_vals)
-        bin_scale = bin_width / (fine_mt_axis[1]-fine_mt_axis[0])
-        y_pdf_fine = y_pdf_fine / y_pdf_fine.sum() * sum(bkg_hist.vals) * bin_scale
-        line = ax.plot(fine_mt_axis, y_pdf_fine, label=label)[0]
-        
-        pulls = (y_pdf - bkg_hist.vals) / bkg_hist.errs
-        ax2.scatter(bin_centers, pulls, color=line.get_color())
-
-
-    ax.legend(fontsize=18, framealpha=0.0)
-    ax.set_ylabel('$N_{events}$')
-
-    ax2.set_ylabel(r'(pdf - bkg) / $\Delta$bkg')
-    ax2.set_xlabel(r'$m_{T}$ (GeV)')
-    if logscale: ax.set_yscale('log')
-    plt.savefig(outfile, bbox_inches='tight')
-    if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
-
-
-@scripter
 def hist():
     """
     Quickly plot histograms from a file
@@ -1151,21 +890,22 @@ def hist():
     histograms = bsvj.pull_arg('histograms', type=str, nargs='*').histograms
 
     if infile.endswith('.json'):
-        input = bsvj.InputDataV2(infile)
+        with open(infile, 'r') as f:
+            input = json.load(f, cls=bsvj.Decoder)
 
         if len(histograms) == 0:
-            bsvj.ls_inputdata(input.d)
+            bsvj.ls_inputdata(input)
 
         else:
             with quick_ax() as ax:
                 for pat in histograms:
-                    for h in fnmatch.filter(input.d.keys(), pat):
-                        hist = input.d[h]
+                    for h in fnmatch.filter(input.keys(), pat):
+                        hist = input[h]
                         ax.step(hist.binning[:-1], hist.vals, where='post', label=h)
                 ax.legend()
                 ax.set_yscale('log')
                 ax.set_xlabel('MT (GeV)')
-        
+
     elif infile.endswith('.root'):
         with bsvj.open_root(infile) as tf:
             w = tf.Get('SVJ')
@@ -1181,11 +921,6 @@ def hist():
                         ax.legend()
                         ax.set_yscale('log')
                         ax.set_xlabel('MT (GeV)')
-
-
-
-
-
 
 
 if __name__ == '__main__':
