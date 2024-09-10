@@ -82,17 +82,16 @@ def read_arg(*args, **kwargs):
 
 def get_xs(mz):
     signal_xsecs = {
-        200 : 7.412,
-        250 : 7.044,
-        300 : 6.781,
-        350 : 6.158,
-        400 : 5.566,
-        450 : 5.021,
-        500 : 4.439,
-        550 : 3.795,
+        200 : 9.143,
+        250 : 6.910,
+        300 : 5.279,
+        350 : 4.077,
+        400 : 3.073,
+        450 : 2.448,
+        500 : 1.924,
+        550 : 1.578,
     }
-    br = 0.47 # branching fraction to dark
-    return signal_xsecs[mz]*br
+    return signal_xsecs[mz]
 
 @contextmanager
 def set_args(args):
