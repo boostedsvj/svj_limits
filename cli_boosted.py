@@ -335,7 +335,6 @@ def fittoys():
         cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
 
         toysFile = bsvj.pull_arg('--toysFile', required=True, type=str).toysFile
-        #cmd.kwargs['--toysFile'] = toysFile
 
         if not '-t' in cmd.kwargs:
             with bsvj.open_root(toysFile) as f:
