@@ -32,6 +32,7 @@ Then:
 
 ```bash
 python cli_boosted.py gen_datacards --bkg merged_20240729/bkg_sel-cutbased.json --sig smooth_20240729/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json
+for SIGNAL in cutbased/smooth_20240920/SVJ_s-channel_mMed-*_mDark-10_rinv-0p3*.json; do python cli_boosted.py gen_datacards --bkg cutbased/merged_20240920/bkg_sel-cutbased.json --sig $SIGNAL; done
 ```
 
 
@@ -58,13 +59,16 @@ Note also the options `--minmu` and `--maxmu` which handle the range of the sign
 Generate toys:
 
 ```
-python cli_boosted.py gentoys dc_Jun08/dc_mz350_rinv0.3_bdt0p300.txt -t 5 --expectSignal 0 -s 1001
+python cli_boosted.py gentoys dc_20240920_cutbased/dc_SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.txt -t 300 --expectSignal 0 -s 1001 --rMin -2 --rMax 3
+for DC in dc_20240920_cutbased/*.txt; do python cli_boosted.py gentoys $DC -t 300 --expectSignal 0 -s 1001 --rMin -2 --rMax 3; done
 ```
 
 Fit the toys:
 
 ```
-python cli_boosted.py fittoys dc_Jun08/dc_mz350_rinv0.3_bdt0p300.txt --toysFile toys_Jul25/higgsCombineObserveddc_mz350_rinv0.3_bdt0p300.GenerateOnly.mH120.1001.root --expectSignal 0
+python cli_boosted.py fittoys dc_20240920_cutbased/dc_SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.txt --toysFile toys_20240924/higgsCombineObserveddc_SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.GenerateOnly.mH120.1001.root --expectSignal 0 --rMin -2 --rMax 3
+ 
+for MZ in 200 250 300 350 400 450 500 550; do python cli_boosted.py fittoys dc_20240920_cutbased/dc_SVJ_s-channel_mMed-$MZ*.txt --toysFile toys_20240924/higgsCombineObserveddc_SVJ_s-channel_mMed-$MZ*.root --expectSignal 0 --rMin -2 --rMax 3; done
 ```
 
 ## Nuisance impacts
@@ -78,7 +82,11 @@ python3 cli_boosted.py impacts dc.txt --nfits 16 --asimov --normRange 0.1 2.0 --
 ```
 
 ## Plotting
+Bkg fit 
 
+```bash
+python3 quick_plot.py bkgfit ua2 --bkg cutbased/merged_20240920/bkg_sel-cutbased.json --sig cutbased/smooth_20240920/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json --outfile fit_bkg.png
+```
 
 ΔNNL as a function of mu:
 
