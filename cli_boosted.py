@@ -334,17 +334,14 @@ def fittoys():
         cmd.args.add('--bypassFrequentistFit')
         cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
 
+        toysFile = bsvj.pull_arg('--toysFile', required=True, type=str).toysFile
+
         if not '-t' in cmd.kwargs:
             with bsvj.open_root(toysFile) as f:
                 cmd.kwargs['-t'] = f.Get('limit').GetEntries()
 
-        req_args = [
-            '-t',
-            '--expectSignal',
-            '--toysFile',
-        ]
-        for arg in req_args:
-            assert arg in cmd.kwargs
+        assert '-t' in cmd.kwargs
+        assert '--expectSignal' in cmd.kwargs
 
         bsvj.run_combine_command(cmd)
         os.rename(cmd.outfile, osp.join(outdir, osp.basename(cmd.outfile)))
