@@ -853,13 +853,13 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
 
     elif pdf_type == 'ua2':
         if npars == 2:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@2*(@0/{0}))'
+            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2))'
         if npars == 3:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0}))' #fifth variation
+            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0}))' #fifth variation
         if npars == 4:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2)))' #fifth variation            
+            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2)))' #fifth variation            
         if npars == 5:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))' #fifth variation
+            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))' #fifth variation
 
     else:
         raise Exception('Unknown pdf type {0}'.format(pdf_type))
