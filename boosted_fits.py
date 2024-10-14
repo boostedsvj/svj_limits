@@ -331,6 +331,13 @@ def get_jsons():
     )
     return result
 
+def known_pdfs():
+    pdf_list = ["main", "alt", "ua2"]
+    return pdf_list
+
+def make_pdf(name, mt, bkg_th1):
+    return pdfs_factory(name, mt, bkg_th1, name=f'bsvj_bkgfit{name}')
+
 class InputData(object):
     """
     9 Feb 2024: Reworked .json input format.
@@ -384,11 +391,7 @@ class InputData(object):
             data_th1 = bkg_th1
         data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
-        pdfs_dict = {
-            'main' : pdfs_factory('main', mt, bkg_th1, name='bsvj_bkgfitmain'),
-            'alt' : pdfs_factory('alt', mt, bkg_th1, name='bsvj_bkgfitalt'),
-            'ua2' : pdfs_factory('ua2', mt, bkg_th1, name='bsvj_bkgfitua2'),
-            }
+        pdfs_dict = {pdf : make_pdf(pdf, mt, bkg_th1) for pdf in known_pdfs()}
 
         cache = None
         if use_cache:
@@ -396,7 +399,7 @@ class InputData(object):
             cache = FitCache(lock=fit_cache_lock)
 
         winner_pdfs = []
-        for pdf_type in ['main', 'ua2']:
+        for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
             i_winner = do_fisher_test(mt, data_datahist, pdfs)
@@ -995,7 +998,7 @@ def pdf_factory(pdf_type, n_pars, mt, bkg_th1, name=None, mt_scale='1000', trige
     If `trigeff` equals 2016, 2017, or 2018, the bkg trigger efficiency as a 
     function of mT_AK15_subl is prefixed to the expression.
     """
-    if pdf_type not in {'main', 'alt', 'ua2'}: raise Exception('Unknown pdf_type %s' % pdf_type)
+    if pdf_type not in known_pdfs(): raise Exception('Unknown pdf_type %s' % pdf_type)
     if name is None: name = uid()
     #logger.info(
     #    'Building name={} pdf_type={} n_pars={} mt.GetName()="{}", bkg_th1.GetName()="{}"'
@@ -1650,13 +1653,14 @@ class CombineCommand(object):
         pdfs in the datacard.
         """
         logger.info('Using pdf %s', pdf)
-        self.set_parameter('pdf_index', {'main':0, 'ua2':1}[pdf])
+        self.set_parameter('pdf_index', known_pdfs().index(pdf))
         pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
-        other_pdf = {'main':'ua2', 'ua2':'main'}[pdf]
-        other_pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
+        self.track_parameters.update(['r', 'n_exp_final_binbsvj_proc_roomultipdf'] + pdf_pars)
         self.freeze_parameters.add('pdf_index')
-        self.freeze_parameters.update(other_pdf_pars)
-        self.track_parameters.update(['r'] + pdf_pars)
+        for other_pdf in known_pdfs():
+            if other_pdf==pdf: continue
+            other_pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
+            self.freeze_parameters.update(other_pdf_pars)
 
     def asimov(self, flag=True):
         """
@@ -1681,7 +1685,7 @@ class CombineCommand(object):
             self.asimov(asimov)
 
             logger.info('Taking pdf from command line (default is ua2)')
-            pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2', 'alt'], default='ua2').pdf
+            pdf = pull_arg('--pdf', type=str, choices=known_pdfs(), default='ua2').pdf
             self.pick_pdf(pdf)
 
             toyseed = pull_arg('-t', type=int).t
@@ -1855,18 +1859,7 @@ def likelihood_scan_factory(
 
     if n_toys is not None: cmd.kwargs['-t'] = str(n_toys)
 
-    cmd.freeze_parameters.append('pdf_index')
-    cmd.track_parameters.append('n_exp_final_binbsvj_proc_roomultipdf')
-    if pdf_type == 'ua2':
-        cmd.set_parameter('pdf_index', 1)
-        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
-        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
-    elif pdf_type == 'main':
-        cmd.set_parameter('pdf_index', 0)
-        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
-        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
-    else:
-        raise Exception('Unknown pdf_type {}'.format(pdf_type))
+    cmd.pick_pdf(pdf_type)
 
     return cmd
 
