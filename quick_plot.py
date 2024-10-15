@@ -775,7 +775,7 @@ def bkgfit():
     Bkg fit plots
     """
     jsons = bsvj.get_jsons()
-    pdftype = bsvj.pull_arg('pdftype', type=str, choices=['main', 'alt', 'ua2']).pdftype
+    pdftype = bsvj.pull_arg('pdftype', type=str, choices=bsvj.known_pdfs()).pdftype
     linscale = bsvj.pull_arg('--lin', action='store_true').lin
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile

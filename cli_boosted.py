@@ -25,7 +25,7 @@ def plot_scipy_fits():
     parser.add_argument('-o', '--plotdir', type=str, default='plots_bkgfits_%b%d')
     parser.add_argument('-b', '--bdtcut', type=float, default=None)
     parser.add_argument('-n', '--npars', type=int, nargs='*')
-    parser.add_argument('-p', '--pdftype', type=str, default=None, choices=['main', 'ua2'])
+    parser.add_argument('-p', '--pdftype', type=str, default=None, choices=bsvj.known_pdfs())
 
     args = parser.parse_args()
     plotdir = strftime(args.plotdir)
@@ -40,7 +40,7 @@ def plot_scipy_fits():
             tdir = tf.Get(tdir_name)
             bkg_hist = tdir.Get('Bkg')
 
-            for pdf_type in ['main', 'alt', 'ua2']:
+            for pdf_type in bsvj.known_pdfs():
                 if args.pdftype and pdf_type != args.pdftype: continue
                 bsvj.logger.info('Fitting pdf_type=%s, tdir_name=%s', pdf_type, tdir_name)
                 fig = plt.figure(figsize=(8,8))
@@ -87,7 +87,7 @@ def plot_roofit_fits():
     parser.add_argument('-o', '--plotdir', type=str, default='plots_bkgfits_%b%d')
     parser.add_argument('-b', '--bdtcut', type=float, default=None)
     parser.add_argument('-n', '--npars', type=int, nargs='*')
-    parser.add_argument('-p', '--pdftype', type=str, default=None, choices=['main', 'alt', 'ua2'])
+    parser.add_argument('-p', '--pdftype', type=str, default=None, choices=bsvj.known_pdfs())
     args = parser.parse_args()
     plotdir = strftime(args.plotdir)
     if not osp.isdir(plotdir): os.makedirs(plotdir)
@@ -98,7 +98,7 @@ def plot_roofit_fits():
             tdir = tf.Get(tdir_name)
             bkg_hist = tdir.Get('Bkg')
             mt = bsvj.get_mt_from_th1(bkg_hist)
-            for pdf_type in ['main', 'alt', 'ua2']:
+            for pdf_type in bsvj.known_pdfs():
                 if args.pdftype and pdf_type != args.pdftype: continue
                 bsvj.logger.info('Fitting pdf_type=%s, tdir_name=%s', pdf_type, tdir_name)
                 if args.npars is not None and len(args.npars):
@@ -335,7 +335,6 @@ def fittoys():
         cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
 
         toysFile = bsvj.pull_arg('--toysFile', required=True, type=str).toysFile
-        #cmd.kwargs['--toysFile'] = toysFile
 
         if not '-t' in cmd.kwargs:
             with bsvj.open_root(toysFile) as f:
