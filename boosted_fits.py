@@ -332,7 +332,7 @@ def get_jsons():
     return result
 
 def known_pdfs():
-    pdf_list = ["main", "alt", "ua2"]
+    pdf_list = ["main", "alt", "ua2", "modexp", "polpow"]
     return pdf_list
 
 def make_pdf(name, mt, bkg_th1):
@@ -857,12 +857,36 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
     elif pdf_type == 'ua2':
         if npars == 2:
             expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2))'
-        if npars == 3:
-            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0}))' #fifth variation
-        if npars == 4:
-            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2)))' #fifth variation            
-        if npars == 5:
-            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))' #fifth variation
+        elif npars == 3:
+            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0}))'
+        elif npars == 4:
+            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2)))'
+        elif npars == 5:
+            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))'
+        else:
+            raise Exception('Unavailable npars for main: {0}'.format(npars))
+
+    elif pdf_type == 'modexp':
+        if npars == 2:
+            expression = 'exp(@1*pow(@0/{0}, @2))'
+        elif npars == 3:
+            expression = 'exp(@1*pow(@0/{0}, @2)+@1*pow(@0/{0}, @3))'
+        elif npars == 4:
+            expression = 'exp(@1*pow(@0/{0}, @2)+@4*pow(@0/{0}, @3))'
+        else:
+            raise Exception('Unavailable npars for modexp: {0}'.format(npars))
+
+    elif pdf_type == 'polpow':
+        if npars == 2:
+            expression = 'pow(1 + @1*@0/{0},-@2)'
+        elif npars == 3:
+            expression = 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2),-@3)'
+        elif npars == 4:
+            expression = 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3),-@4)'
+        elif npars == 5:
+            expression = 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3) + @4*pow(@0/{0},4),-@5)'
+        else:
+            raise Exception('Unavailable npars for polpow: {0}'.format(npars))
 
     else:
         raise Exception('Unknown pdf type {0}'.format(pdf_type))
@@ -925,7 +949,6 @@ def pdf_parameters(pdf_type, npars, prefix=None):
                 ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
                 ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.)
                 ]
-
         elif npars == 3:
             parameters = [
                 ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
@@ -947,6 +970,55 @@ def pdf_parameters(pdf_type, npars, prefix=None):
                 ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
                 ROOT.RooRealVar(prefix + "_p5", "p5", 1., -100., 100.),
                 ]
+
+    elif pdf_type == 'modexp':
+        if npars == 2:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.)
+                ]
+        elif npars == 3:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100),
+                ]
+        elif npars == 4:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
+                ]
+
+    elif pdf_type == 'polpow':
+        if npars == 2:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.)
+                ]
+        elif npars == 3:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100),
+                ]
+        elif npars == 4:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
+                ]
+        elif npars == 5:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
+                ROOT.RooRealVar(prefix + "_p5", "p5", 1., -100., 100.),
+                ]
+
     object_keeper.add_multiple(parameters)
     return parameters
 
@@ -1042,7 +1114,7 @@ def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None
     Like pdf_factory, but returns a list for all available n_pars
     """
     if name is None: name = uid()
-    all_n_pars = [2, 3, 4] if pdf_type == 'alt' else [2, 3, 4, 5]
+    all_n_pars = [2, 3, 4] if pdf_type == 'alt' or pdf_type == 'modexp' else [2, 3, 4, 5]
     if npars is not None: all_n_pars = [npars]
     return [ pdf_factory(pdf_type, n_pars, mt, bkg_th1, name+'_npars'+str(n_pars), mt_scale, trigeff=trigeff) for n_pars in all_n_pars]
 
