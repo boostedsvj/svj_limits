@@ -334,7 +334,7 @@ def get_jsons():
 # all_pdfs can have more values than in this list
 # this list controls what actually runs
 def known_pdfs():
-    pdf_list = ["main", "alt", "ua2", "modexp"]
+    pdf_list = ["main", "alt", "ua2"]
     return pdf_list
 
 def make_pdf(name, mt, bkg_th1):
@@ -420,26 +420,33 @@ all_pdfs = {
     "modexp": PdfInfo("modexp", {
         2: {
             "expr": 'exp(@1*pow(@0/{0}, @2))',
+            "pars": {1: (-20, 0), 2: (0, 10)},
         },
         3: {
-            "expr": 'exp(@1*pow(@0/{0}, @2)+@1*pow(@0/{0}, @3))',
+            "expr": 'exp(@1*pow(@0/{0}, @2)+@1*pow(1-@0/{0}, @3))',
+            "pars": {1: (-20, 0), 2: (0, 10), 3: (-10, 0)},
         },
         4: {
-            "expr": 'exp(@1*pow(@0/{0}, @2)+@4*pow(@0/{0}, @3))',
+            "expr": 'exp(@1*pow(@0/{0}, @2)+@4*pow(1-@0/{0}, @3))',
+            "pars": {1: (-20, 0), 2: (0, 10), 3: (-10, 0), 4: (-20, 0)},
         },
     }),
-    "modexp": PdfInfo("modexp", {
+    "polpow": PdfInfo("polpow", {
         2: {
             "expr": 'pow(1 + @1*@0/{0},-@2)',
+            "pars": {1: (0, 50), 2: (-50, 0)},
         },
         3: {
             "expr": 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2),-@3)',
+            "pars": {1: (0, 50), 2: (0, 50), 3: (-50, 0)},
         },
         4: {
             "expr": 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3),-@4)',
+            "pars": {1: (0, 50), 2: (0, 50), 3: (0, 50), 4: (-50, 0)},
         },
         5: {
             "expr": 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3) + @4*pow(@0/{0},4),-@5)',
+            "pars": {1: (0, 50), 2: (0, 50), 3: (0, 50), 4: (0, 50), 5: (-50, 0)},
         },
     }),
 }
@@ -717,7 +724,8 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                 par.setMax(new_right)
 
             # Now check if any of the ranges are needlessly large
-            if abs(value) / min(abs(left), abs(right)) < 0.1:
+            eps = 1e-10
+            if abs(value) / (min(abs(left), abs(right))+eps) < 0.1:
                 new_left = -10.*abs(value)
                 new_right = 10.*abs(value)
                 logger.info(
@@ -821,11 +829,13 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
         cache=cache
         )
     # Refit with output from first fit
+    options_nm = {'maxfev':10000}
     res = single_fit_scipy(
         expression, histogram,
         init_vals=res.x,
         tol=1e-6, method='Nelder-Mead',
-        cache=cache
+        cache=cache,
+        options = options_nm
         )
 
     if res.success:
@@ -847,10 +857,12 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
     results = []
     for method in ['BFGS', 'Nelder-Mead']:
         for init_val_variation in init_vals:
+            options_single = options_nm if method=='Nelder-Mead' else {}
             result = single_fit_scipy(
                 expression, histogram,
                 init_vals=init_val_variation,
-                tol=1e-3, method=method
+                tol=1e-3, method=method,
+                options = options_single
                 )
             # Check if fit fn val is not NaN or +/- inf
             if not(np.isnan(result.fun) or np.isposinf(result.fun) or np.isneginf(result.fun)):
