@@ -333,6 +333,69 @@ class InputData(object):
                 'Could not find a histogram for mz={}, rinv={}, mdark={}'
                 .format(mz, rinv, mdark)
                 )
+            data_th1 = bkg_th1
+        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
+
+        pdfs_dict = {
+            'main' : pdfs_factory('main', mt, bkg_th1, name='bsvj_bkgfitmain'),
+            'alt' :  pdfs_factory('alt', mt, bkg_th1, name='bsvj_bkgfitalt'),
+            'ua2' :  pdfs_factory('ua2', mt, bkg_th1, name='bsvj_bkgfitua2'),
+            }
+
+        cache = None
+        if use_cache:
+            from fit_cache import FitCache
+            cache = FitCache(lock=fit_cache_lock)
+
+        winner_pdfs = []
+        for pdf_type in ['main', 'ua2']:
+            pdfs = pdfs_dict[pdf_type]
+            ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
+            #i_winner=0
+            #print(pdf_type)
+            i_winner = do_fisher_test(mt, data_datahist, pdfs)
+            #if pdf_type == 'ua2': i_winner = do_fisher_test(mt, data_datahist, pdfs)
+            #elif pdf_type == 'main': iwinner =0
+            print(i_winner)
+            winner_pdfs.append(pdfs[i_winner])
+
+        systs = [
+            ['lumi', 'lnN', 1.016, '-'],
+            ['trigger_cr', 'lnN', 1.02, '-'],
+            ['trigger_sim', 'lnN', 1.021, '-'],
+            ['mZprime','extArg', mz],
+            ['mDark',  'extArg', mdark],
+            ['rinv',   'extArg', rinv],
+            ['xsec',   'extArg', get_xs(mz)],
+            ]
+
+        sig_name = 'mz{:.0f}_rinv{:.1f}_mdark{:.0f}'.format(mz, rinv, mdark)
+        sig_th1 = self.sig['central'].th1(sig_name)
+        sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
+
+        syst_th1s = []
+        used_systs = set()
+        for key, hist in self.sig.items():
+            if '_up' in key:
+                direction = 'Up'
+            elif '_down' in key:
+                direction = 'Down'
+            else:
+                continue # Not a systematic
+            syst_name = key.replace('_up','').replace('_down','')
+            # Don't add the line twice
+            if syst_name not in used_systs:
+                systs.append([syst_name, 'shape', 1, '-'])
+                used_systs.add(syst_name)
+            syst_th1s.append(hist.th1(f'{sig_name}_{syst_name}{direction}'))
+
+        outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}/dc_{osp.basename(self.sigfile).replace(".json","")}.txt')
+        compile_datacard_macro(
+            winner_pdfs, data_datahist, sig_datahist,
+            outfile,
+            systs=systs,
+            syst_th1s=syst_th1s,
+        )
 
     def sig_th1(self, name, bdt, mz, rinv, mdark=10):
         return hist_to_th1(name, self.sig_hist(bdt, mz, rinv, mdark))
@@ -792,6 +855,8 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
     # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
     # model NM has N params on 1-x and M params on x. exponents are (p_i + p_{i+1} * log(x))
     if pdf_type == 'main':
+        if npars == 1:
+            expression = 'pow(1 - @0/{0})'
         if npars == 2:
             expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2))'
         elif npars == 3:
@@ -855,6 +920,15 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
             #expression = 'pow(@0/{0}, @1) * exp((@1+@2)*@0/{0} + (@1+@3)*pow(@0/{0},2) + (@1+@4)*pow(@0/{0},3) + (@1+@5)*pow(@0/{0},4))' #third variation
             #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*@0/{0}+@4*pow(@0/{0},2)+@5*pow(@0/{0},3)))' #second variation
             #expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))' #first variation
+
+        '''if npars == 2:
+            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}))'
+        if npars == 3:
+            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(1 + @2+ @3*@0/{0}))' #fifth variation
+        if npars == 4:
+            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2)))' #fifth variation            
+        if npars == 5:
+            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))' #fifth variation'''
 
     else:
         raise Exception('Unknown pdf type {0}'.format(pdf_type))
@@ -1038,6 +1112,14 @@ def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None
     if pdf_type == 'alt':  all_n_pars = [2, 3, 4] 
     if pdf_type == 'main': all_n_pars = [2, 3, 4, 5]
     if pdf_type == 'ua2':  all_n_pars = [2, 3, 4, 5]
+    #all_n_pars = [2, 3, 4] if pdf_type == 'alt' else [2, 3, 4, 5]
+
+    all_n_pars = None
+    if pdf_type == 'alt' : all_n_pars= [2, 3, 4]
+    elif pdf_type == 'main' : all_n_pars= [3,4,5]
+    else : all_n_pars = [2, 3, 4, 5]
+
+    if npars is not None: all_n_pars = [npars]
     return [ pdf_factory(pdf_type, n_pars, mt, bkg_th1, name+'_npars'+str(n_pars), mt_scale, trigeff=trigeff) for n_pars in all_n_pars]
 
 
@@ -1765,6 +1847,7 @@ def scan(cmd):
     cmd.kwargs['--algo'] = 'grid'
     cmd.kwargs['--alignEdges'] = 1
     rmin, rmax = pull_arg('-r', '--range', type=float, default=[0., 2.], nargs=2).range
+    rmin, rmax = pull_arg('-r', '--range', type=float, default=[0.0, 5.0], nargs=2).range
     cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
     cmd.track_parameters.add('mZprime')
@@ -1802,6 +1885,7 @@ def fit_toys(cmd):
     cmd.args.add('--rMin=-5')
     cmd.args.add('--rMax=5')
     cmd.args.add('--plots')
+    #cmd.args.add('--cminDefaultMinimizerStrategy==0')
     cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
 
     toysFile = pull_arg('--toysFile', required=True, type=str).toysFile
@@ -1860,6 +1944,10 @@ def likelihood_scan_factory(
         cmd.set_parameter('pdf_index', 0)
         cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
         cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
+    elif pdf_type == 'alt':
+        cmd.set_parameter('pdf_index', 2)
+        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
+        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
     else:
         raise Exception('Unknown pdf_type {}'.format(pdf_type))
 

@@ -75,6 +75,7 @@ def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):#, strip_pdfnam
     '''if strip_pdfname:
         name = name.replace('main_','').replace('ua2','')'''
     name = name.replace('.MultiDimFit','')
+    name = name.replace('_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth','')
     return name
 
 def namespace_to_attrdict(args):
@@ -85,7 +86,7 @@ def get_xsec(mz):
     return xsec[mz]
 
 def get_mz(path):
-    return int(re.search(r'mz(\d+)', osp.basename(path)).group(1))
+    return int(re.search(r'mMed-(\d+)', osp.basename(path)).group(1))
 
 def get_rinv(path):
     return int(re.search(r'rinv([\d\.]+)', osp.basename(path)).group(1))

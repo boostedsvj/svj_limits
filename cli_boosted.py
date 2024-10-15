@@ -226,7 +226,8 @@ def simple_test_fit():
     args = parser.parse_args()
 
     cmd = bsvj.CombineCommand(args.datacard, 'AsymptoticLimits')
-    cmd.track_parameters.extend(['r'])
+    #cmd.track_parameters.extend(['r'])
+    cmd.track_parameters.add(['r'])
     cmd.args.add('--saveWorkspace')
     #cmd.set_parameter.extend('pdf_index', 1)
     cmd.freeze_parameters.extend([
