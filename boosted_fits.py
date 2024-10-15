@@ -334,7 +334,7 @@ def get_jsons():
 # all_pdfs can have more values than in this list
 # this list controls what actually runs
 def known_pdfs():
-    pdf_list = ["main", "alt", "ua2", "ua2mod"]
+    pdf_list = ["main", "alt", "ua2"]
     return pdf_list
 
 def make_pdf(name, mt, bkg_th1):
