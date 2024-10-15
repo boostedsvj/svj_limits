@@ -334,7 +334,7 @@ def get_jsons():
 # all_pdfs can have more values than in this list
 # this list controls what actually runs
 def known_pdfs():
-    pdf_list = ["main", "alt", "ua2"]
+    pdf_list = ["main", "alt", "ua2", "ua2mod"]
     return pdf_list
 
 def make_pdf(name, mt, bkg_th1):
@@ -415,6 +415,23 @@ all_pdfs = {
         },
         5: {
             "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))',
+        },
+    }),
+    "ua2mod": PdfInfo("ua2mod", {
+        1: {
+            "expr": 'exp(@1*@0/{0})',
+        },
+        2: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2))',
+        },
+        3: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3))',
+        },
+        4: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3) + @4*pow(@0/{0},4))',
+        },
+        5: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3) + @4*pow(@0/{0},4) + @5*pow(@0/{0},5))',
         },
     }),
     "modexp": PdfInfo("modexp", {
