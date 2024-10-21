@@ -152,6 +152,10 @@ def this_fn_name():
 @scripter
 def gen_datacards():
     jsons = bsvj.get_jsons()
+    mtmin = bsvj.pull_arg('--mtmin', type=float, default=None).mtmin
+    mtmax = bsvj.pull_arg('--mtmax', type=float, default=None).mtmax
+    if mtmin is not None: jsons["mt_min"] = mtmin
+    if mtmax is not None: jsons["mt_max"] = mtmax
     bsvj.InputData(**jsons).gen_datacard()
 
 @scripter
