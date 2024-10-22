@@ -1,25 +1,54 @@
+#==============================================================================
+# plot_bias_study.py ----------------------------------------------------------
+#------------------------------------------------------------------------------
+# Author(s): Brendan Regnery, Sara Nabili, Kevin Pedro ------------------------
+#------------------------------------------------------------------------------
+# Plot the results of the bias test, it's a rather simple script made from ----
+#     an example given by Sara. It is kept here for smooth running in later ---
+#     reruns of the analysis. -------------------------------------------------
+#------------------------------------------------------------------------------
+
 import ROOT
 import matplotlib
 matplotlib.use('Agg') # prevents opening displays (fast), must use before pyplot
 import matplotlib.pyplot as plt
 import numpy as np
+import argparse
 
 ROOT.gROOT.SetBatch(True)  # Prevents ROOT from opening canvases
 
 def main():
-    mz = [200, 250, 300, 350, 400, 450, 500, 550]
+
+    parser = argparse.ArgumentParser(description="Configure base directory and parameters for bias test")
+    parser.add_argument('--base_dir', type=str, required=True,
+                        help="Base directory path, e.g. '/path/to/test/'")
+    parser.add_argument('--sel', type=str, required=True, choices=['cutbased', 'bdt=0.65'],
+                        help="Selection type: 'cutbased' or 'bdt=0.65'")
+    parser.add_argument('--mz', nargs='+', type=int, default=[200, 250, 300, 350, 400, 450, 500, 550],
+                        help="List of mass points. Default is [200, 250, 300, 350, 400, 450, 500, 550]")
+    
+    args = parser.parse_args()
+
+    for mz in args.mz:
+        # Construct the file name using mz and selection
+        filename = f"fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.selection}_smooth.root"
+        
+        # Combine the base directory and the dynamically constructed file name
+        full_path = f"{args.base_dir}/{filename}"
+        
+        print(f"Using path: {full_path}")
+
     
     # Directories for r_inj = 0 and r_inj = 1
-    idir_rinj0 = '/uscms/home/bregnery/work/CMSSW_11_3_4/src/boosted/svj_limits/bias_test/siginj0/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-'
-    idir_rinj1 = '/uscms/home/bregnery/work/CMSSW_11_3_4/src/boosted/svj_limits/bias_test/siginj1/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-'
-    
-    path_rinj0 = [idir_rinj0 + str(i) + "_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-bdt=0.65_smooth.root" for i in mz]
-    path_rinj1 = [idir_rinj1 + str(i) + "_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-bdt=0.65_smooth.root" for i in mz]
+    path_rinj0 = [f"{args.base_dir}/siginj0/fitDiagnosticsObserveddc_SVJ_s-channel_mMed{mz}_mDark-10_
+                    rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root" for mz in args.mz]
+    path_rinj1 = [f"{args.base_dir}/siginj1/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_
+                    rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root" for mz in args.mz]
 
     mean_rinj0, emean_rinj0, sigma_rinj0, esigma_rinj0 = [], [], [], []
     mean_rinj1, emean_rinj1, sigma_rinj1, esigma_rinj1 = [], [], [], []
 
-    for i, (f_rinj0, f_rinj1) in enumerate(zip(path_rinj0, path_rinj1)):
+    for i, (mz, f_rinj0, f_rinj1) in enumerate(zip(args.mz, path_rinj0, path_rinj1)):
         afile_rinj0 = ROOT.TFile(f_rinj0)
         atree_rinj0 = afile_rinj0.Get("tree_fit_sb")
         
@@ -27,12 +56,12 @@ def main():
         atree_rinj1 = afile_rinj1.Get("tree_fit_sb")
         
         # Create histograms for r/rErr for both r_inj=0 and r_inj=1
-        histo_rinj0 = ROOT.TH1F(f"histo_rinj0_{mz[i]}", "Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = %d GeV (r_inj=0)" % mz[i], 50, -10, 10)
-        histo_rinj1 = ROOT.TH1F(f"histo_rinj1_{mz[i]}", "Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = %d GeV (r_inj=1)" % mz[i], 50, -10, 10)
+        histo_rinj0 = ROOT.TH1F(f"histo_rinj0_{mz}", "Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = %d GeV (r_inj=0)" % mz, 50, -10, 10)
+        histo_rinj1 = ROOT.TH1F(f"histo_rinj1_{mz}", "Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = %d GeV (r_inj=1)" % mz, 50, -10, 10)
         
         # Draw r/rErr for both r_inj=0 and r_inj=1 into their respective histograms
         atree_rinj0.Draw("(r)/rErr>>%s" % histo_rinj0.GetName(), "fit_status==0 || fit_status==1")
-        atree_rinj1.Draw("(r - 1)/rErr>>%s" % histo_rinj1.GetName(), "fit_status==0 || fit_status==1")
+        atree_rinj1.Draw("(r - 0.2)/rErr>>%s" % histo_rinj1.GetName(), "fit_status==0 || fit_status==1")
         
         # Perform Gaussian fits for both histograms
         fit_rinj0 = histo_rinj0.Fit("gaus", "S", "Q")
@@ -52,16 +81,16 @@ def main():
         # Save the histograms as PDFs and PNGs
         canvas = ROOT.TCanvas("canvas", "canvas", 800, 600)
         histo_rinj0.Draw()
-        canvas.SaveAs(f"bias_siginj_rinj0_MZ_{mz[i]}_GeV.pdf")
-        canvas.SaveAs(f"bias_siginj_rinj0_MZ_{mz[i]}_GeV.png")
+        canvas.SaveAs(f"bias_siginj_rinj0_MZ_{mz}_GeV.pdf")
+        canvas.SaveAs(f"bias_siginj_rinj0_MZ_{mz}_GeV.png")
         
         histo_rinj1.Draw()
-        canvas.SaveAs(f"bias_siginj_rinj1_MZ_{mz[i]}_GeV.pdf")
-        canvas.SaveAs(f"bias_siginj_rinj1_MZ_{mz[i]}_GeV.png")
+        canvas.SaveAs(f"bias_siginj_rinj1_MZ_{mz}_GeV.pdf")
+        canvas.SaveAs(f"bias_siginj_rinj1_MZ_{mz}_GeV.png")
 
     # Plot mean for both r_inj = 0 and r_inj = 1
-    plt.errorbar(mz, mean_rinj0, yerr=emean_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
-    plt.errorbar(mz, mean_rinj1, yerr=emean_rinj1, marker='.', markersize=8, linestyle='--', label='$r_{inj}=1$')
+    plt.errorbar(args.mz, mean_rinj0, yerr=emean_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
+    plt.errorbar(args.mz, mean_rinj1, yerr=emean_rinj1, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0.2$')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('Mean', fontsize=12)
@@ -73,8 +102,8 @@ def main():
     plt.close()
 
     # Plot sigma for both r_inj = 0 and r_inj = 1
-    plt.errorbar(mz, sigma_rinj0, yerr=esigma_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
-    plt.errorbar(mz, sigma_rinj1, yerr=esigma_rinj1, marker='.', markersize=8, linestyle='--', label='$r_{inj}=1$')
+    plt.errorbar(args.mz, sigma_rinj0, yerr=esigma_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
+    plt.errorbar(args.mz, sigma_rinj1, yerr=esigma_rinj1, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0.2$')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('$\sigma$', fontsize=12)
