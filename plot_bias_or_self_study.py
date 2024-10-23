@@ -1,5 +1,5 @@
 #==============================================================================
-# plot_bias_study.py ----------------------------------------------------------
+# plot_bias_or_self_study.py ----------------------------------------------------------
 #------------------------------------------------------------------------------
 # Author(s): Brendan Regnery, Sara Nabili, Kevin Pedro ------------------------
 #------------------------------------------------------------------------------
@@ -21,24 +21,23 @@ def main():
 
     parser = argparse.ArgumentParser(description="Configure base directory and parameters for bias test")
     parser.add_argument('--base_dir', type=str, required=True,
-                        help="Base directory path, e.g. '/path/to/test/'")
+                        help="Directory path contianing the test subdirectories, e.g. '/path/to/test/', it expects two sub
+                              directories: siginj0 and siginj1")
     parser.add_argument('--sel', type=str, required=True, choices=['cutbased', 'bdt=0.65'],
                         help="Selection type: 'cutbased' or 'bdt=0.65'")
+    parser.add_argument('--test', type=str, required=True, choices=['bias', 'self'],
+                        help="Test type: 'bias' or 'self'")
     parser.add_argument('--mz', nargs='+', type=int, default=[200, 250, 300, 350, 400, 450, 500, 550],
                         help="List of mass points. Default is [200, 250, 300, 350, 400, 450, 500, 550]")
     
     args = parser.parse_args()
 
-    for mz in args.mz:
-        # Construct the file name using mz and selection
-        filename = f"fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.selection}_smooth.root"
-        
-        # Combine the base directory and the dynamically constructed file name
-        full_path = f"{args.base_dir}/{filename}"
-        
-        print(f"Using path: {full_path}")
+    # Switch between bias and self test
+    test = args.test
+    test_title = None
+    if test == 'bias' : test_title = 'Bias'
+    elif test == 'self' : test_title = 'Self'
 
-    
     # Directories for r_inj = 0 and r_inj = 1
     path_rinj0 = [f"{args.base_dir}/siginj0/fitDiagnosticsObserveddc_SVJ_s-channel_mMed{mz}_mDark-10_
                     rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root" for mz in args.mz]
@@ -57,7 +56,7 @@ def main():
         
         # Create histograms for r/rErr for both r_inj=0 and r_inj=1
         histo_rinj0 = ROOT.TH1F(f"histo_rinj0_{mz}", "Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = %d GeV (r_inj=0)" % mz, 50, -10, 10)
-        histo_rinj1 = ROOT.TH1F(f"histo_rinj1_{mz}", "Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = %d GeV (r_inj=1)" % mz, 50, -10, 10)
+        histo_rinj1 = ROOT.TH1F(f"histo_rinj1_{mz}", "Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = %d GeV (r_inj=0.2)" % mz, 50, -10, 10)
         
         # Draw r/rErr for both r_inj=0 and r_inj=1 into their respective histograms
         atree_rinj0.Draw("(r)/rErr>>%s" % histo_rinj0.GetName(), "fit_status==0 || fit_status==1")
@@ -81,12 +80,12 @@ def main():
         # Save the histograms as PDFs and PNGs
         canvas = ROOT.TCanvas("canvas", "canvas", 800, 600)
         histo_rinj0.Draw()
-        canvas.SaveAs(f"bias_siginj_rinj0_MZ_{mz}_GeV.pdf")
-        canvas.SaveAs(f"bias_siginj_rinj0_MZ_{mz}_GeV.png")
+        canvas.SaveAs(f"{test}_siginj_rinj0_MZ_{mz}_GeV.pdf")
+        canvas.SaveAs(f"{test}_siginj_rinj0_MZ_{mz}_GeV.png")
         
         histo_rinj1.Draw()
-        canvas.SaveAs(f"bias_siginj_rinj1_MZ_{mz}_GeV.pdf")
-        canvas.SaveAs(f"bias_siginj_rinj1_MZ_{mz}_GeV.png")
+        canvas.SaveAs(f"{test}_siginj_rinj1_MZ_{mz}_GeV.pdf")
+        canvas.SaveAs(f"{test}_siginj_rinj1_MZ_{mz}_GeV.png")
 
     # Plot mean for both r_inj = 0 and r_inj = 1
     plt.errorbar(args.mz, mean_rinj0, yerr=emean_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
@@ -94,11 +93,11 @@ def main():
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('Mean', fontsize=12)
-    plt.title('Bias Test: Mean of Gaussian Fit to (r-$r_{inj})$/rErr', fontsize=15)
+    plt.title(f'{test_title} Test: Mean of Gaussian Fit to (r-$r_{inj})$/rErr', fontsize=15)
     plt.ylim(-1.5, 1.5)
     plt.fill_between(plt.xlim(), 0.5, -0.5, color='#f88379', alpha=0.25, label='$\pm 0.5$')
-    plt.savefig('bias_pull_mean.png')
-    plt.savefig('bias_pull_mean.pdf')
+    plt.savefig(f'{test}_pull_mean.png')
+    plt.savefig(f'{test}_pull_mean.pdf')
     plt.close()
 
     # Plot sigma for both r_inj = 0 and r_inj = 1
@@ -107,10 +106,10 @@ def main():
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('$\sigma$', fontsize=12)
-    plt.title('Bias Test: $\sigma$ of Gaussian Fit to (r-$r_{inj})$/rErr', fontsize=15)
+    plt.title(f'{test_title} Test: $\sigma$ of Gaussian Fit to (r-$r_{inj})$/rErr', fontsize=15)
     plt.ylim(0.5, 2.5)
-    plt.savefig('bias_pull_stdev.png')
-    plt.savefig('bias_pull_stdev.pdf')
+    plt.savefig('{test}_pull_stdev.png')
+    plt.savefig('{test}_pull_stdev.pdf')
     plt.close()
 
 main()
