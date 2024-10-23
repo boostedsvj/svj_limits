@@ -21,12 +21,14 @@ def main():
 
     parser = argparse.ArgumentParser(description="Configure base directory and parameters for bias test")
     parser.add_argument('--base_dir', type=str, required=True,
-                        help="Directory path contianing the test subdirectories, e.g. '/path/to/test/', it expects two sub
-                              directories: siginj0 and siginj1")
+                        help=("Directory path contianing the test subdirectories, e.g. '/path/to/test/'," 
+                              " it expects two subdirectories: siginj0 and siginj1"))
     parser.add_argument('--sel', type=str, required=True, choices=['cutbased', 'bdt=0.65'],
                         help="Selection type: 'cutbased' or 'bdt=0.65'")
     parser.add_argument('--test', type=str, required=True, choices=['bias', 'self'],
                         help="Test type: 'bias' or 'self'")
+    parser.add_argument('--inj', type=float, required=True,
+                        help="The strength of the injected signal")
     parser.add_argument('--mz', nargs='+', type=int, default=[200, 250, 300, 350, 400, 450, 500, 550],
                         help="List of mass points. Default is [200, 250, 300, 350, 400, 450, 500, 550]")
     
@@ -38,11 +40,14 @@ def main():
     if test == 'bias' : test_title = 'Bias'
     elif test == 'self' : test_title = 'Self'
 
-    # Directories for r_inj = 0 and r_inj = 1
-    path_rinj0 = [f"{args.base_dir}/siginj0/fitDiagnosticsObserveddc_SVJ_s-channel_mMed{mz}_mDark-10_
-                    rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root" for mz in args.mz]
-    path_rinj1 = [f"{args.base_dir}/siginj1/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_
-                    rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root" for mz in args.mz]
+    # injected signal strength
+    inj = args.inj
+
+    # Directories for r_inj = 0 and r_inj = inj
+    path_rinj0 = [(f"{args.base_dir}/siginj0/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_"
+                   f"rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root") for mz in args.mz]
+    path_rinj1 = [(f"{args.base_dir}/siginj1/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_"
+                   f"rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root") for mz in args.mz]
 
     mean_rinj0, emean_rinj0, sigma_rinj0, esigma_rinj0 = [], [], [], []
     mean_rinj1, emean_rinj1, sigma_rinj1, esigma_rinj1 = [], [], [], []
@@ -55,12 +60,12 @@ def main():
         atree_rinj1 = afile_rinj1.Get("tree_fit_sb")
         
         # Create histograms for r/rErr for both r_inj=0 and r_inj=1
-        histo_rinj0 = ROOT.TH1F(f"histo_rinj0_{mz}", "Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = %d GeV (r_inj=0)" % mz, 50, -10, 10)
-        histo_rinj1 = ROOT.TH1F(f"histo_rinj1_{mz}", "Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = %d GeV (r_inj=0.2)" % mz, 50, -10, 10)
+        histo_rinj0 = ROOT.TH1F(f"histo_rinj0_{mz}", f"Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = {mz} GeV (r_inj=0)", 50, -10, 10)
+        histo_rinj1 = ROOT.TH1F(f"histo_rinj1_{mz}", f"Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = {mz} GeV (r_inj={inj})", 50, -10, 10)
         
         # Draw r/rErr for both r_inj=0 and r_inj=1 into their respective histograms
         atree_rinj0.Draw("(r)/rErr>>%s" % histo_rinj0.GetName(), "fit_status==0 || fit_status==1")
-        atree_rinj1.Draw("(r - 0.2)/rErr>>%s" % histo_rinj1.GetName(), "fit_status==0 || fit_status==1")
+        atree_rinj1.Draw(f"(r - {inj})/rErr>>%s" % histo_rinj1.GetName(), "fit_status==0 || fit_status==1")
         
         # Perform Gaussian fits for both histograms
         fit_rinj0 = histo_rinj0.Fit("gaus", "S", "Q")
@@ -89,11 +94,11 @@ def main():
 
     # Plot mean for both r_inj = 0 and r_inj = 1
     plt.errorbar(args.mz, mean_rinj0, yerr=emean_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
-    plt.errorbar(args.mz, mean_rinj1, yerr=emean_rinj1, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0.2$')
+    plt.errorbar(args.mz, mean_rinj1, yerr=emean_rinj1, marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}={inj}$')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('Mean', fontsize=12)
-    plt.title(f'{test_title} Test: Mean of Gaussian Fit to (r-$r_{inj})$/rErr', fontsize=15)
+    plt.title(f'{test_title} Test: Mean of Gaussian Fit to (r-$r_{{inj}})$/rErr', fontsize=15)
     plt.ylim(-1.5, 1.5)
     plt.fill_between(plt.xlim(), 0.5, -0.5, color='#f88379', alpha=0.25, label='$\pm 0.5$')
     plt.savefig(f'{test}_pull_mean.png')
@@ -102,14 +107,14 @@ def main():
 
     # Plot sigma for both r_inj = 0 and r_inj = 1
     plt.errorbar(args.mz, sigma_rinj0, yerr=esigma_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
-    plt.errorbar(args.mz, sigma_rinj1, yerr=esigma_rinj1, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0.2$')
+    plt.errorbar(args.mz, sigma_rinj1, yerr=esigma_rinj1, marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}={inj}$')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('$\sigma$', fontsize=12)
-    plt.title(f'{test_title} Test: $\sigma$ of Gaussian Fit to (r-$r_{inj})$/rErr', fontsize=15)
+    plt.title(f'{test_title} Test: $\sigma$ of Gaussian Fit to (r-$r_{{inj}})$/rErr', fontsize=15)
     plt.ylim(0.5, 2.5)
-    plt.savefig('{test}_pull_stdev.png')
-    plt.savefig('{test}_pull_stdev.pdf')
+    plt.savefig(f'{test}_pull_stdev.png')
+    plt.savefig(f'{test}_pull_stdev.pdf')
     plt.close()
 
 main()
