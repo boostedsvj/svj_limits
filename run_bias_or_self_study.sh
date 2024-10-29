@@ -1,6 +1,16 @@
 #!/bin/bash
-# To run fully: ./run_bias_study.sh 
-# To run with specific options: ./run_bias_study.sh -d 20240930 -f --sel cutbased --test_type bias --siginj 1.0 --mMed_values "200 300 500"
+#==============================================================================
+# run_bias_or_self_study.sh ---------------------------------------------------
+#------------------------------------------------------------------------------
+# Author(s): Brendan Regnery --------------------------------------------------
+#------------------------------------------------------------------------------
+# Basic functionality:
+#   run a bias (main/alt toy gen + ua2 fit) or self test (ua2 gen + ua2 fit) 
+#   default is a self test with no signal injected with options to change 
+#------------------------------------------------------------------------------
+# To run with default values: ./run_bias_or_self_study.sh 
+# To run with specific options: 
+# ./run_bias_study.sh -d 20240930 -f --sel cutbased --test_type bias --siginj 1.0 --mMed_values "200 300 500"
 
 # Default values
 hists_date="20240919"   # Date of the histograms used to make the data cards
@@ -53,8 +63,7 @@ if [ "$run_only_fits" = false ]; then
     # Generate datacards for the current mMed value with variable mDark and hists_date
     python3 cli_boosted.py gen_datacards \
       --bkg hists/merged_${hists_date}/bkg_sel-${sel}.json \
-      --sig hists/smooth_${hists_date}/SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.json \
-      -p main
+      --sig hists/smooth_${hists_date}/SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.json
   done
 
   # First loop: Run the 'gentoys' command
@@ -70,7 +79,7 @@ if [ "$run_only_fits" = false ]; then
   done
 fi
 
-# Run the 'fittoys' command
+# Fit the toys
 for mMed in "${mMed_values[@]}"
 do
   # Run the 'fittoys' command with the current mMed value and variable mDark
