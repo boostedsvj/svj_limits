@@ -1,7 +1,7 @@
 
 #!/bin/bash
 #==============================================================================
-# run_bias_or_self_study.sh ---------------------------------------------------
+# run_limit_asimov_sig_inj.sh --------------------------------------------------
 #------------------------------------------------------------------------------
 # Author(s): Brendan Regnery --------------------------------------------------
 #------------------------------------------------------------------------------
@@ -9,8 +9,8 @@
 #   Creates limits with expected 'asimov' values with an observed limit of an
 #      asimov toy with signal injected at 350 GeV (same toy for all mass points)
 #------------------------------------------------------------------------------
-# To run fully: ./run_limit_asimov_siginj.sh 
-# To run with a specfic date: ./run_limit_asimov_siginj.sh --mMed_values "300 350"
+# To run fully: ./run_limit_asimov_sig_inj.sh 
+# To run with a specfic date: ./run_limit_asimov_sig_inj.sh --mMed_values "300 350"
 
 # Default values
 hists_date="20240919"  # Date of the histograms used for making datacards
@@ -37,23 +37,6 @@ while [[ "$#" -gt 0 ]]; do
     esac
     shift
 done
-
-# Parse command-line arguments
-while getopts "d:f" opt; do
-  case $opt in
-    d)
-      scan_date="$OPTARG"   # User-defined date for fittoys
-      ;;
-    f)
-      run_only_fits=true    # Option to run only the fits loop
-      ;;
-    \?)
-      echo "Invalid option: -$OPTARG" >&2
-      exit 1
-      ;;
-  esac
-done
-
 
 # if you want to generate cards and the asimov toy
 if [ "$run_only_fits" = false ]; then
