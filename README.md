@@ -1,5 +1,8 @@
 # Limits for the SVJ boosted analysis
 
+This repo contains all the setup required for limit setting for the BSVJ search. The first section describes setup and some possible analyses,
+then the last section of this README contains commands that operate high-level scripts for preforming the necessary statistical tests.
+
 ## Setup 
 
 1. Follow the `combine` instructions: https://cms-analysis.github.io/HiggsAnalysis-CombinedLimit/#setting-up-the-environment-and-installation .
@@ -102,24 +105,64 @@ python3 quick_plot.py bkgfit ua2 --bkg merged_20240729/bkg_sel-cutbased.json --s
 MT histogram, with bkg-only fit and and sig+bkg fit:
 
 ```bash
-python quick_plot.py mtdist scans_Dec07/higgsCombineObserved_dc_mz450_rinv0.3_bdt0p300Bestfit.MultiDimFit.mH120.root
+python quick_plot.py mtdist scans_20241029/higgsCombineObserved_dc_mz450_rinv0.3_bdt0p300Bestfit.MultiDimFit.mH120.root
 ```
 
 Note you should use the `Bestfit`-tagged file, not `Scan`.
 Apparently, the single snapshot stored in the `Scan` files is _not_ the best fit.
 
 
-_Warning: Below here, readme outdated; need to check_
-
 CLS:
 
 ```bash
-python quick_plot.py cls scans_Dec07/higgsCombineObserved_dc_mz450_rinv0.3_bdt0p300.MultiDimFit.mH120.root scans_Dec07/higgsCombineAsimov_dc_mz450_rinv0.3_bdt0p300.MultiDimFit.mH120.root
+python quick_plot.py cls scans_20241029/higgsCombineObserved_dc_mz450_rinv0.3_bdt0p300.MultiDimFit.mH120.root scans_Dec07/higgsCombineAsimov_dc_mz450_rinv0.3_bdt0p300.MultiDimFit.mH120.root
 ```
 
 
 Brazil band (relies on good interpolation; always check the CLs plots to double check!):
 
 ```bash
-python quick_plot.py brazil scans_Dec07/higgsCombine*bdt0p3*.root
+python quick_plot.py brazil scans_20241029/higgsCombine*bdt0p3*.root #Expects '*Observed*' and '*Asimov*' files
 ```
+
+## High-level scripts
+
+These scripts are made to easily execute required statistical tests for the boosted SVJ search.
+
+### Bias and Self Tests
+
+The bias and self tests can be run via a shell script which makes datacards, generates toys, and fits toys automatically. 
+The shell script is filled with default settings to run a self test from 200 to 550 with rinv=0.3 and mdark=10 with no signal injected for the bdt based search, 
+but these options can easily configured in the command line without needing to alter the script.
+
+```bash
+# Default settings
+./run_bias_or_self_study.sh
+
+# Run the bias test for the cut based search with a r_inj = 0.2 for mZ 200
+./run_bias_or_self_study.sh --sel cutbased --test_type bias --siginj 0.2 --mMed_values "200"
+```
+
+Then to plot the results
+
+```bash
+python3 plot_bias_or_self_study.py --base_dir ./self_test --sel bdt=0.65 --test self --inj 0.2
+```
+
+This plotting script can be configured for the bias test, self test, bdt search, cutbased search, and various injected signal levels.
+
+### Limits: Expected + Observed = Asimov toy with signal injected at 350
+
+This shell script works in a similar way to the previous in that it is loaded with a number of default settings that can be re-configured on the 
+command line. It defaults to running from 200 to 550 with rinv=0.3 and mdark=10 for the bdt based search.
+
+```bash
+# Default settings
+/run_limit_asimov_sig_inj.sh
+
+# Run the test on the cutbased search for values of 300 and 350
+/run_limit_asimov_sig_inj.sh --sel cutbased --mMed_values "300 350"
+```
+
+If you redo the tests multiple times, make sure to provide clean directories
+
