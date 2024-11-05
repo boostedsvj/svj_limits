@@ -1050,8 +1050,12 @@ def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None
     """
     if name is None: name = uid()
     all_n_pars = range(all_pdfs[pdf_type].n_min, all_pdfs[pdf_type].n_max+1)
+<<<<<<< HEAD
     if pdf_type == "ua2": all_n_pars = [4]
     elif npars is not None: all_n_pars = [npars]
+=======
+    if npars is not None: all_n_pars = [npars]
+>>>>>>> 2520445c46d5583214afb0896373a14251f23032
     return [ pdf_factory(pdf_type, n_pars, mt, bkg_th1, name+'_npars'+str(n_pars), mt_scale, trigeff=trigeff) for n_pars in all_n_pars]
 
 
