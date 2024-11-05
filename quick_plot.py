@@ -66,14 +66,17 @@ def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):
     name = osp.basename(rootfile).rsplit('.',3)[0].replace('higgsCombine','')
     if strip_obs_asimov:
         name = name.replace('Observed_','').replace('Asimov_','')
-    name = name.replace('.MultiDimFit','')
+    #name = name.replace('.MultiDimFit','')
+    #print(name)
+    name = name.replace('alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth','')
+    print(name)
     return name
 
 def namespace_to_attrdict(args):
     return bsvj.AttrDict(**vars(args))
 
 def get_mz(path):
-    return int(re.search(r'mz(\d+)', osp.basename(path)).group(1))
+    return int(re.search(r'mMed-(\d+)', osp.basename(path)).group(1))
 
 def get_rinv(path):
     return int(re.search(r'rinv([\d\.]+)', osp.basename(path)).group(1))
@@ -824,6 +827,7 @@ def bkgfit():
 
     # Do the fisher test and mark the winner pdf
     winner = bsvj.do_fisher_test(mt, data_datahist, pdfs)
+    #winner = 0
     pdfs[winner].is_winner = True
 
     bkg_hist.vals = np.array(bkg_hist.vals)

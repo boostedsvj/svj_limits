@@ -331,6 +331,143 @@ def get_jsons():
     )
     return result
 
+# all_pdfs can have more values than in this list
+# this list controls what actually runs
+def known_pdfs():
+    pdf_list = ["main", "alt", "ua2"]
+    return pdf_list
+
+def make_pdf(name, mt, bkg_th1):
+    return pdfs_factory(name, mt, bkg_th1, name=f'bsvj_bkgfit{name}')
+
+class PdfInfo(object):
+    # format of info:
+    # {i: {"expr": str, "pars": {j: (a,b), k: (c,d)}]}, ...}
+    # if par ranges not provided, default is (-100,100)
+    def __init__(self, name, info):
+        self.name = name
+        self.info = info
+        self.n_max = max(info.keys())
+        self.n_min = min(info.keys())
+    def check_n(self, n):
+        if n<self.n_min or n>self.n_max:
+            raise Exception(f'Unavailable npars for {self.name} (allowed: {n_min} to {n_max})')
+    def expression(self, n, mt_scale=1000.):
+        self.check_n(n)
+        return self.info[n]["expr"].format(mt_scale)
+    def parameters(self, n, prefix=None):
+        self.check_n(n)
+        if prefix is None: prefix = uid()
+        par_ranges = self.info[n].get("pars",{})
+        par_ranges = {i : par_ranges.get(i,(-100.,100.)) for i in range(1,n+1)}
+        parameters = [ROOT.RooRealVar(f'{prefix}_p{i}', f'p{i}', 1., par_ranges[i][0], par_ranges[i][1]) for i in range(1,n+1)]
+        object_keeper.add_multiple(parameters)
+        return parameters
+
+all_pdfs = {
+    # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
+    # model NM has N params on 1-x and M params on x. exponents are (p_i + p_{i+1} * log(x))
+    "main": PdfInfo("main", {
+        2: {
+            "expr": 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2))',
+            "pars": {1: (-30., 30.), 2: (-10., 10.)},
+        },
+        3: {
+            "expr": 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})))',
+            "pars": {1: (-45., 45.), 2: (-10., 10.), 3: (-15, 15)},
+        },
+        4: {
+            "expr": 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)))',
+            # Alternatives to 22:
+            # 13: pow(1 - @0/{0}, @1+@2*log(@0/{0})) * pow(@0/{0}, -(@3+@4*log(@0/{0})))
+            "pars": {1: (-95., 95.), 2: (-25., 20.), 3: (-2., 2.), 4: (-2., 2.)},
+        },
+        5: {
+            "expr": 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)) * pow(@0/{0}, -(@4+@5*log(@0/{0})))',
+            # Alternatives to 32:
+            # 14: pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)+@5*pow(log(@0/{0}),3)))
+            # 41: pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)+@4*pow(log(@0/{0}),3)) * pow(@0/{0}, -@5)
+            "pars": {1: (-15., 15.), 2: (-95., 95.), 3: (-25., 25.), 4: (-5., 5.), 5: (-1.5, 1.5)},
+        }
+    }),
+    "alt": PdfInfo("alt", {
+        2: {
+            "expr": 'exp(@1*(@0/{0})) * pow(@0/{0},@2)',
+            "pars": {1: (-50., 50.), 2: (-10., 10.)},
+        },
+        3: {
+            "expr": 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})))',
+        },
+        4: {
+            "expr": 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})*(1+@4*log(@0/{0}))))',
+            "pars": {1: (-150., 150.), 2: (-100., 100.), 3: (-10., 10.), 4: (-10., 10.)},
+        },
+    }),
+    "ua2": PdfInfo("ua2", {
+        2: {
+            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2))',
+        },
+        3: {
+            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0}))',
+        },
+        4: {
+            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2)))',
+        },
+        5: {
+            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))',
+        },
+    }),
+    "ua2mod": PdfInfo("ua2mod", {
+        1: {
+            "expr": 'exp(@1*@0/{0})',
+        },
+        2: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2))',
+        },
+        3: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3))',
+        },
+        4: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3) + @4*pow(@0/{0},4))',
+        },
+        5: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3) + @4*pow(@0/{0},4) + @5*pow(@0/{0},5))',
+        },
+    }),
+    "modexp": PdfInfo("modexp", {
+        2: {
+            "expr": 'exp(@1*pow(@0/{0}, @2))',
+            "pars": {1: (-20, 0), 2: (0, 10)},
+        },
+        3: {
+            "expr": 'exp(@1*pow(@0/{0}, @2)+@1*pow(1-@0/{0}, @3))',
+            "pars": {1: (-20, 0), 2: (0, 10), 3: (-10, 0)},
+        },
+        4: {
+            "expr": 'exp(@1*pow(@0/{0}, @2)+@4*pow(1-@0/{0}, @3))',
+            "pars": {1: (-20, 0), 2: (0, 10), 3: (-10, 0), 4: (-20, 0)},
+        },
+    }),
+    "polpow": PdfInfo("polpow", {
+        2: {
+            "expr": 'pow(1 + @1*@0/{0},-@2)',
+            "pars": {1: (0, 50), 2: (-50, 0)},
+        },
+        3: {
+            "expr": 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2),-@3)',
+            "pars": {1: (0, 50), 2: (0, 50), 3: (-50, 0)},
+        },
+        4: {
+            "expr": 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3),-@4)',
+            "pars": {1: (0, 50), 2: (0, 50), 3: (0, 50), 4: (-50, 0)},
+        },
+        5: {
+            "expr": 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3) + @4*pow(@0/{0},4),-@5)',
+            "pars": {1: (0, 50), 2: (0, 50), 3: (0, 50), 4: (0, 50), 5: (-50, 0)},
+        },
+    }),
+}
+
 class InputData(object):
     """
     9 Feb 2024: Reworked .json input format.
@@ -384,11 +521,7 @@ class InputData(object):
             data_th1 = bkg_th1
         data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
-        pdfs_dict = {
-            'main' : pdfs_factory('main', mt, bkg_th1, name='bsvj_bkgfitmain'),
-            'alt' : pdfs_factory('alt', mt, bkg_th1, name='bsvj_bkgfitalt'),
-            'ua2' : pdfs_factory('ua2', mt, bkg_th1, name='bsvj_bkgfitua2'),
-            }
+        pdfs_dict = {pdf : make_pdf(pdf, mt, bkg_th1) for pdf in known_pdfs()}
 
         cache = None
         if use_cache:
@@ -396,10 +529,11 @@ class InputData(object):
             cache = FitCache(lock=fit_cache_lock)
 
         winner_pdfs = []
-        for pdf_type in ['main', 'ua2']:
+        for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-            i_winner = do_fisher_test(mt, data_datahist, pdfs)
+            if pdf_type == "ua2": i_winner = 0
+            else: i_winner = do_fisher_test(mt, data_datahist, pdfs)
             winner_pdfs.append(pdfs[i_winner])
 
         systs = [
@@ -608,7 +742,8 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                 par.setMax(new_right)
 
             # Now check if any of the ranges are needlessly large
-            if abs(value) / min(abs(left), abs(right)) < 0.1:
+            eps = 1e-10
+            if abs(value) / (min(abs(left), abs(right))+eps) < 0.1:
                 new_left = -10.*abs(value)
                 new_right = 10.*abs(value)
                 logger.info(
@@ -712,11 +847,13 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
         cache=cache
         )
     # Refit with output from first fit
+    options_nm = {'maxfev':10000}
     res = single_fit_scipy(
         expression, histogram,
         init_vals=res.x,
         tol=1e-6, method='Nelder-Mead',
-        cache=cache
+        cache=cache,
+        options = options_nm
         )
 
     if res.success:
@@ -738,10 +875,12 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
     results = []
     for method in ['BFGS', 'Nelder-Mead']:
         for init_val_variation in init_vals:
+            options_single = options_nm if method=='Nelder-Mead' else {}
             result = single_fit_scipy(
                 expression, histogram,
                 init_vals=init_val_variation,
-                tol=1e-3, method=method
+                tol=1e-3, method=method,
+                options = options_single
                 )
             # Check if fit fn val is not NaN or +/- inf
             if not(np.isnan(result.fun) or np.isposinf(result.fun) or np.isneginf(result.fun)):
@@ -819,135 +958,6 @@ def poly1d(parameters, mt_par='@0'):
 def sigmoid(expr):
     return '1./(1.+exp(-({})))'.format(expr)
 
-
-def pdf_expression(pdf_type, npars, mt_scale='1000'):
-    # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
-    # model NM has N params on 1-x and M params on x. exponents are (p_i + p_{i+1} * log(x))
-    if pdf_type == 'main':
-        if npars == 2:
-            expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2))'
-        elif npars == 3:
-            expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})))'
-        elif npars == 4:
-            expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)))'
-            # Alternatives to 22:
-            # 13: pow(1 - @0/{0}, @1+@2*log(@0/{0})) * pow(@0/{0}, -(@3+@4*log(@0/{0})))
-        elif npars == 5:
-            expression = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)) * pow(@0/{0}, -(@4+@5*log(@0/{0})))'
-            # Alternatives to 32:
-            # 14: pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)+@5*pow(log(@0/{0}),3)))
-            # 41: pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)+@4*pow(log(@0/{0}),3)) * pow(@0/{0}, -@5)
-        else:
-            raise Exception('Unavailable npars for main: {0}'.format(npars))
-    elif pdf_type == 'alt':
-        if npars == 1:
-            expression = 'exp(@1*(@0/{0}))'
-        elif npars == 2:
-            expression = 'exp(@1*(@0/{0})) * pow(@0/{0},@2)'
-        elif npars == 3:
-            expression = 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})))'
-        elif npars == 4:
-            expression = 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})*(1+@4*log(@0/{0}))))'
-        else:
-            raise Exception('Unavailable npars for alt: {0}'.format(npars))
-
-    elif pdf_type == 'ua2':
-        if npars == 2:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@2*(@0/{0}))'
-        if npars == 3:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0}))' #fifth variation
-        if npars == 4:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2)))' #fifth variation            
-        if npars == 5:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))' #fifth variation
-
-    else:
-        raise Exception('Unknown pdf type {0}'.format(pdf_type))
-    return expression.format(mt_scale)
-
-
-def pdf_parameters(pdf_type, npars, prefix=None):
-    if prefix is None: prefix = uid()
-    if pdf_type == 'main':
-        if npars == 2:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -30., 30.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.)
-                ]
-        elif npars == 3:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -45., 45.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -15, 15),
-                ]
-        elif npars == 4:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -95., 95.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -25., 20.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -2., 2.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -2., 2.),
-                ]
-        elif npars == 5:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -15., 15.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -95., 95.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -25., 25.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -5., 5.),
-                ROOT.RooRealVar(prefix + "_p5", "p5", 1., -1.5, 1.5),
-                ]
-
-    elif pdf_type == 'alt':
-        if npars == 2:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -50., 50.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.)
-                ]
-        if npars == 3:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.)
-                ]
-        if npars == 4:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -150., 150.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -10., 10.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -10., 10.)
-                ]
-
-    elif pdf_type == 'ua2':
-        if npars == 2:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.)
-                ]
-
-        elif npars == 3:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100),
-                ]
-        elif npars == 4:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
-                ]
-        elif npars == 5:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p5", "p5", 1., -100., 100.),
-                ]
-    object_keeper.add_multiple(parameters)
-    return parameters
-
-
 class PDF(object):
     """
     Container object for a RooParametricShapeBinPdf, with more info
@@ -995,17 +1005,17 @@ def pdf_factory(pdf_type, n_pars, mt, bkg_th1, name=None, mt_scale='1000', trige
     If `trigeff` equals 2016, 2017, or 2018, the bkg trigger efficiency as a 
     function of mT_AK15_subl is prefixed to the expression.
     """
-    if pdf_type not in {'main', 'alt', 'ua2'}: raise Exception('Unknown pdf_type %s' % pdf_type)
+    if pdf_type not in known_pdfs(): raise Exception('Unknown pdf_type %s' % pdf_type)
     if name is None: name = uid()
     #logger.info(
     #    'Building name={} pdf_type={} n_pars={} mt.GetName()="{}", bkg_th1.GetName()="{}"'
     #    .format(name, pdf_type, n_pars, mt.GetName(), bkg_th1.GetName())
     #    )
-    expression = pdf_expression(pdf_type, n_pars, mt_scale)
+    expression = all_pdfs[pdf_type].expression(n_pars, mt_scale)
     if trigeff in [2016, 2017, 2018]:
         logger.info('Adding trigger efficiency formula to expression')
         expression = '({})/({})'.format(expression, trigeff_expression(trigeff))
-    parameters = pdf_parameters(pdf_type, n_pars, name)
+    parameters = all_pdfs[pdf_type].parameters(n_pars, name)
     #logger.info(
     #    'Expression: {}; Parameter names: {}'
     #    .format(expression, ', '.join(p.GetName() for p in parameters))
@@ -1039,8 +1049,9 @@ def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None
     Like pdf_factory, but returns a list for all available n_pars
     """
     if name is None: name = uid()
-    all_n_pars = [2, 3, 4] if pdf_type == 'alt' else [2, 3, 4, 5]
-    if npars is not None: all_n_pars = [npars]
+    all_n_pars = range(all_pdfs[pdf_type].n_min, all_pdfs[pdf_type].n_max+1)
+    if pdf_type == "ua2": all_n_pars = [4]
+    elif npars is not None: all_n_pars = [npars]
     return [ pdf_factory(pdf_type, n_pars, mt, bkg_th1, name+'_npars'+str(n_pars), mt_scale, trigeff=trigeff) for n_pars in all_n_pars]
 
 
@@ -1281,9 +1292,10 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
     # get_winner = lambda i, j: i if cl_vals[(i,j)] > a_crit else j
 
     logger.info('Running F-test')
-    winner = get_winner(0,1)
-    for i in range(2,len(pdfs)):
-        winner = get_winner(winner, i)
+    #winner = get_winner(0,1)
+    winner = 0
+    '''for i in range(2,len(pdfs)):
+        winner = get_winner(winner, i)'''
     logger.info(f'Winner is pdf {winner} with {pdfs[winner].n_pars} parameters')
 
     # Print the table
@@ -1650,13 +1662,14 @@ class CombineCommand(object):
         pdfs in the datacard.
         """
         logger.info('Using pdf %s', pdf)
-        self.set_parameter('pdf_index', {'main':0, 'ua2':1}[pdf])
+        self.set_parameter('pdf_index', known_pdfs().index(pdf))
         pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
-        other_pdf = {'main':'ua2', 'ua2':'main'}[pdf]
-        other_pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
+        self.track_parameters.update(['r', 'n_exp_final_binbsvj_proc_roomultipdf'] + pdf_pars)
         self.freeze_parameters.add('pdf_index')
-        self.freeze_parameters.update(other_pdf_pars)
-        self.track_parameters.update(['r'] + pdf_pars)
+        for other_pdf in known_pdfs():
+            if other_pdf==pdf: continue
+            other_pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
+            self.freeze_parameters.update(other_pdf_pars)
 
     def asimov(self, flag=True):
         """
@@ -1681,7 +1694,7 @@ class CombineCommand(object):
             self.asimov(asimov)
 
             logger.info('Taking pdf from command line (default is ua2)')
-            pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2', 'alt'], default='ua2').pdf
+            pdf = pull_arg('--pdf', type=str, choices=known_pdfs(), default='ua2').pdf
             self.pick_pdf(pdf)
 
             toyseed = pull_arg('-t', type=int).t
@@ -1760,7 +1773,7 @@ def scan(cmd):
     cmd = bestfit(cmd)
     cmd.kwargs['--algo'] = 'grid'
     cmd.kwargs['--alignEdges'] = 1
-    rmin, rmax = pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
+    rmin, rmax = pull_arg('-r', '--range', type=float, default=[0., 2.], nargs=2).range
     cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
     cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
@@ -1855,18 +1868,7 @@ def likelihood_scan_factory(
 
     if n_toys is not None: cmd.kwargs['-t'] = str(n_toys)
 
-    cmd.freeze_parameters.append('pdf_index')
-    cmd.track_parameters.append('n_exp_final_binbsvj_proc_roomultipdf')
-    if pdf_type == 'ua2':
-        cmd.set_parameter('pdf_index', 1)
-        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
-        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
-    elif pdf_type == 'main':
-        cmd.set_parameter('pdf_index', 0)
-        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
-        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
-    else:
-        raise Exception('Unknown pdf_type {}'.format(pdf_type))
+    cmd.pick_pdf(pdf_type)
 
     return cmd
 
