@@ -13,16 +13,16 @@
 # ./run_bias_study.sh -d 20240930 -f --sel cutbased --test_type bias --siginj 1.0 --mMed_values "200 300 500"
 
 # Default values
-hists_date="20240919"   # Date of the histograms used to make the data cards
+hists_date="20241115"   # Date of the histograms used to make the data cards
 dc_date=$(date +%Y%m%d)     # Today's date for gentoys command
 toys_date=$(date +%Y%m%d)   # Today's date for fittoys command
 toyfits_date=$(date +%b%d)  # Date format for toyfits directory as "Oct29"
 mDark_value="10"
 rinv_value="0p3"
 run_only_fits=false         # Default to generate datacards, toys, and fit
-sel="bdt=0.65"            # Default selection type
+sel="bdt=0.67"            # Default selection type
 test_type="self"            # Default test type
-siginj=0.0                  # Default injected signal value
+siginj=false                  # Default no signal injected
 mMed_values=(200 250 300 350 400 450 500 550)  # Default mMed values
 
 # Parse command-line arguments
@@ -33,7 +33,7 @@ while [[ "$#" -gt 0 ]]; do
         --sel) sel="$2"; shift ;;
         --test_type) test_type="$2"; shift ;;
         --hists_date) hists_date="$2"; shift ;;
-        --siginj) siginj="$2"; shift ;;
+        --siginj) siginj=true ;;
         --mDark) mDark_value="$2"; shift ;;
         --rinv) rinv_value="$2"; shift ;; 
         --mMed_values) IFS=' ' read -r -a mMed_values <<< "$2"; shift ;;  # Parse mMed_values as array
@@ -50,14 +50,19 @@ else
 fi
 
 # This is used for the 'siginj' directory 0 means no signal, 1 means signal injected (not sig strength)
-if (( $(echo "$siginj == 0" | bc -l) )); then
+if [ "$siginj" == false ]; then
     inj=0
 else
     inj=1
 fi
 
+# Injected signal stregnth
+declare -A sig_strength # declare associative array (bash >= 4.0)
+sig_strength=( [200]=0.271 [250]=0.136 [300]=0.165 [350]=0.189 [400]=0.210 [450]=0.249 [500]=0.265 [550]=0.397 )
+# Cut-based values are needed!!
+
 # Generate the datacards (skip if only running fits)
-if [ "$run_only_fits" = false ]; then
+if [ "$run_only_fits" == false ]; then
   for mMed in "${mMed_values[@]}"
   do
     # Generate datacards for the current mMed value with variable mDark and hists_date
@@ -69,13 +74,24 @@ if [ "$run_only_fits" = false ]; then
   # First loop: Run the 'gentoys' command
   for mMed in "${mMed_values[@]}"
   do
-    # Run the 'gentoys' command with the current mMed value and variable mDark
-    python3 cli_boosted.py gentoys \
-      dc_${dc_date}_${sel}/dc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.txt \
-      -t 300 \
-      --expectSignal $siginj \
-      -s 1001 \
-      --pdf $pdf_option
+    if [ "$siginj" == true ]; then
+      # Run the 'gentoys' command with the current mMed value and variable mDark
+      python3 cli_boosted.py gentoys \
+        dc_${dc_date}_${sel}/dc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.txt \
+        -t 300 \
+        --expectSignal ${sig_strength[$mMed]} \
+        -s 1001 \
+        --pdf $pdf_option
+    else
+      # Run the 'gentoys' command with the current mMed value and variable mDark
+      # no signal injected
+      python3 cli_boosted.py gentoys \
+        dc_${dc_date}_${sel}/dc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.txt \
+        -t 300 \
+        --expectSignal 0 \
+        -s 1001 \
+        --pdf $pdf_option
+    fi
   done
 fi
 
