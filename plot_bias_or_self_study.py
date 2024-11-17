@@ -23,12 +23,10 @@ def main():
     parser.add_argument('--base_dir', type=str, required=True,
                         help=("Directory path contianing the test subdirectories, e.g. '/path/to/test/'," 
                               " it expects two subdirectories: siginj0 and siginj1"))
-    parser.add_argument('--sel', type=str, required=True, choices=['cutbased', 'bdt=0.65'],
-                        help="Selection type: 'cutbased' or 'bdt=0.65'")
+    parser.add_argument('--sel', type=str, required=True, choices=['cutbased', 'bdt=0.65', 'bdt=0.67'],
+                        help="Selection type: 'cutbased' or 'bdt=0.67' or add additional bdt values as needed")
     parser.add_argument('--test', type=str, required=True, choices=['bias', 'self'],
                         help="Test type: 'bias' or 'self'")
-    parser.add_argument('--inj', type=float, required=True,
-                        help="The strength of the injected signal")
     parser.add_argument('--mz', nargs='+', type=int, default=[200, 250, 300, 350, 400, 450, 500, 550],
                         help="List of mass points. Default is [200, 250, 300, 350, 400, 450, 500, 550]")
     
@@ -41,7 +39,13 @@ def main():
     elif test == 'self' : test_title = 'Self'
 
     # injected signal strength
-    inj = args.inj
+    # Needs to be aded for cutbased
+    inj ={}
+    if args.sel == 'bdt=0.67':
+        inj = {200 : 0.271, 250 : 0.136, 300 : 0.165, 350 : 0.189, 400 : 0.210, 450 : 0.249, 500 : 0.265, 550 : 0.397}
+    else :
+        print("WARNING: using 0.2 as injected signal value, please correct if unintended")
+        inj = {200 : 0.2, 250 : 0.2, 300 : 0.2, 350 : 0.2, 400 : 0.2, 450 : 0.2, 500 : 0.2, 550 : 0.2}
 
     # Directories for r_inj = 0 and r_inj = inj
     path_rinj0 = [(f"{args.base_dir}/siginj0/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_"
@@ -61,11 +65,11 @@ def main():
         
         # Create histograms for r/rErr for both r_inj=0 and r_inj=1
         histo_rinj0 = ROOT.TH1F(f"histo_rinj0_{mz}", f"Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = {mz} GeV (r_inj=0)", 50, -10, 10)
-        histo_rinj1 = ROOT.TH1F(f"histo_rinj1_{mz}", f"Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = {mz} GeV (r_inj={inj})", 50, -10, 10)
+        histo_rinj1 = ROOT.TH1F(f"histo_rinj1_{mz}", f"Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = {mz} GeV (r_inj={inj[mz]})", 50, -10, 10)
         
         # Draw r/rErr for both r_inj=0 and r_inj=1 into their respective histograms
         atree_rinj0.Draw("(r)/rErr>>%s" % histo_rinj0.GetName(), "fit_status==0 || fit_status==1")
-        atree_rinj1.Draw(f"(r - {inj})/rErr>>%s" % histo_rinj1.GetName(), "fit_status==0 || fit_status==1")
+        atree_rinj1.Draw(f"(r - {inj[mz]})/rErr>>%s" % histo_rinj1.GetName(), "fit_status==0 || fit_status==1")
         
         # Perform Gaussian fits for both histograms
         fit_rinj0 = histo_rinj0.Fit("gaus", "S", "Q")
@@ -94,7 +98,7 @@ def main():
 
     # Plot mean for both r_inj = 0 and r_inj = 1
     plt.errorbar(args.mz, mean_rinj0, yerr=emean_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
-    plt.errorbar(args.mz, mean_rinj1, yerr=emean_rinj1, marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}={inj}$')
+    plt.errorbar(args.mz, mean_rinj1, yerr=emean_rinj1, marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=Expected$')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('Mean', fontsize=12)
@@ -107,7 +111,7 @@ def main():
 
     # Plot sigma for both r_inj = 0 and r_inj = 1
     plt.errorbar(args.mz, sigma_rinj0, yerr=esigma_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
-    plt.errorbar(args.mz, sigma_rinj1, yerr=esigma_rinj1, marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}={inj}$')
+    plt.errorbar(args.mz, sigma_rinj1, yerr=esigma_rinj1, marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=Expected$')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('$\sigma$', fontsize=12)
