@@ -440,56 +440,6 @@ def get_cls(obs, asimov):
     from scipy.stats import norm # type:ignore
     quantiles = np.array([0.025, 0.16, 0.50, 0.84, 0.975])
 
-    # def get_mu_dnll_quantiles(dct):
-    #     mu = dct.mus
-    #     dnll = dct.deltanlls
-    #     dnll -= np.min(dnll) # Correct for bad first fit
-    #     quantile = dct.quantiles
-    #     # Take out the bestfit
-    #     is_bestfit = quantile==-1.
-    #     assert is_bestfit.sum() == 1
-    #     i_bestfit = is_bestfit.argmax()
-    #     mu_best = mu[i_bestfit]
-    #     dnll_best = dnll[i_bestfit]
-    #     print(i_bestfit, mu_best, dnll_best, quantile[i_bestfit])
-    #     mu = mu[~is_bestfit]
-    #     dnll = dnll[~is_bestfit]
-    #     quantile = quantile[~is_bestfit]
-    #     # Sort by ascending mu
-    #     order = np.argsort(mu)
-    #     mu = mu[order]
-    #     dnll = dnll[order]
-    #     quantile = quantile[order]
-    #     # Get rid of duplicate mus
-    #     keep = [0]
-    #     for i in range(1, len(mu)):
-    #         if mu[i] == mu[i-1]: continue
-    #         keep.append(i)
-    #     if len(keep) < len(mu):
-    #         logger.warning('Removing {} duplicate mu values'.format(len(mu) - len(keep)))
-    #         mu = mu[keep]
-    #         dnll = dnll[keep]
-    #         quantile = quantile[keep]
-
-    #     return bsvj.AttrDict(mu_best=mu_best, dnll_best=dnll_best, mu=mu, dnll=dnll, quantile=quantile, n=mu.shape[0])
-
-    # def align_mu_values(obs, asimov):
-    #     """
-    #     Make sure all arrays in obs and asimov concern the same mu values
-    #     """
-    #     i_obs_in_asimov = np.isin(obs.mu, asimov.mu)
-    #     i_asimov_in_obs = np.isin(asimov.mu, obs.mu)
-    #     for key in ['mu', 'dnll', 'quantile']:
-    #         obs[key] = obs[key][i_obs_in_asimov]
-    #         asimov[key] = asimov[key][i_asimov_in_obs]
-    #     obs.n = obs.mu.shape[0]
-    #     asimov.n = asimov.mu.shape[0]
-
-    # obs = get_mu_dnll_quantiles(obs_scan)
-    # asimov = get_mu_dnll_quantiles(asimov_scan)
-    # align_mu_values(obs, asimov)
-
-
     # Keep only scan points where both obs and asimov have a mu
     keep_obs = np.isin(obs.df['mu'], asimov.df['mu'])
     keep_asimov = np.isin(asimov.df['mu'], obs.df['mu'])
@@ -500,18 +450,7 @@ def get_cls(obs, asimov):
     obs = obs[np.unique(obs.df['mu'], return_index=True)[1]]
     asimov = asimov[np.unique(asimov.df['mu'], return_index=True)[1]]
 
-    #     for i in range(1, len(mu)):
-    #         if mu[i] == mu[i-1]: continue
-    #         keep.append(i)
-    #     if len(keep) < len(mu):
-    #         logger.warning('Removing {} duplicate mu values'.format(len(mu) - len(keep)))
-    #         mu = mu[keep]
-    #         dnll = dnll[keep]
-    #         quantile = quantile[keep]
-
-
     np.testing.assert_array_equal(obs.df['mu'], asimov.df['mu'])
-
 
     # I do not understand why not simply q_obs = 2.*dnll_obs?
     # Or is this just to offset a potentially bad best fit?
@@ -554,18 +493,12 @@ def get_cls(obs, asimov):
 def interpolate_95cl_limit(cls):
     mu = cls.obs.df['mu']
     def interpolate(cl, thing):
-        # print('Interpolating')
-        # select = ((cl < .20) & (mu>0))
         select = ((cl < .99) & (cl > .001) & (mu>0))
         if select.sum() == 0:
             logger.error('0.01<cl<0.20 & mu>0 yields NO scan points; can\'t interpolate %s', thing)
             return None
 
-        # print('  {} values left'.format(select.sum()))
         order = np.argsort(cl[select])
-        # print('  {:14s}  {:14s}'.format('cl', 'mu'))
-        # for c, m in zip(cl[select][order], mu[select][order]):
-        #     print('  {:+14.7f}  {:+14.7f}'.format(c, m))
         try:
             if DEBUG:
                 with quick_ax() as ax:
@@ -578,7 +511,6 @@ def interpolate_95cl_limit(cls):
         except ValueError as e:
             logger.error('Interpolation failed for %s: %s', thing, e)
             res = None
-        # print('Interpolation result: cl=0.05, mu={}'.format(res))
         return res
 
     d = bsvj.AttrDict()
