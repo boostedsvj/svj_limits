@@ -94,7 +94,7 @@ python3 quick_plot.py bkgfit ua2 --bkg cutbased/merged_20240920/bkg_sel-cutbased
 ΔNNL as a function of mu:
 
 ```bash
-python quick_plot.py muscan scans_Dec07/*bdt0p3*Scan*.root
+python quick_plot.py muscan scans_20241029/*bdt0p3*Scan*.root
 ```
 
 Fit to background distribution:
@@ -139,29 +139,48 @@ but these options can easily configured in the command line without needing to a
 # Default settings
 ./run_bias_or_self_study.sh
 
-# Run the bias test for the cut based search with a r_inj = 0.2 for mZ 200
-./run_bias_or_self_study.sh --sel cutbased --test_type bias --siginj 0.2 --mMed_values "200"
+# Run the bias test for the cut based search with a r_inj at expected limit strength for mZ 200
+./run_bias_or_self_study.sh --sel cutbased --test_type bias --siginj --mMed_values "200"
 ```
 
 Then to plot the results
 
 ```bash
-python3 plot_bias_or_self_study.py --base_dir ./self_test --sel bdt=0.65 --test self --inj 0.2
+python3 plot_bias_or_self_study.py --base_dir ./self_test --sel bdt=0.67 --test self
 ```
 
 This plotting script can be configured for the bias test, self test, bdt search, cutbased search, and various injected signal levels.
 
+Example from the BDT based search:
+```bash
+# Self test
+# no signal injected
+./run_bias_or_self_test.sh 
+# signal injected
+./run_bias_or_self_test.sh --siginj
+# plot
+python3 plot_bias_or_self_study.py --base_dir ./self_test --sel bdt=0.67 --test self
+
+# Bias test
+# no signal injected
+./run_bias_or_self_study.sh --test_type bias
+# signal injected
+./run_bias_or_self_study.sh --test_type bias --siginj
+# plot
+python3 plot_bias_or_self_study.py --base_dir ./bias_test --sel bdt=0.67 --test bias
+```
+
 ### Limits: Expected + Observed = Asimov toy with signal injected at 350
 
 This shell script works in a similar way to the previous in that it is loaded with a number of default settings that can be re-configured on the 
-command line. It defaults to running from 200 to 550 with rinv=0.3 and mdark=10 for the bdt based search.
+command line. It defaults to running from 200 to 550 with rinv=0.3 and mdark=10 for the bdt based search. Signal injection mass and a strength
+and mass can be configured.
 
 ```bash
-# Default settings
-/run_limit_asimov_sig_inj.sh
-
-# Run the test on the cutbased search for values of 300 and 350
-/run_limit_asimov_sig_inj.sh --sel cutbased --mMed_values "300 350"
+# Running with signal injected at mZ' 200 with a strength of 0.271
+./run_limit_asimov_sig_inj.sh --mInj 200 --siginj 0.271
+# Then to run all signal masses
+./all_sig_inj_asimov_limits.sh
 ```
 
 If you redo the tests multiple times, make sure to provide clean directories
