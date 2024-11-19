@@ -452,14 +452,12 @@ def get_cls(obs, asimov):
 
     np.testing.assert_array_equal(obs.df['mu'], asimov.df['mu'])
 
-    # I do not understand why not simply q_obs = 2.*dnll_obs?
-    # Or is this just to offset a potentially bad best fit?
-    # If so, why not just shift the whole dnll array so its minimum is at 0...
+    # 1007.1727 Section 2.5: Alternative test statistic \tilde{q}_{\mu} for upper limits, Eq. (16)
     dnll_obs = obs.df['dnll']
     q_obs = []
     for i, mu in enumerate(obs.df['mu']):
         if mu < obs.bestfit.df['mu']:
-            dnll_obs_min = np.min(dnll_obs[:i+1])  # Why?
+            dnll_obs_min = np.min(dnll_obs[:i+1])
             dnll_obs_constrained = dnll_obs[i] - dnll_obs_min
         else:
             dnll_obs_constrained = dnll_obs[i]
@@ -470,23 +468,43 @@ def get_cls(obs, asimov):
     q_A = 2. * asimov.df['dnll']
     q_A[q_A < 0.] = 0.  # Set negative values to 0
 
-    # Also this formula I don't fully understand
-    s_exp = { q : (1.-norm.cdf(np.sqrt(q_A) - norm.ppf(q))) / q for q in quantiles}
-
     assert np.all(  ((q_obs >= 0.) & (q_obs <= q_A)) | (q_obs > q_A)  )
 
-    # This is just black magic
+    # CL_{s} = p_{s+b}/p_{b}
+    # from 1007.1727:
+    # \sigma_{A}^2 = \mu^2/q_A : Eq. (31) (Section 3.2)
+    # p_{\mu} = 1 - F(\tilde{q}_{\mu}|\mu) : Eq. (67) (Section 3.7)
+    # below: take \tilde{q}_{\mu} -> q_obs
+    # s+b: \mu^{\prime} = \mu
+    #      CDF from Eq. (66) (Section 3.7), substituting Eq. (31)
+    #      F(q_obs|\mu) = \Phi(\sqrt{q_obs}) for 0 < q_obs <= q_A
+    #                   = \Phi((q_obs+q_A)/(2\sqrt{q_A})) for q_obs > q_A
+    #   b: \mu^{\prime} = 0
+    #      CDF from Eq. (65) (Section 3.7), substituting Eq. (31)
+    #      F(q_obs|0)   = \Phi(\sqrt{q_obs} - \sqrt{q_A}) for 0 < q_obs <= q_A
+    #                   = \Phi((q_obs - q_A)/(2\sqrt{q_A})) for q_obs > q_A
     sb = np.where(
         q_obs <= q_A,
         1. - norm.cdf( np.sqrt(q_obs) ),
-        1. - norm.cdf( safe_divide(.5*(q_obs+q_A) , np.sqrt(q_obs)) )
+        1. - norm.cdf( safe_divide(.5*(q_obs+q_A) , np.sqrt(q_A)) )
         )
     b = np.where(
         q_obs <= q_A,
         norm.cdf( np.sqrt(q_A)-np.sqrt(q_obs) ),
-        1. - norm.cdf( safe_divide(.5*(q_obs-q_A) , np.sqrt(q_obs)) )
+        1. - norm.cdf( safe_divide(.5*(q_obs-q_A) , np.sqrt(q_A)) )
         )
     s = sb / b
+
+    # expected: take q_obs -> q_A, therefore always in q_obs <= q_A case
+    # follow 1007.1727 Section 4.3 Eq. (89): take \mu -> \mu +/- N\sigma
+	# \tilde{q}_{\mu} = (\mu - \hat{\mu})^2 / \sigma^2 : Eq. (62) (Section 3.7)
+	# therefore \sqrt{q} -> \sqrt{q} +/- N
+	# then use Eq. (66), (65) as above
+	# s+b: F = \Phi(\sqrt{q} +/- N)
+	#   b: F = \Phi(+/-N)
+	# and N = ppf(q), so Phi(ppf(q)) = q
+    s_exp = { q : (1.-norm.cdf(np.sqrt(q_A) - norm.ppf(q))) / q for q in quantiles}
+
     return bsvj.AttrDict(s=s, b=b, sb=sb, q_obs=q_obs, q_A=q_A, obs=obs, asimov=asimov, s_exp=s_exp)
 
 
