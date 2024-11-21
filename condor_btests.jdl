@@ -3,7 +3,7 @@ Executable = btest.sh
 should_transfer_files = YES
 arguments = $(Process)
 when_to_transfer_output = ON_EXIT
-Output = Logs/btests_$(Cluster)_$(Process).stdout
-Error = Logs/btests_$(Cluster)_$(Process).stderr
-Log = Logs/btests_$(Cluster)_$(Process).log
+Output = Logs/btest/btests_$(Cluster)_$(Process).stdout
+Error = Logs/btest/btests_$(Cluster)_$(Process).stderr
+Log = Logs/btest/btests_$(Cluster)_$(Process).log
 Queue 10

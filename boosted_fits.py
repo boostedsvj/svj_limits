@@ -334,7 +334,7 @@ def get_jsons():
 # all_pdfs can have more values than in this list
 # this list controls what actually runs
 def known_pdfs():
-    pdf_list = ["main", "alt", "ua2"]
+    pdf_list = ["main", "alt", "ua2", "ua2mod"]
     return pdf_list
 
 def make_pdf(name, mt, bkg_th1):
@@ -532,8 +532,9 @@ class InputData(object):
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-            if pdf_type == "ua2": i_winner = 0
-            else: i_winner = do_fisher_test(mt, data_datahist, pdfs)
+            #if pdf_type == "ua2": i_winner = 0
+            #else: i_winner = do_fisher_test(mt, data_datahist, pdfs)
+            i_winner = do_fisher_test(mt, data_datahist, pdfs)
             winner_pdfs.append(pdfs[i_winner])
 
         systs = [
@@ -727,14 +728,16 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
 
             # First check if the init_val is *outside* of the current range:
             if value < left:
-                new_left = value -10.*abs(value)
+                #new_left = value -10.*abs(value)
+                new_left = value - 2.*abs(value)
                 logger.info(
                     f'Increasing range for {par.GetName()} on the left:'
                     f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {right:.2f})'
                     )
                 par.setMin(new_left)
             elif value > right:
-                new_right = value + 10.*abs(value)
+                #new_right = value + 10.*abs(value)
+                new_right = value + 2.*abs(value)
                 logger.info(
                     f'Increasing range for {par.GetName()} on the right:'
                     f'({left:.2f}, {right:.2f}) -> ({left:.2f}, {new_right:.2f})'
@@ -744,8 +747,10 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
             # Now check if any of the ranges are needlessly large
             eps = 1e-10
             if abs(value) / (min(abs(left), abs(right))+eps) < 0.1:
-                new_left = -10.*abs(value)
-                new_right = 10.*abs(value)
+                #new_left = -10.*abs(value)
+                #new_right = 10.*abs(value)
+                new_left = -2.*abs(value)
+                new_right = 2.*abs(value)
                 logger.info(
                     f'Decreasing range for {par.GetName()} on both sides:'
                     f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {new_right:.2f})'
@@ -1050,12 +1055,9 @@ def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None
     """
     if name is None: name = uid()
     all_n_pars = range(all_pdfs[pdf_type].n_min, all_pdfs[pdf_type].n_max+1)
-<<<<<<< HEAD
-    if pdf_type == "ua2": all_n_pars = [4]
-    elif npars is not None: all_n_pars = [npars]
-=======
+    #if pdf_type == "ua2": all_n_pars = [4]
+    #elif npars is not None: all_n_pars = [npars]
     if npars is not None: all_n_pars = [npars]
->>>>>>> 2520445c46d5583214afb0896373a14251f23032
     return [ pdf_factory(pdf_type, n_pars, mt, bkg_th1, name+'_npars'+str(n_pars), mt_scale, trigeff=trigeff) for n_pars in all_n_pars]
 
 
@@ -1296,10 +1298,10 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
     # get_winner = lambda i, j: i if cl_vals[(i,j)] > a_crit else j
 
     logger.info('Running F-test')
-    #winner = get_winner(0,1)
-    winner = 0
-    '''for i in range(2,len(pdfs)):
-        winner = get_winner(winner, i)'''
+    winner = get_winner(0,1)
+    #winner = 0
+    for i in range(2,len(pdfs)):
+        winner = get_winner(winner, i)
     logger.info(f'Winner is pdf {winner} with {pdfs[winner].n_pars} parameters')
 
     # Print the table
@@ -1777,10 +1779,12 @@ def scan(cmd):
     cmd = bestfit(cmd)
     cmd.kwargs['--algo'] = 'grid'
     cmd.kwargs['--alignEdges'] = 1
-    rmin, rmax = pull_arg('-r', '--range', type=float, default=[0., 2.], nargs=2).range
+    rmin, rmax = pull_arg('-r', '--range', type=float, default=[0., 0.60], nargs=2).range
+    #rmin, rmax = pull_arg('-r', '--range', type=float, default=[0., 0.2], nargs=2).range
     cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
     cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
+    #cmd.kwargs['--points'] = pull_arg('-n', type=int, default=11).n
     return cmd
 
 

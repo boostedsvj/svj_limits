@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 
 # code to retrive bkg fitting function parameter values
-# to run:        python parvalues.py -mz 350 -md 10 -r 0p3 -d 20241010
+# to run:        python parvalues.py -mz 300 -md 10 -r 0p3 -d 20241010
 
 argParser = argparse.ArgumentParser()
 argParser.add_argument("-mz", "--mMed", help="mediator mass")

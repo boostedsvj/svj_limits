@@ -66,9 +66,10 @@ def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):
     name = osp.basename(rootfile).rsplit('.',3)[0].replace('higgsCombine','')
     if strip_obs_asimov:
         name = name.replace('Observed_','').replace('Asimov_','')
-    #name = name.replace('.MultiDimFit','')
+    name = name.replace('.MultiDimFit','')
     #print(name)
     name = name.replace('alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth','')
+    name = name.replace('_SVJ_s-channel','')
     print(name)
     return name
 
@@ -354,6 +355,7 @@ def mtdist():
     # __________________________________
     # Load snapshot - everything is final fit values from this point onward
     ws.loadSnapshot('MultiDimFit')
+    #ws.loadSnapshot('reallyClean')
 
     # Best fit mu value
     mu = ws.var('r').getVal()
@@ -778,10 +780,10 @@ def bkgfit():
     Bkg fit plots
     """
     jsons = bsvj.get_jsons()
-    pdftype = bsvj.pull_arg('pdftype', type=str, choices=bsvj.known_pdfs()).pdftype
-    linscale = bsvj.pull_arg('--lin', action='store_true').lin
+    pdftype   = bsvj.pull_arg('pdftype', type=str, choices=bsvj.known_pdfs()).pdftype
+    linscale  = bsvj.pull_arg('--lin', action='store_true').lin
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    outfile   = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
 
     input = bsvj.InputData(**jsons)
 
