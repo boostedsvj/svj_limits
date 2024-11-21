@@ -80,10 +80,18 @@ def read_arg(*args, **kwargs):
     args, _ = parser.parse_known_args()
     return args
 
-
 def get_xs(mz):
-    xsec = {200:3.48, 250:3.31, 300:3.19, 350:2.89, 400:2.62, 450:2.36, 500:2.09, 550:1.78}
-    return xsec[mz]
+    signal_xsecs = {
+        200 : 9.143,
+        250 : 6.910,
+        300 : 5.279,
+        350 : 4.077,
+        400 : 3.073,
+        450 : 2.448,
+        500 : 1.924,
+        550 : 1.578,
+    }
+    return signal_xsecs[mz]
 
 @contextmanager
 def set_args(args):
@@ -94,6 +102,16 @@ def set_args(args):
     finally:
         sys.argv = _old_sys_args
 
+@contextmanager
+def reset_sys_argv():
+    """
+    Saves a copy of sys.argv, and resets it upon closing this context
+    """
+    saved_sys_args = sys.argv[:]
+    try:
+        yield None
+    finally:
+        sys.argv = saved_sys_args
 
 @contextmanager
 def timeit(msg):
@@ -104,7 +122,6 @@ def timeit(msg):
         yield None
     finally:
         logger.info('  Done, took %s secs', time.time() - t0)
-
 
 class Scripter:
     def __init__(self):
@@ -127,7 +144,7 @@ def mpl_fontsizes(small=14, medium=18, large=24):
     plt.rc('axes', labelsize=medium)    # fontsize of the x and y labels
     plt.rc('xtick', labelsize=small)    # fontsize of the tick labels
     plt.rc('ytick', labelsize=small)    # fontsize of the tick labels
-    plt.rc('legend', fontsize=medium)    # legend fontsize
+    plt.rc('legend', fontsize=small)    # legend fontsize
     plt.rc('figure', titlesize=large)   # fontsize of the figure title
 
 
@@ -164,15 +181,8 @@ def hist_to_th1(name, hist):
     Takes a dict-like histogram (keys: binning, vals, errs) and
     returns a ROOT.TH1F
     """
-    n_bins = len(hist.binning)-1
-    th1 = ROOT.TH1F(name, name, n_bins, array('f', hist.binning))
-    ROOT.SetOwnership(th1, False)
-    assert len(hist.vals) == n_bins
-    assert len(hist.errs) == n_bins
-    for i in range(n_bins):
-        th1.SetBinContent(i+1, hist.vals[i])
-        th1.SetBinError(i+1, hist.errs[i])
-    return th1
+    logger.warning('Deprecated: use Histogram.th1(name) instead')
+    return hist.th1(name)
 
 
 def hist_cut_left(hist, i_bin_min):
@@ -189,12 +199,62 @@ def hist_cut_left(hist, i_bin_min):
 
 class Histogram:
     def __init__(self, d):
-        self.vals = d['vals']
-        self.errs = d['errs']
-        self.binning = d['binning']
+        self.vals = np.array(d['vals'])
+        self.errs = np.array(d['errs'])
+        self.binning = np.array(d['binning'])
         self.metadata = d['metadata']
 
+    def copy(self):
+        """Returns a copy"""
+        return copy.deepcopy(self)
 
+    def th1(self, name):
+        """
+        Converts histogram to a ROOT.TH1F
+        """
+        n_bins = len(self.binning)-1
+        th1 = ROOT.TH1F(name, name, n_bins, self.binning)
+        ROOT.SetOwnership(th1, False)
+        assert len(self.vals) == n_bins
+        assert len(self.errs) == n_bins
+        for i in range(n_bins):
+            th1.SetBinContent(i+1, self.vals[i])
+            th1.SetBinError(i+1, self.errs[i])
+        return th1
+
+    @property
+    def nbins(self):
+        return len(self.binning)-1
+
+    def __repr__(self):
+        d = np.column_stack((self.vals, self.errs))
+        return (
+            f'<H n={self.nbins} int={self.vals.sum():.3f}'
+            f' binning={self.binning[0]:.1f}-{self.binning[-1]:.1f}'
+            f' vals/errs=\n{d}'
+            '>'
+            )
+
+    def __eq__(self,other):
+        return (self.vals==other.vals).all() and (self.errs==other.errs).all() and (self.binning==other.binning).all()
+
+    def cut(self, xmin=-np.inf, xmax=np.inf):
+        """
+        Throws away all bins with left boundary < xmin or right boundary > xmax.
+        Mostly useful for plotting purposes.
+        Returns a copy.
+        """
+        # safety checks
+        if xmin>xmax:
+            raise ValueError("xmin ({}) greater than xmax ({})".format(xmin,xmax))
+
+        h = self.copy()
+        imin = np.argmin(self.binning < xmin) if xmin > self.binning[0] else 0
+        imax = np.argmax(self.binning > xmax) if xmax < self.binning[-1] else self.nbins+1
+        h.binning = h.binning[imin:imax]
+        h.vals = h.vals[imin:imax-1]
+        h.errs = h.errs[imin:imax-1]
+        return h
 
 def build_histograms_in_dict_tree(d, parent=None, key=None):
     """
@@ -223,6 +283,17 @@ def iter_histograms(d):
             for _ in iter_histograms(v):
                 yield _
 
+def cut_histograms(d,mt_min,mt_max):
+    """
+    Traverses a dict-of-dicts, and cuts all the Histogram instances
+    """
+    if isinstance(d, Histogram):
+        return d.cut(mt_min,mt_max)
+    elif isinstance(d, dict):
+        for k,v in d.items():
+            d[k] = cut_histograms(v,mt_min,mt_max)
+        return d
+
 def ls_inputdata(d, depth=0, key='<root>'):
     """
     Prints a dict of dicts recursively
@@ -235,64 +306,198 @@ def ls_inputdata(d, depth=0, key='<root>'):
             ls_inputdata(v, depth+1, k)
 
 
+class Decoder(json.JSONDecoder):
+    """
+    Standard JSON decoder, but support for the Histogram class
+    """
+    def __init__(self, *args, **kwargs):
+        json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)
+
+    def object_hook(self, d):
+        try:
+            is_histogram = d['type'] == 'Histogram'
+        except (AttributeError, KeyError):
+            is_histogram = False
+        if is_histogram:
+            return Histogram(d)
+        return d
+
+# get set of json files from command line (used for datacard creation)
+def get_jsons():
+    result = dict(
+        sigfile = pull_arg('--sig', type=str, required=True).sig,
+        bkgfile = pull_arg('--bkg', type=str, required=True).bkg,
+        datafile = pull_arg('--data', type=str, default=None).data,
+    )
+    return result
+
+# all_pdfs can have more values than in this list
+# this list controls what actually runs
+def known_pdfs():
+    pdf_list = ["main", "alt", "ua2", "ua2mod"]
+    return pdf_list
+
+def make_pdf(name, mt, bkg_th1):
+    return pdfs_factory(name, mt, bkg_th1, name=f'bsvj_bkgfit{name}')
+
+class PdfInfo(object):
+    # format of info:
+    # {i: {"expr": str, "pars": {j: (a,b), k: (c,d)}]}, ...}
+    # if par ranges not provided, default is (-100,100)
+    def __init__(self, name, info):
+        self.name = name
+        self.info = info
+        self.n_max = max(info.keys())
+        self.n_min = min(info.keys())
+    def check_n(self, n):
+        if n<self.n_min or n>self.n_max:
+            raise Exception(f'Unavailable npars for {self.name} (allowed: {n_min} to {n_max})')
+    def expression(self, n, mt_scale=1000.):
+        self.check_n(n)
+        return self.info[n]["expr"].format(mt_scale)
+    def parameters(self, n, prefix=None):
+        self.check_n(n)
+        if prefix is None: prefix = uid()
+        par_ranges = self.info[n].get("pars",{})
+        par_ranges = {i : par_ranges.get(i,(-100.,100.)) for i in range(1,n+1)}
+        parameters = [ROOT.RooRealVar(f'{prefix}_p{i}', f'p{i}', 1., par_ranges[i][0], par_ranges[i][1]) for i in range(1,n+1)]
+        object_keeper.add_multiple(parameters)
+        return parameters
+
+all_pdfs = {
+    # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
+    # model NM has N params on 1-x and M params on x. exponents are (p_i + p_{i+1} * log(x))
+    "main": PdfInfo("main", {
+        2: {
+            "expr": 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2))',
+            "pars": {1: (-30., 30.), 2: (-10., 10.)},
+        },
+        3: {
+            "expr": 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})))',
+            "pars": {1: (-45., 45.), 2: (-10., 10.), 3: (-15, 15)},
+        },
+        4: {
+            "expr": 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)))',
+            # Alternatives to 22:
+            # 13: pow(1 - @0/{0}, @1+@2*log(@0/{0})) * pow(@0/{0}, -(@3+@4*log(@0/{0})))
+            "pars": {1: (-95., 95.), 2: (-25., 20.), 3: (-2., 2.), 4: (-2., 2.)},
+        },
+        5: {
+            "expr": 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)) * pow(@0/{0}, -(@4+@5*log(@0/{0})))',
+            # Alternatives to 32:
+            # 14: pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)+@5*pow(log(@0/{0}),3)))
+            # 41: pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)+@4*pow(log(@0/{0}),3)) * pow(@0/{0}, -@5)
+            "pars": {1: (-15., 15.), 2: (-95., 95.), 3: (-25., 25.), 4: (-5., 5.), 5: (-1.5, 1.5)},
+        }
+    }),
+    "alt": PdfInfo("alt", {
+        2: {
+            "expr": 'exp(@1*(@0/{0})) * pow(@0/{0},@2)',
+            "pars": {1: (-50., 50.), 2: (-10., 10.)},
+        },
+        3: {
+            "expr": 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})))',
+        },
+        4: {
+            "expr": 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})*(1+@4*log(@0/{0}))))',
+            "pars": {1: (-150., 150.), 2: (-100., 100.), 3: (-10., 10.), 4: (-10., 10.)},
+        },
+    }),
+    "ua2": PdfInfo("ua2", {
+        2: {
+            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2))',
+        },
+        3: {
+            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0}))',
+        },
+        4: {
+            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2)))',
+        },
+        5: {
+            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))',
+        },
+    }),
+    "ua2mod": PdfInfo("ua2mod", {
+        1: {
+            "expr": 'exp(@1*@0/{0})',
+        },
+        2: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2))',
+        },
+        3: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3))',
+        },
+        4: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3) + @4*pow(@0/{0},4))',
+        },
+        5: {
+            "expr": 'exp(@1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3) + @4*pow(@0/{0},4) + @5*pow(@0/{0},5))',
+        },
+    }),
+    "modexp": PdfInfo("modexp", {
+        2: {
+            "expr": 'exp(@1*pow(@0/{0}, @2))',
+            "pars": {1: (-20, 0), 2: (0, 10)},
+        },
+        3: {
+            "expr": 'exp(@1*pow(@0/{0}, @2)+@1*pow(1-@0/{0}, @3))',
+            "pars": {1: (-20, 0), 2: (0, 10), 3: (-10, 0)},
+        },
+        4: {
+            "expr": 'exp(@1*pow(@0/{0}, @2)+@4*pow(1-@0/{0}, @3))',
+            "pars": {1: (-20, 0), 2: (0, 10), 3: (-10, 0), 4: (-20, 0)},
+        },
+    }),
+    "polpow": PdfInfo("polpow", {
+        2: {
+            "expr": 'pow(1 + @1*@0/{0},-@2)',
+            "pars": {1: (0, 50), 2: (-50, 0)},
+        },
+        3: {
+            "expr": 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2),-@3)',
+            "pars": {1: (0, 50), 2: (0, 50), 3: (-50, 0)},
+        },
+        4: {
+            "expr": 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3),-@4)',
+            "pars": {1: (0, 50), 2: (0, 50), 3: (0, 50), 4: (-50, 0)},
+        },
+        5: {
+            "expr": 'pow(1 + @1*@0/{0} + @2*pow(@0/{0},2) + @3*pow(@0/{0},3) + @4*pow(@0/{0},4),-@5)',
+            "pars": {1: (0, 50), 2: (0, 50), 3: (0, 50), 4: (0, 50), 5: (-50, 0)},
+        },
+    }),
+}
+
 class InputData(object):
     """
-    Interface class for a JSON file that contains histograms
+    9 Feb 2024: Reworked .json input format.
+    Now only one signal model per .json file, so one InputDataV2 instance represents
+    one signal model parameter variation.
+    That way, datacard generation can be made class methods.
     """
-    def __init__(self, jsonfile):
-        self.jsonfile = jsonfile
-        with open(jsonfile, 'r') as f:
-            self.d = json.load(f)
-            n_hists = build_histograms_in_dict_tree(self.d)
-            logger.info('Read %s histograms from %s', n_hists, jsonfile)
+    def __init__(self, mt_min=180., mt_max=650., **kwargs):
+        for file in ['sigfile','bkgfile','datafile']:
+            setattr(self, file, kwargs.pop(file))
+            obj = file.replace('file','')
+            if getattr(self, file) is None:
+                setattr(self, obj, None)
+            else:
+                with open(getattr(self,file), 'r') as f:
+                    d = json.load(f, cls=Decoder)
+                    # cut mt range
+                    d = cut_histograms(d,mt_min,mt_max)
+                    # check for unneeded signal systematics
+                    if obj=='sig':
+                        c = d['central']
+                        # drop mcstat histograms that have no difference from central
+                        d = {k:v for k,v in d.items() if not k.startswith('mcstat') or v!=c}
+                    setattr(self, obj, d)
+
+        self.mt = self.sig['central'].binning
+        self.metadata = self.sig['central'].metadata
 
     def copy(self):
         return copy.deepcopy(self)
-
-    def ls(self):
-        ls_inputdata(self.d, key=self.jsonfile)
-
-    @property
-    def version(self):
-        return self.d.get('version', 1)
-
-    def cut_mt(self, min_mt=None, max_mt=None):
-        """
-        Returns a copy of the InputData object with a limited mt range.
-        """
-        copy = self.copy()
-        i_bin_min = 0
-        i_bin_max = len(copy.mt)-1
-        if min_mt is not None:
-            i_bin_min = np.argmax(copy.mt_array >= min_mt)
-        if max_mt is not None:
-            i_bin_max = np.argmax(copy.mt_array >= max_mt)
-        copy.mt = copy.mt[i_bin_min:i_bin_max]
-        logger.info(
-            'Cutting histograms {}<mt<{}, i_bin_min={}, i_bin_max={}'
-            .format(min_mt, max_mt, i_bin_min, i_bin_max)
-            )
-        for h in iter_histograms(copy.d):
-            h.binning = copy.mt
-            h.vals = h.vals[i_bin_min:i_bin_max-1]
-            h.errs = h.errs[i_bin_min:i_bin_max-1]
-        return copy
-
-    @property
-    def mt(self):
-        return self.d['mt']
-
-    @property
-    def mt_centers(self):
-        return .5*(self.mt_array[:-1] + self.mt_array[1:])
-
-    @property
-    def mt_binwidth(self, i=0):
-        return self.mt[i+1] - self.mt[i]
-
-    @mt.setter
-    def mt(self, val):
-        self.d['mt'] = val
 
     @property
     def mt_array(self):
@@ -302,45 +507,21 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None):
+        mz = int(self.metadata['mz'])
+        rinv = float(self.metadata['rinv'])
+        mdark = int(self.metadata['mdark'])
 
-    def bkg_hist(self, bdt):
-        bdt = float(bdt)
-        if self.version == 1:
-            # Backward compatibility with the first json implementation
-            return self.d['histograms']['{:.1f}/bkg'.format(bdt)]
+        bkg_th1 = self.bkg['bkg'].th1('bkg')
+        mt = get_mt(self.mt[0], self.mt[-1], self.n_bins, name='mt')
+
+        if self.data is not None:
+            data_th1 = self.data['data'].th1('data')
         else:
-            return self.d['histograms']['{:.1f}'.format(bdt)]['bkg']
-
-    def bkg_th1(self, name, bdt):
-        return hist_to_th1(name, self.bkg_hist(bdt))
-
-    #def sig_hist(self, bdt, mz, rinv=.3, mdark=10):
-    def sig_hist(self, bdt, mz, rinv, mdark=10):
-        bdt = float(bdt)
-        if self.version == 1:
-            # Backward compatibility with the first json implementation
-            return self.d['histograms']['{:.1f}/mz{:.0f}'.format(bdt, mz)]
-        else:
-            for h in self.d['histograms']['{:.1f}'.format(bdt)].values():
-                if 'mz' not in h.metadata: continue
-                if (
-                    h.metadata['mz'] == mz
-                    and h.metadata['rinv'] == rinv
-                    and h.metadata['mdark'] == mdark
-                    ):
-                    return h
-            raise Exception(
-                'Could not find a histogram for mz={}, rinv={}, mdark={}'
-                .format(mz, rinv, mdark)
-                )
             data_th1 = bkg_th1
         data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
-        pdfs_dict = {
-            'main' : pdfs_factory('main', mt, bkg_th1, name='bsvj_bkgfitmain'),
-            'alt' :  pdfs_factory('alt', mt, bkg_th1, name='bsvj_bkgfitalt'),
-            'ua2' :  pdfs_factory('ua2', mt, bkg_th1, name='bsvj_bkgfitua2'),
-            }
+        pdfs_dict = {pdf : make_pdf(pdf, mt, bkg_th1) for pdf in known_pdfs()}
 
         cache = None
         if use_cache:
@@ -348,15 +529,13 @@ class InputData(object):
             cache = FitCache(lock=fit_cache_lock)
 
         winner_pdfs = []
-        for pdf_type in ['main', 'ua2']:
+        for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-            #i_winner=0
-            #print(pdf_type)
+            # to force the fisher test to select with certain ua2 parameters
+            #if pdf_type == "ua2": i_winner = 0
+            #else: i_winner = do_fisher_test(mt, data_datahist, pdfs)
             i_winner = do_fisher_test(mt, data_datahist, pdfs)
-            #if pdf_type == 'ua2': i_winner = do_fisher_test(mt, data_datahist, pdfs)
-            #elif pdf_type == 'main': iwinner =0
-            print(i_winner)
             winner_pdfs.append(pdfs[i_winner])
 
         systs = [
@@ -397,8 +576,6 @@ class InputData(object):
             syst_th1s=syst_th1s,
         )
 
-    def sig_th1(self, name, bdt, mz, rinv, mdark=10):
-        return hist_to_th1(name, self.sig_hist(bdt, mz, rinv, mdark))
 
 
 # _______________________________________________________________________
@@ -450,7 +627,7 @@ def eval_pdf_python(pdf, parameters, mt_array=None):
     if mt_array is None:
         mt = pdf.parameters[0]
         binning = mt.getBinning()
-        mt_array = np.array([ binning.binCenter(i) for i in range(binning.numBins()) ])    
+        mt_array = np.array([ binning.binCenter(i) for i in range(binning.numBins()) ])
     parameters = list(copy.copy(parameters))
     parameters.insert(0, mt_array)
     return eval_expression(pdf.expression, parameters)
@@ -552,16 +729,14 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
 
             # First check if the init_val is *outside* of the current range:
             if value < left:
-                #new_left = value - .3*abs(value)
-                new_left = value - 30.*abs(value)
+                new_left = value -10.*abs(value)
                 logger.info(
                     f'Increasing range for {par.GetName()} on the left:'
                     f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {right:.2f})'
                     )
                 par.setMin(new_left)
             elif value > right:
-                #new_right = value + .3*abs(value)
-                new_right = value + 30.*abs(value)
+                new_right = value + 10.*abs(value)
                 logger.info(
                     f'Increasing range for {par.GetName()} on the right:'
                     f'({left:.2f}, {right:.2f}) -> ({left:.2f}, {new_right:.2f})'
@@ -569,11 +744,10 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                 par.setMax(new_right)
 
             # Now check if any of the ranges are needlessly large
-            if abs(value) / min(abs(left), abs(right)) < 0.5:
-                #new_left = -2.*abs(value)
-                #new_right = 2.*abs(value)
-                new_left = -20.*abs(value)
-                new_right=  20.*abs(value)
+            eps = 1e-10
+            if abs(value) / (min(abs(left), abs(right))+eps) < 0.1:
+                new_left = -10.*abs(value)
+                new_right = 10.*abs(value)
                 logger.info(
                     f'Decreasing range for {par.GetName()} on both sides:'
                     f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {new_right:.2f})'
@@ -581,32 +755,13 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                 par.setMin(new_left)
                 par.setMax(new_right)
 
-            
-            '''old_range = max(abs(par.getMin()), abs(par.getMax()))
-            print('*'*50, value, old_range)
-            if abs(value) > old_range:
-                new_range = 1.5*abs(value)
-                #new_range = 50*abs(value)
-                logger.info(
-                    'Increasing range for {} ({}) from ({:.3f}, {:.3f}) to ({:.3f}, {:.3f})'
-                   .format(par.GetName(), par.GetTitle(), par.getMin(), par.getMax(), -new_range, new_range)
-                    )
-                par.setRange(-new_range, new_range)
-            elif abs(value) / old_range < .01:
-                new_range = 500*abs(value)
-                print('*'*15, ' new range for low values   ',new_range)
-                #new_range = 50*abs(value)
-                logger.info(
-                    'Decreasing range for {} ({}) from ({:.3f}, {:.3f}) to ({:.3f}, {:.3f})'
-                    .format(par.GetName(), par.GetTitle(), par.getMin(), par.getMax(), -new_range, new_range)
-                    )
-                par.setRange(-new_range, new_range)
-            # par.setRange(value-0.01*abs(value), value+0.01*abs(value))'''
+            # Once all the ranges are updated, set the actual initial value
             par.setVal(value)
             logger.info(
                 'Setting {0} ({1}) value to {2}, range is {3} to {4}'
                 .format(par.GetName(), par.GetTitle(), value, par.getMin(), par.getMax())
                 )
+
     if init_ranges is not None:
         if len(init_ranges) != len(pdf.parameters):
             raise Exception('Expected {} values; got {}'.format(len(pdf.parameters), len(init_ranges)))
@@ -658,45 +813,17 @@ def single_fit_scipy(expression, histogram, init_vals=None, cache=None, **minimi
     res.x_init = np.array(init_vals)
     res.expression = expression
     res.hash = fit_hash
-    res.nfev = 10000
-    
-    
+    # Set approximate uncertainties; see https://stackoverflow.com/a/53489234
+    # Assume ftol ~ function value
+    # try:
+    #     res.dx = np.sqrt(res.fun * np.diagonal(res.hess_inv))
+    # except:
+    #     logger.error('Failed to set uncertainties; using found function values as proxies')
+    #     res.dx = res.x.copy()
     if cache:
         logger.info('Writing fit to cache')
         cache.write(fit_hash, res)
     return res
-
-
-def single_brute_scipy(expression, histogram, Ns, ranges, full_output=True, cache=None):
-    """
-    Fits a RooFit-style expression (as a string) to a TH1 histogram.
-
-    If cache is a FitCache object, the fit result is stored in the cache.
-    """
-    fit_hash = make_fit_hash(expression, histogram, Ns, ranges, full_output=True)
-    if cache and cache.get(fit_hash):
-        logger.info('Returning cached fit')
-        return cache.get(fit_hash) # Second call is cheap
-    # Do the fit
-    n_fit_pars = count_parameters(expression) - 1 # -1 because par 0 is mT
-    logger.info('Fitting {0} with {1} parameters'.format(expression, n_fit_pars))
-    from scipy.optimize import brute
-    res_bf = brute(chi2, ranges, **minimize_args)
-    res_bf.expression = expression
-    
-    res_bf.Ns = Ns
-    res_bf.full_output = 0
-    from scipy import optimize
-    res_bf.finish = optimize.fmin
-    res_bf.ranges = ranges
-    print(res_bf.expression, res_bf.Ns, **ranges)
-    if cache:
-        logger.info('Writing fit to cache')
-        cache.write(fit_hash, res_bf)
-
-    return res_bf
-
-
 
 
 def fit_scipy_robust(expression, histogram, cache='auto'):
@@ -714,7 +841,7 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
         res = cache.get(fit_hash) # Second call is cheap
         logger.info('Returning cached fit:\n%s', res)
         return res
-    
+
     # Attempt 1: Fit with loose tolerance BFGS, then strict tolerance Nelder-Mead
     res = single_fit_scipy(
         expression, histogram,
@@ -722,12 +849,13 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
         cache=cache
         )
     # Refit with output from first fit
+    options_nm = {'maxfev':10000}
     res = single_fit_scipy(
         expression, histogram,
         init_vals=res.x,
         tol=1e-6, method='Nelder-Mead',
-        #tol=1e-9, method='Powell',
-        cache=cache
+        cache=cache,
+        options = options_nm
         )
 
     if res.success:
@@ -736,12 +864,10 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
         logger.info('Converged with simple fitting strategy, result:\n%s', res)
         return res
 
-
     # The simple fitting scheme failed; Brute force with many different
     # initial values
     npars = count_parameters(expression)-1 # The mT parameter is not a fit parameter
     init_val_variations = [-1., 1.] # All the possible init values a single fit parameter can have
-    #init_val_variations = [-20., 20.]
     init_vals = np.array(list(itertools.product(*[init_val_variations for i in range(npars)])))
     logger.info(
         'Fit did not converge with single try; brute forcing it with '
@@ -751,23 +877,22 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
     results = []
     for method in ['BFGS', 'Nelder-Mead']:
         for init_val_variation in init_vals:
+            options_single = options_nm if method=='Nelder-Mead' else {}
             result = single_fit_scipy(
                 expression, histogram,
                 init_vals=init_val_variation,
-                tol=1e-3, method=method
+                tol=1e-3, method=method,
+                options = options_single
                 )
             # Check if fit fn val is not NaN or +/- inf
             if not(np.isnan(result.fun) or np.isposinf(result.fun) or np.isneginf(result.fun)):
                 results.append(result)
-
     if len(results) == 0: raise Exception('Not a single fit of the brute force converged!')
     i_min = np.argmin([r.fun for r in results])
     res = results[i_min]
     logger.info('Best scipy fit from brute force:\n%s', res)
     if cache: cache.write(fit_hash, res)
     return res
- 
-
 
 
 def fit(pdf, th1=None, cache='auto'):
@@ -812,21 +937,6 @@ def get_mt_from_th1(histogram, name=None):
     return mt
 
 
-# def rebuild_rpsbp(pdf):
-#     name = uid()
-#     def remake_parameter(parameter):
-#         variable = ROOT.RooRealVar(
-#             name + '_' + parameter.GetName(), parameter.GetTitle(),
-#             1., parameter.getMin(), parameter.getMax()
-#             )
-#         object_keeper.add(variable)
-#         return variable
-#     return build_rpsbp(
-#         name, pdf.expression, pdf.mt,
-#         [remake_parameter(p) for p in pdf.parameters], pdf.th1
-#         )
-
-
 def trigeff_expression(year=2018, max_fit_range=1000.):
     """
     Returns a TFormula-style expression that represents the trigger
@@ -849,173 +959,6 @@ def poly1d(parameters, mt_par='@0'):
 
 def sigmoid(expr):
     return '1./(1.+exp(-({})))'.format(expr)
-
-
-def pdf_expression(pdf_type, npars, mt_scale='1000'):
-    # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
-    # model NM has N params on 1-x and M params on x. exponents are (p_i + p_{i+1} * log(x))
-    if pdf_type == 'main':
-        if npars == 1:
-            expression = 'pow(1 - @0/{0})'
-        if npars == 2:
-            expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2))'
-        elif npars == 3:
-            #expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})))'
-            #Alternative to f12 --> f21
-            expression = 'pow(1 - @0/{0}, (@1+@2*log(@0/{0}))) * pow(@0/{0}, -@3)'
-        elif npars == 4:
-            #expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)))'
-            # Alternatives to 13 --> 22:
-            expression  = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})) * pow(@0/{0}, -(@3+@4*log(@0/{0})))'
-            # Alternatives to 13, 22 --> 31:
-            #expression  = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)) * pow(@0/{0}, -@4)'
-        elif npars == 5:
-            #expression = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)) * pow(@0/{0}, -(@4+@5*log(@0/{0})))'
-            #expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)+@5*pow(log(@0/{0}),3)))'
-
-            #Alternative to 14 --> 23:
-            expression = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})) * pow(@0/{0}, -(@3+@4*log(@0/{0})+@5*pow(log(@0/{0}),2)))'
-
-            # Alternatives to 32:
-            # 14: pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2+@3*log(@0/{0})+@4*pow(log(@0/{0}),2)+@5*pow(log(@0/{0}),3)))
-            # Alternatives to 14, 23 --> 41
-            #expression  = 'pow(1 - @0/{0}, @1+@2*log(@0/{0})+@3*pow(log(@0/{0}),2)+@4*pow(log(@0/{0}),3)) * pow(@0/{0}, -@5)'
-        else:
-            raise Exception('Unavailable npars for main: {0}'.format(npars))
-    elif pdf_type == 'alt':
-        if npars == 1:
-            expression = 'exp(@1*(@0/{0}))'
-        elif npars == 2:
-            expression = 'exp(@1*(@0/{0})) * pow(@0/{0},@2)'
-            #expression = 'exp(@1*@0/{0}+@2*log(@0/{0}))'  #old version
-        elif npars == 3:
-            expression = 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})))'
-            #expression = 'exp(@1*@0/{0} + @2*log(@0/{0}) + @3*pow(log(@0/{0}),2))' # old version
-        elif npars == 4:
-            expression = 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})*(1+@4*log(@0/{0}))))'
-            #expression = 'exp(@1*@0/{0} + @2*log(@0/{0}) + @3*pow(log(@0/{0}),2) + @4*pow(log(@0/{0}),3))' #old version
-        else:
-            raise Exception('Unavailable npars for alt: {0}'.format(npars))
-
-
-    elif pdf_type == 'ua2':
-        if npars == 2:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@2*(@0/{0}))'
-        if npars == 3:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0}))' #fifth variation
-            #expression = 'pow(@0/{0}, @1) * exp(@1*@2*@0/{0}*(1 +@3*@0/{0}))' #forth variation
-            #expression = 'pow(@0/{0}, @1) * exp((@1+@2)*@0/{0} + (@1+@3)*pow(@0/{0},2))' #third variation
-            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*@0/{0}))' #second variation
-            #expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2))' #first variation
-        if npars == 4:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2)))' #fifth variation
-            #expression = 'pow(@0/{0}, @1) * exp(@1*@2*@0/{0}*(1 + @3*@0/{0} + @3*@4*pow(@0/{0},2)))' #forth variation
-            #expression = 'pow(@0/{0}, @1) * exp((@1+@2)*@0/{0} + (@1+@3)*pow(@0/{0},2) + (@1+@4)*pow(@0/{0},3))' #third variation
-            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*@0/{0}+@4*pow(@0/{0},2)))' # second variation
-            #expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3))' #first variation
-            
-        if npars == 5:
-            expression = 'pow(@0/{0}, @1) * exp(@1*@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))' #fifth variation
-            #expression = 'pow(@0/{0}, @1) * exp(@1*@2*@0/{0}*(1 + @3*@0/{0} + @3*@4*pow(@0/{0},2)+@3*@4*@5*pow(@0/{0},3)))' #forth variation
-            #expression = 'pow(@0/{0}, @1) * exp((@1+@2)*@0/{0} + (@1+@3)*pow(@0/{0},2) + (@1+@4)*pow(@0/{0},3) + (@1+@5)*pow(@0/{0},4))' #third variation
-            #expression = 'pow(@0/{0}, @1) * exp(@2*@0/{0}*(1+@3*@0/{0}+@4*pow(@0/{0},2)+@5*pow(@0/{0},3)))' #second variation
-            #expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0})+@3*pow(@0/{0},2)+@4*pow(@0/{0},3)+@5*pow(@0/{0},4))' #first variation
-
-        '''if npars == 2:
-            expression = 'pow(@0/{0}, @1) * exp(@2*(@0/{0}))'
-        if npars == 3:
-            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(1 + @2+ @3*@0/{0}))' #fifth variation
-        if npars == 4:
-            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2)))' #fifth variation            
-        if npars == 5:
-            expression = 'pow(@0/{0}, @1) * exp(@0/{0}*(1 + @2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))' #fifth variation'''
-
-    else:
-        raise Exception('Unknown pdf type {0}'.format(pdf_type))
-    return expression.format(mt_scale)
-
-
-
-def pdf_parameters(pdf_type, npars, prefix=None):
-    if prefix is None: prefix = uid()
-    if pdf_type == 'main':
-        if npars == 2:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -45., 45.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.)
-                ]
-        elif npars == 3:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100, 100),
-                ]
-        elif npars == 4:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -95., 95.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -50., 5.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -30., 5.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -10., 2.),
-                ]
-        elif npars == 5:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -15., 15.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -95., 95.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -25., 25.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -5., 5.),
-                ROOT.RooRealVar(prefix + "_p5", "p5", 1., -1.5, 1.5),
-                ]
-    elif pdf_type == 'alt':
-        if npars == 2:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -50., 50.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.)
-                ]
-        if npars == 3:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.)
-                ]
-        if npars == 4:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -150., 150.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -10., 10.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -10., 10.)
-                ]
-
-    elif pdf_type == 'ua2':
-        if npars == 2:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.)
-                ]
-
-        elif npars == 3:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100),
-                ]
-        elif npars == 4:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
-                ]
-        elif npars == 5:
-            parameters = [
-                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -100., 100.),
-                ROOT.RooRealVar(prefix + "_p5", "p5", 1., -100., 100.),
-                ]
-    object_keeper.add_multiple(parameters)    
-    return parameters
-
 
 class PDF(object):
     """
@@ -1064,21 +1007,21 @@ def pdf_factory(pdf_type, n_pars, mt, bkg_th1, name=None, mt_scale='1000', trige
     If `trigeff` equals 2016, 2017, or 2018, the bkg trigger efficiency as a 
     function of mT_AK15_subl is prefixed to the expression.
     """
-    if pdf_type not in {'main', 'alt', 'ua2'}: raise Exception('Unknown pdf_type %s' % pdf_type)
+    if pdf_type not in known_pdfs(): raise Exception('Unknown pdf_type %s' % pdf_type)
     if name is None: name = uid()
-    logger.info(
-        'Building name={} pdf_type={} n_pars={} mt.GetName()="{}", bkg_th1.GetName()="{}"'
-        .format(name, pdf_type, n_pars, mt.GetName(), bkg_th1.GetName())
-        )
-    expression = pdf_expression(pdf_type, n_pars, mt_scale)
+    #logger.info(
+    #    'Building name={} pdf_type={} n_pars={} mt.GetName()="{}", bkg_th1.GetName()="{}"'
+    #    .format(name, pdf_type, n_pars, mt.GetName(), bkg_th1.GetName())
+    #    )
+    expression = all_pdfs[pdf_type].expression(n_pars, mt_scale)
     if trigeff in [2016, 2017, 2018]:
         logger.info('Adding trigger efficiency formula to expression')
         expression = '({})/({})'.format(expression, trigeff_expression(trigeff))
-    parameters = pdf_parameters(pdf_type, n_pars, name)
-    logger.info(
-        'Expression: {}; Parameter names: {}'
-        .format(expression, ', '.join(p.GetName() for p in parameters))
-        )
+    parameters = all_pdfs[pdf_type].parameters(n_pars, name)
+    #logger.info(
+    #    'Expression: {}; Parameter names: {}'
+    #    .format(expression, ', '.join(p.GetName() for p in parameters))
+    #    )
     generic_pdf = ROOT.RooGenericPdf(
         name+'_rgp', name+'_rgp',
         expression, ROOT.RooArgList(mt, *parameters)
@@ -1099,26 +1042,19 @@ def pdf_factory(pdf_type, n_pars, mt, bkg_th1, name=None, mt_scale='1000', trige
     pdf.th1 = bkg_th1
     pdf.pdf_type = pdf_type
     pdf.mt = mt
-    logger.info('Created {}'.format(pdf))
+    #logger.info('Created {}'.format(pdf))
     return pdf
 
 
-def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None):
+def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None, npars=None):
     """
     Like pdf_factory, but returns a list for all available n_pars
     """
     if name is None: name = uid()
-    #all_n_pars = [2, 3, 4, 5] if pdf_type == 'main' else [1, 2, 3, 4]
-    if pdf_type == 'alt':  all_n_pars = [2, 3, 4] 
-    if pdf_type == 'main': all_n_pars = [2, 3, 4, 5]
-    if pdf_type == 'ua2':  all_n_pars = [2, 3, 4, 5]
-    #all_n_pars = [2, 3, 4] if pdf_type == 'alt' else [2, 3, 4, 5]
-
-    all_n_pars = None
-    if pdf_type == 'alt' : all_n_pars= [2, 3, 4]
-    elif pdf_type == 'main' : all_n_pars= [3,4,5]
-    else : all_n_pars = [2, 3, 4, 5]
-
+    all_n_pars = range(all_pdfs[pdf_type].n_min, all_pdfs[pdf_type].n_max+1)
+    # to force ua2 with 4 parameters
+    #if pdf_type == "ua2": all_n_pars = [4]
+    #elif npars is not None: all_n_pars = [npars]
     if npars is not None: all_n_pars = [npars]
     return [ pdf_factory(pdf_type, n_pars, mt, bkg_th1, name+'_npars'+str(n_pars), mt_scale, trigeff=trigeff) for n_pars in all_n_pars]
 
@@ -1153,8 +1089,6 @@ def set_pdf_to_fitresult(pdf, res):
         for val, p_pdf in zip(res.x, pdf.parameters):
             set_par(p_pdf, val)
         return res.x
-
-
 
 
 def plot_fits(pdfs, fit_results, data_obs, outfile='test.pdf'):
@@ -1196,7 +1130,6 @@ def plot_fits(pdfs, fit_results, data_obs, outfile='test.pdf'):
 
         par_values = [ 'p{}={:.3f}'.format(i, v.getVal()) for i, v in enumerate(pdfs[i].parameters)]
         par_value_str = ', '.join(par_values)
-        
         txt = ROOT.TText(
             .12, 0.12+i*.05,
             "model {}, nP {}, chi2: {:.4f}, {}".format(i, n_fit_pars, chi2, par_value_str)
@@ -1204,7 +1137,7 @@ def plot_fits(pdfs, fit_results, data_obs, outfile='test.pdf'):
         txt.SetNDC()
         txt.SetTextSize(0.04)
         txt.SetTextColor(colors[i])
-        xframe.addObject(txt) 
+        xframe.addObject(txt)
         txt.Draw()
 
     xframe.SetMinimum(0.0002)
@@ -1321,109 +1254,76 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
     """
     Does a Fisher test. First computes the cl_vals for all combinations
     of pdfs, then picks the winner.
-    
+
     Returns the pdf that won.
     """
     rsss = [ get_rss_viaframe(mt, pdf.pdf, data, return_n_bins=True) for pdf in pdfs ]
     # Compute test values of all combinations beforehand
     cl_vals = {}
-    for i, j in itertools.combinations(range(len(pdfs)), 2):
-        n1 = pdfs[i].n_pars
-        n2 = pdfs[j].n_pars
-        rss1, _      = rsss[i]
-        rss2, n_bins = rsss[j]
-        f = ((rss1-rss2)/(n2-n1)) / (rss2/(n_bins-n2))
-        cl = 1.-ROOT.TMath.FDistI(f, n2-n1, n_bins-n2)
-        cl_vals[(i,j)] = cl
-    # Get the winner index
-    get_winner = lambda i, j: i if cl_vals[(i,j)] > a_crit else j
-    winner = get_winner(0,1)
-    for i in range(2,len(pdfs)):
-        winner = get_winner(winner, i)
-    if logger.level <= logging.INFO:
-        # Print the table
-        logger.info(
-            'Winner is pdf {} with {} parameters'
-            .format(winner, pdfs[winner].n_pars)
-            )
-        table = [[''] + list(range(1,len(pdfs)))]
-        for i in range(len(pdfs)-1):
-            table.append(
-                [i] + ['{:6.4f}'.format(cl_vals[(i,j)]) for j in range(i+1,len(pdfs))]
+    for i in range(len(pdfs)-1):
+        for j in range(i+1, len(pdfs)):
+            n1 = pdfs[i].n_pars
+            n2 = pdfs[j].n_pars
+            rss1, _      = rsss[i]
+            rss2, n_bins = rsss[j]
+            f = ((rss1-rss2)/(n2-n1)) / (rss2/(n_bins-n2))
+            cl = 1.-ROOT.TMath.FDistI(f, n2-n1, n_bins-n2)
+            cl_vals[(i,j)] = cl
+
+    def get_winner(i, j):
+        if i >= j: raise Exception('i must be smaller than j')
+        a_test = cl_vals[(i,j)]
+        n_pars_i = pdfs[i].n_pars
+        n_pars_j = pdfs[j].n_pars
+        if a_test > a_crit:
+            # Null hypothesis is that the higher n_par j is not significantly better.
+            # Null hypothesis is not rejected
+            logger.info(
+                f'Comparing n_pars={n_pars_i} with n_pars={n_pars_j}:'
+                f' a_test={a_test:.4f} > {a_crit};'
+                f' null hypothesis NOT rejected, n_pars={n_pars_i} wins'
                 )
-        logger.info('alpha values of pdf i vs j:\n' + tabelize(table))
+            return i
+        else:
+            # Null hypothesis is rejected, the higher n_par j pdf is significantly better
+            logger.info(
+                f'Comparing n_pars={n_pars_i} with n_pars={n_pars_j}:'
+                f' a_test={a_test:.4f} < {a_crit};'
+                f' null hypothesis REJECTED, n_pars={n_pars_j} wins'
+                )
+            return j
+
+    # get_winner = lambda i, j: i if cl_vals[(i,j)] > a_crit else j
+
+    logger.info('Running F-test')
+    #winner = get_winner(0,1)
+    winner = 0
+    '''for i in range(2,len(pdfs)):
+        winner = get_winner(winner, i)'''
+    logger.info(f'Winner is pdf {winner} with {pdfs[winner].n_pars} parameters')
+
+    # Print the table
+    table = [[''] + [f'{p.n_pars}' for p in pdfs[1:]]]
+    for i in range(len(pdfs)-1):
+        a_test_vals = [f'{pdfs[i].n_pars}'] + ['' for _ in range(len(pdfs)-1)]
+        for j in range(i+1, len(pdfs)):
+            a_test_vals[j] = f'{cl_vals[(i,j)]:9.7f}'
+        table.append(a_test_vals)
+    logger.info('alpha_test values of pdf i vs j:\n' + tabelize(table))
+
+    tex_table = copy.deepcopy(table)
+    tex_table[0][0] = '\\# of pars'
+    for row in tex_table:
+        for i in range(len(row)-1,0,-1):
+            row.insert(i, '&')
+        row.append('\\\\')
+    tex_table.insert(1, ['\\hline'])
+    logger.info(f'Tex-formatted table:\n{tabelize(tex_table)}')
+
     return winner
-    
 
 # _______________________________________________________________________
 # For combine
-
-def gen_datacard(
-    jsonfile, bdtcut, signal,
-    lock=None, injectsignal=False,
-    tag=None, mt_min=180., mt_max=650.,
-    trigeff=None,
-    ):
-    mz = signal['mz']
-    rinv = signal['rinv']
-    mdark = signal['mdark']
-    xsec  = get_xs(mz) 
-
-    input = InputData(jsonfile)
-    input = input.cut_mt(mt_min, mt_max)
-
-    bdt_str = bdtcut.replace('.', 'p')
-    mt = get_mt(input.mt[0], input.mt[-1], input.n_bins, name='mt')
-    bkg_th1 = input.bkg_th1('bkg', bdtcut)
-
-    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1, 1.)
-
-    pdfs_dict = {
-        'main' : pdfs_factory('main', mt, bkg_th1, name='bsvj_bkgfitmain', trigeff=trigeff),
-        'alt' : pdfs_factory('alt', mt, bkg_th1, name='bsvj_bkgfitalt', trigeff=trigeff),
-        'ua2' : pdfs_factory('ua2', mt, bkg_th1, name='bsvj_bkgfitua2', trigeff=trigeff),
-        }
-    winner_pdfs = []
-
-    from fit_cache import FitCache
-    cache = FitCache(lock=lock)
-
-    for pdf_type in ['main', 'ua2']:
-        pdfs = pdfs_dict[pdf_type]
-        ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-        i_winner = do_fisher_test(mt, data_datahist, pdfs)
-        winner_pdfs.append(pdfs[i_winner])
-        # plot_fits(pdfs, ress, data_datahist, pdf_type + '.pdf')
-
-    systs = [
-        ['lumi', 'lnN', 1.026, '-'],
-        # Place holders
-        ['trigger', 'lnN', 1.02, '-'],
-        ['pdf', 'lnN', 1.05, '-'],
-        ['mcstat', 'lnN', 1.07, '-'],
-        ['mZprime','extArg', mz],
-        ['mDark',  'extArg', mdark],
-        ['rinv',   'extArg', rinv],
-        ['xsec',   'extArg', xsec],
-        ]
-
-    sig_name = 'mz{:.0f}_rinv{:.1f}'.format(mz, rinv)
-    sig_th1 = input.sig_th1(sig_name, bdtcut, mz, rinv)
-    sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
-
-
-    if injectsignal:
-        logger.info('Injecting signal in data_obs')
-        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1+sig_th1, 1.)
-
-    outfile = strftime('dc_%b%d{}/dc_mz{}_rinv{:.1f}_bdt{}.txt'.format('_'+tag if tag else '', mz, rinv, bdt_str))
-    if injectsignal: outfile = outfile.replace('.txt', '_injectsig.txt')
-    compile_datacard_macro(
-        winner_pdfs, data_datahist, sig_datahist,
-        outfile,
-        systs=systs,
-        )
-
 
 class Datacard:
 
@@ -1436,6 +1336,7 @@ class Datacard:
         self.channels = [] # Expects len-2 iterables as elements, (name, rate)
         self.rates = OrderedDict() # Expects str as key, OrderedDict as value
         self.systs = []
+        self.extargs = []
 
     def __eq__(self, other):
         return (
@@ -1443,6 +1344,7 @@ class Datacard:
             and self.channels == other.channels
             and self.rates == other.rates
             and self.systs == other.systs
+            and self.extargs == other.extargs
             )
 
     @property
@@ -1489,7 +1391,6 @@ def read_dc_txt(txt):
             continue
         block.append(line)
     blocks.append(block)
- 
     if len(blocks) != 5:
         raise Exception('Found {} blocks, expected 5'.format(len(blocks)))
 
@@ -1510,7 +1411,7 @@ def read_dc_txt(txt):
         dc.rates[ch][name] = int(rate)
     # pprint(dc.rates)
 
-    # Systs
+    # Systs and extargs
     for line in blocks[4]:
         syst = line.split()
         if len(syst) >= 3:
@@ -1518,8 +1419,13 @@ def read_dc_txt(txt):
                 syst[2] = float(syst[2])
             except TypeError:
                 pass
-        dc.systs.append(syst)
+        if len(syst)>1 and syst[1]=='extArg':
+            dc.extargs.append(syst)
+        else:
+            dc.systs.append(syst)
     # pprint(dc.systs)
+    # pprint(dc.extargs)
+
     return dc
 
 
@@ -1609,7 +1515,7 @@ def make_multipdf(pdfs, name='roomultipdf'):
     return multipdf, norm
 
 
-def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=None):
+def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=None, syst_th1s=None):
     do_syst = systs is not None
     w = ROOT.RooWorkspace("SVJ", "workspace")
 
@@ -1621,15 +1527,24 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
     # Bkg pdf: May be multiple
     is_multipdf = hasattr(bkg_pdf, '__len__')
     if is_multipdf:
+        mt = bkg_pdf[0].mt
         multipdf, norm = make_multipdf(bkg_pdf)
         commit(multipdf.cat)
         commit(norm)
         commit(multipdf)
     else:
+        mt = bkg_pdf.mt
         commit(bkg_pdf, ROOT.RooFit.RenameVariable(bkg_pdf.GetName(), 'bkg'))
 
     commit(data_obs)
     commit(sig, ROOT.RooFit.Rename('sig'))
+
+    if syst_th1s is not None:
+        for th1 in syst_th1s:
+            # th1.SetName(th1.GetName().replace(sig.GetName(), 'sig'))
+            name = th1.GetName().replace(sig.GetName(), 'sig')
+            dh = ROOT.RooDataHist(name, name, ROOT.RooArgList(mt), th1)
+            commit(dh)
 
     wsfile = outfile.replace('.txt', '.root')
     dump_ws_to_file(wsfile, w)
@@ -1671,13 +1586,13 @@ class CombineCommand(object):
         '--freezeParameters',
         '--trackParameters',
         '--trackErrors',
-        #'--setParameters',
+        '--named',
         ]
     comma_separated_arg_map = { camel_to_snake(v.strip('-')) : v for v in comma_separated_args }
-    
     comma_separated_arg_map['redefine_signal_pois'] = '--redefineSignalPOIs'
 
-    def __init__(self, dc=None, method='MultiDimFit', args=None, kwargs=None, raw=None):
+    def __init__(self, dc=None, method='MultiDimFit', args=None, kwargs=None, pass_through=None, exe='combine'):
+        self.exe = exe
         self.dc = dc
         self.method = method
         self.args = set() if args is None else args
@@ -1686,7 +1601,7 @@ class CombineCommand(object):
         for key in self.comma_separated_arg_map: setattr(self, key, set())
         self.parameters = OrderedDict()
         self.parameter_ranges = OrderedDict()
-        self.raw = raw
+        self.pass_through = [] if pass_through is None else pass_through
 
     def get_name_key(self):
         """
@@ -1698,7 +1613,7 @@ class CombineCommand(object):
             return '-n'
         else:
             return '--name'
-            
+
     @property
     def name(self):
         return self.kwargs.get(self.get_name_key(), '')
@@ -1745,14 +1660,78 @@ class CombineCommand(object):
         self.parameters[name] = value
         if left is not None and right is not None: self.add_range(name, left, right)
 
+    def pick_pdf(self, pdf):
+        """
+        Picks the background pdf. Freezes pdf_index, and freezes parameters of any other
+        pdfs in the datacard.
+        """
+        logger.info('Using pdf %s', pdf)
+        self.set_parameter('pdf_index', known_pdfs().index(pdf))
+        pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
+        self.track_parameters.update(['r', 'n_exp_final_binbsvj_proc_roomultipdf'] + pdf_pars)
+        self.freeze_parameters.add('pdf_index')
+        for other_pdf in known_pdfs():
+            if other_pdf==pdf: continue
+            other_pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
+            self.freeze_parameters.update(other_pdf_pars)
+
+    def asimov(self, flag=True):
+        """
+        Turns on Asimov settings.
+        """
+        if flag:
+            logger.info('Doing asimov')
+            self.kwargs['-t'] = -1
+            self.args.add('--toysFrequentist')
+            self.name = 'Asimov'
+        else:
+            logger.info('Doing observed')
+            self.name = 'Observed'
+
+    def configure_from_command_line(self):
+        """
+        Configures the CombineCommand based on command line parameters.
+        sys.argv is reset to its original state at the end of the function.
+        """
+        with reset_sys_argv():
+            asimov = pull_arg('-a', '--asimov', action='store_true').asimov
+            self.asimov(asimov)
+
+            logger.info('Taking pdf from command line (default is ua2)')
+            pdf = pull_arg('--pdf', type=str, choices=known_pdfs(), default='ua2').pdf
+            self.pick_pdf(pdf)
+
+            toyseed = pull_arg('-t', type=int).t
+            if toyseed:
+                if asimov: raise Exception('asimov and -t >-1 are exclusive options')
+                self.kwargs['-t'] = toyseed
+                self.args.add('--toysFrequentist')
+                self.kwargs['-s'] = 123456 # The default combine seed
+
+            seed = pull_arg('-s', '--seed', type=int).seed
+            if seed is not None: self.kwargs['-s'] = seed
+
+            self.kwargs['-v'] = pull_arg('-v', '--verbosity', type=int, default=0).verbosity
+
+            normRange = pull_arg('--normRange', type=float, nargs=2, default=[]).normRange
+            if len(normRange)>0:
+                self.add_range('shapeBkg_roomultipdf_bsvj__norm', normRange[0], normRange[1])
+
+            expectSignal = pull_arg('--expectSignal', type=float).expectSignal
+            if expectSignal is not None: self.kwargs['--expectSignal'] = expectSignal
+
+            # Pass-through: Anything that's left is simply tagged on to the combine command as is
+            self.pass_through = ' '.join(sys.argv[1:])
+
+
     def parse(self):
         """
         Returns the command as a list
         """
-        command = ['combine']
+        command = [self.exe]
         command.append('-M ' + self.method)
         if not self.dc: raise Exception('self.dc must be a valid path')
-        command.append(self.dc.filename)
+        command.append('-d ' + self.dc.filename)
         command.extend(list(self.args))
         command.extend([k+' '+str(v) for k, v in self.kwargs.items()])
 
@@ -1760,6 +1739,7 @@ class CombineCommand(object):
             values = getattr(self, attr)
             if not values: continue
             command.append(command_str + ' ' + ','.join(list(sorted(values))))
+
         if self.parameters:
             strs = ['{0}={1}'.format(k, v) for k, v in self.parameters.items()]
             command.append('--setParameters ' + ','.join(strs))
@@ -1768,58 +1748,9 @@ class CombineCommand(object):
             strs = ['{0}={1},{2}'.format(parname, *ranges) for parname, ranges in self.parameter_ranges.items()]
             command.append('--setParameterRanges ' + ':'.join(strs))
 
-        if self.raw: command.append(self.raw)
+        if self.pass_through: command.append(self.pass_through)
 
         return command
-
-def apply_combine_args(cmd):
-    """
-    Takes a CombineCommand, and reads arguments 
-    """
-    cmd = cmd.copy()
-    pdf = pull_arg('--pdf', type=str, choices=['main', 'ua2'], default='ua2').pdf
-    #mz  = pull_arg('--mz', type=float, default=300).mz
-    #mdark  = pull_arg('--mdark', type=float, default=10).mdark
-    #rinv = pull_arg('--rinv', type=float, default=0.3).rinv
-
-    #xsec = get_xs(mz)
-    logger.info('Using pdf %s', pdf)
-
-    #cmd.set_parameter('pdf_index', {'main':0, 'ua2':1}[pdf])
-    pdf_pars = cmd.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
-    other_pdf = {'main':'ua2', 'ua2':'main'}[pdf]
-
-    other_pdf_pars = cmd.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
-    cmd.freeze_parameters.add('pdf_index')
-    cmd.freeze_parameters.update(other_pdf_pars)
-    cmd.track_parameters.update(['r'] + pdf_pars)
-    #cmd.set_parameter('mZprime',mz)
-    #cmd.set_parameter('rinv',rinv)
-    #cmd.set_parameter('mDark',10)
-    #cmd.set_parameter('xsec',xsec)
-
-    asimov = pull_arg('-a', '--asimov', action='store_true').asimov
-    if asimov:
-        logger.info('Doing asimov')
-        cmd.kwargs['-t'] = -1
-        cmd.args.add('--toysFrequentist')
-        cmd.name = 'Asimov'
-    else:
-        cmd.name = 'Observed'
-
-    toyseed = pull_arg('-t', type=int).t
-    if toyseed:
-        if asimov: raise Exception('asimov and -t >-1 are exclusive options')
-        cmd.kwargs['-t'] = toyseed
-        cmd.args.add('--toysFrequentist')
-
-    seed = pull_arg('-s', '--seed', type=int).seed
-    if seed is not None: cmd.kwargs['-s'] = seed
-    cmd.kwargs['-v'] = pull_arg('-v', '--verbosity', type=int, default=0).verbosity
-    expectSignal = pull_arg('--expectSignal', type=int).expectSignal
-    if expectSignal is not None: cmd.kwargs['--expectSignal'] = expectSignal
-    
-    return cmd
 
 
 def bestfit(cmd):
@@ -1830,7 +1761,7 @@ def bestfit(cmd):
     cmd = cmd.copy()
     cmd.method = 'MultiDimFit'
     cmd.args.add('--saveWorkspace')
-    cmd.args.add('--saveNLL')    
+    cmd.args.add('--saveNLL')
     cmd.redefine_signal_pois.add('r')
     cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
     # Possibly delete some settings too
@@ -1847,17 +1778,11 @@ def scan(cmd):
     cmd.kwargs['--algo'] = 'grid'
     cmd.kwargs['--alignEdges'] = 1
     rmin, rmax = pull_arg('-r', '--range', type=float, default=[0., 2.], nargs=2).range
-    rmin, rmax = pull_arg('-r', '--range', type=float, default=[0.0, 5.0], nargs=2).range
     cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
-    cmd.track_parameters.add('mZprime')
-    cmd.track_parameters.add('mDark')
-    cmd.track_parameters.add('rinv')
-    cmd.track_parameters.add('xsec')
-    #cmd.track_parameters.add()
     cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
-    #cmd.kwargs['--points'] = pull_arg('-n', type=int, default=500).n
     return cmd
+
 
 def gen_toys(cmd):
     """
@@ -1874,6 +1799,25 @@ def gen_toys(cmd):
     return cmd
 
 def fit_toys(cmd):
+    # cmdFit="combine ${DC_NAME_ALL}
+    #    -M FitDiagnostics
+    #    -n ${fitName}
+    #    --toysFile higgsCombine${genName}.GenerateOnly.mH120.123456.root
+    #    -t ${nTOYS}
+    #    -v
+    #    -1
+    #    --toysFrequentist
+    #    --saveToys
+    #    --expectSignal ${expSig}
+    #    --savePredictionsPerToy
+    #    --bypassFrequentistFit
+    #    --X-rtd MINIMIZER_MaxCalls=100000
+    #    --setParameters $SetArgFitAll
+    #    --freezeParameters $FrzArgFitAll
+    #    --trackParameters $TrkArgFitAll"
+    #    --rMin ${rMin}
+    #    --rMax ${rMax}
+
     cmd = cmd.copy()
     cmd.method = 'FitDiagnostics'
     cmd.kwargs.pop('--algo', None)
@@ -1881,16 +1825,17 @@ def fit_toys(cmd):
     cmd.args.add('--saveToys')
     cmd.args.add('--savePredictionsPerToy')
     cmd.args.add('--bypassFrequentistFit')
-    cmd.args.add('--robustFit=1')
-    cmd.args.add('--rMin=-5')
-    cmd.args.add('--rMax=5')
-    cmd.args.add('--plots')
-    #cmd.args.add('--cminDefaultMinimizerStrategy==0')
     cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
 
     toysFile = pull_arg('--toysFile', required=True, type=str).toysFile
     cmd.kwargs['--toysFile'] = toysFile
+
+    if not '-t' in cmd.kwargs:
+        with open_root(toysFile) as f:
+            cmd.kwargs['-t'] = f.Get('limit').GetEntries()
+
     return cmd
+
 
 def likelihood_scan_factory(
     datacard,
@@ -1927,29 +1872,7 @@ def likelihood_scan_factory(
 
     if n_toys is not None: cmd.kwargs['-t'] = str(n_toys)
 
-    cmd.freeze_parameters.append('pdf_index')
-    cmd.track_parameters.append('n_exp_final_binbsvj_proc_roomultipdf')
-    #if pdf_type == 'alt':
-    #    cmd.set_parameter('pdf_index', 2)
-    #    #cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
-    #    #cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
-    #    cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
-    #    cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
-
-    if pdf_type == 'ua2':
-        cmd.set_parameter('pdf_index', 1)
-        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
-        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
-    elif pdf_type == 'main':
-        cmd.set_parameter('pdf_index', 0)
-        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
-        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
-    elif pdf_type == 'alt':
-        cmd.set_parameter('pdf_index', 2)
-        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitua2_*'))
-        cmd.track_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
-    else:
-        raise Exception('Unknown pdf_type {}'.format(pdf_type))
+    cmd.pick_pdf(pdf_type)
 
     return cmd
 
@@ -2035,7 +1958,7 @@ class ROOTObjectKeeper:
     """
     def __init__(self):
         self.objects = {}
-    
+
     def add(self, thing):
         try:
             key = thing.GetName()
