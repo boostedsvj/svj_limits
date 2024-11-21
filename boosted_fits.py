@@ -532,6 +532,7 @@ class InputData(object):
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
+            # to force ua2 to pick certain function
             #if pdf_type == "ua2": i_winner = 0
             #else: i_winner = do_fisher_test(mt, data_datahist, pdfs)
             i_winner = do_fisher_test(mt, data_datahist, pdfs)
@@ -1055,6 +1056,7 @@ def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None
     """
     if name is None: name = uid()
     all_n_pars = range(all_pdfs[pdf_type].n_min, all_pdfs[pdf_type].n_max+1)
+    # to force ua2 to peak function with 4 parameters
     #if pdf_type == "ua2": all_n_pars = [4]
     #elif npars is not None: all_n_pars = [npars]
     if npars is not None: all_n_pars = [npars]
