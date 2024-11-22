@@ -1681,10 +1681,10 @@ class CombineCommand(object):
             logger.info('Doing asimov')
             self.kwargs['-t'] = -1
             self.args.add('--toysFrequentist')
-            self.name = 'Asimov'
+            self.name += 'Asimov'
         else:
             logger.info('Doing observed')
-            self.name = 'Observed'
+            self.name += 'Observed'
 
     def configure_from_command_line(self):
         """

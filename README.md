@@ -6,10 +6,15 @@
 Current results are using release `CMSSW_11_3_4`, tag v9.1.0.
 Make sure to install `CombineHarvester` as well (bottom of that page).
 
-2. Clone this repository:
+2. Clone this repository and install dependencies:
 
 ```bash
 cd $CMSSW_BASE/src
+cmsenv
+scram-venv
+cmsenv
+pip3 install git+https://github.com/boostedsvj/seutils
+pip3 install git+https://github.com/boostedsvj/svj_ntuple_processing
 git clone git@github.com:boostedsvj/svj_limits.git boosted/svj_limits
 cd boosted/svj_limits
 ```

@@ -12,6 +12,7 @@ import argparse
 import sys, os, os.path as osp, pprint, re, traceback, copy, fnmatch, shutil
 from contextlib import contextmanager
 sys.path.append(osp.dirname(osp.abspath(__file__)))
+import svj_ntuple_processing as svj
 import boosted_fits as bsvj
 logger = bsvj.setup_logger('quickplot')
 
@@ -73,10 +74,10 @@ def namespace_to_attrdict(args):
     return bsvj.AttrDict(**vars(args))
 
 def get_mz(path):
-    return int(re.search(r'mz(\d+)', osp.basename(path)).group(1))
+    return svj.metadata_from_path(path)['mz']
 
 def get_rinv(path):
-    return int(re.search(r'rinv([\d\.]+)', osp.basename(path)).group(1))
+    return svj.metadata_from_path(path)['rinv']
 
 def get_bdt_str(path):
     return re.search(r'bdt([p\d]+)', osp.basename(path)).group(1)
