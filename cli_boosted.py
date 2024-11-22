@@ -186,12 +186,13 @@ def make_bestfit_and_scan_commands(txtfile, args=None):
     with bsvj.set_args(sys.argv[:1] + args):
         dc = bsvj.Datacard.from_txt(txtfile)
         cmd = bsvj.CombineCommand(dc)
-        cmd.configure_from_command_line()
         cmd.name += osp.basename(dc.filename).replace('.txt','')
         scan = bsvj.scan(cmd)
-        bestfit = bsvj.bestfit(cmd)
         scan.name += 'Scan'
+        scan.configure_from_command_line()
+        bestfit = bsvj.bestfit(cmd)
         bestfit.name += 'Bestfit'
+        bestfit.configure_from_command_line()
     return bestfit, scan
 
 
