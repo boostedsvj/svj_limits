@@ -507,7 +507,7 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None):
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False):
         mz = int(self.metadata['mz'])
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
@@ -565,7 +565,12 @@ class InputData(object):
                 used_systs.add(syst_name)
             syst_th1s.append(hist.th1(f'{sig_name}_{syst_name}{direction}'))
 
-        outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}/dc_{osp.basename(self.sigfile).replace(".json","")}.txt')
+        nosystname = ""
+        if nosyst:
+            systs = [s for s in systs if s[1]=='extArg']
+            nosystname = "_nosyst"
+
+        outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}{nosystname}/dc_{osp.basename(self.sigfile).replace(".json","")}{nosystname}.txt')
         compile_datacard_macro(
             winner_pdfs, data_datahist, sig_datahist,
             outfile,

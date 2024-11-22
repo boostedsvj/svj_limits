@@ -156,7 +156,8 @@ def gen_datacards():
     mtmax = bsvj.pull_arg('--mtmax', type=float, default=None).mtmax
     if mtmin is not None: jsons["mt_min"] = mtmin
     if mtmax is not None: jsons["mt_max"] = mtmax
-    bsvj.InputData(**jsons).gen_datacard()
+    nosyst = bsvj.pull_arg('--nosyst', default=False, action="store_true").nosyst
+    bsvj.InputData(**jsons).gen_datacard(nosyst=nosyst)
 
 @scripter
 def simple_test_fit():
