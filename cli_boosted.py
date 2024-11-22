@@ -233,7 +233,6 @@ def gentoys():
     """
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('toys_%Y%m%d')).outdir
-    outfile = bsvj.pull_arg('-n', '--outfile',   type=int).outfile
     if not osp.isdir(outdir): os.makedirs(outdir)
     bsvj.logger.info(f'Output will be moved to {outdir}')
 
@@ -241,7 +240,7 @@ def gentoys():
         dc = bsvj.Datacard.from_txt(dc_file)
         cmd = bsvj.CombineCommand(dc)
         cmd.configure_from_command_line()
-        cmd.name += osp.basename(dc.filename).replace('.txt','')+str(outfile)
+        cmd.name += osp.basename(dc.filename).replace('.txt','')
 
         # Some specific settings for toy generation
         cmd.method = 'GenerateOnly'
@@ -263,8 +262,7 @@ def gentoys():
 @scripter
 def fittoys2():
     infiles = bsvj.pull_arg('infiles', type=str, nargs='+').infiles
-    outdir  = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('fittoys_%Y%m%d')).outdir
-    #outfile = bsvj.pull_arg('-n', '--outfile',   type=str, nargs='+').outfile
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('fittoys_%Y%m%d')).outdir
     if not osp.isdir(outdir): os.makedirs(outdir)
     bsvj.logger.info(f'Output will be moved to {outdir}')
 
@@ -279,7 +277,7 @@ def fittoys2():
 
     # Submit fit per datacard
     for dc_file in datacards:
-        name = osp.basename(dc_file).replace('.txt','')#+outfile
+        name = osp.basename(dc_file).replace('.txt','')
         dc = bsvj.Datacard.from_txt(dc_file)
         cmd = bsvj.CombineCommand(dc)
         cmd.configure_from_command_line()
@@ -324,14 +322,13 @@ def fittoys():
 
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('toyfits_%b%d')).outdir
-    outfile = bsvj.pull_arg('-n', '--outfile',   type=int).outfile
     if not osp.isdir(outdir): os.makedirs(outdir)
 
     for dc_file in datacards:
         dc = bsvj.Datacard.from_txt(dc_file)
         cmd = bsvj.CombineCommand(dc)
         cmd.configure_from_command_line()
-        cmd.name += osp.basename(dc.filename).replace('.txt','')+str(outfile)
+        cmd.name += osp.basename(dc.filename).replace('.txt','')
 
         cmd.method = 'FitDiagnostics'
         cmd.kwargs.pop('--algo', None)

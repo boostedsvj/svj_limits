@@ -532,8 +532,7 @@ class InputData(object):
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-            if pdf_type == "ua2": i_winner = 0
-            else: i_winner = do_fisher_test(mt, data_datahist, pdfs)
+            i_winner = do_fisher_test(mt, data_datahist, pdfs)
             winner_pdfs.append(pdfs[i_winner])
 
         systs = [
@@ -1050,12 +1049,7 @@ def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None
     """
     if name is None: name = uid()
     all_n_pars = range(all_pdfs[pdf_type].n_min, all_pdfs[pdf_type].n_max+1)
-<<<<<<< HEAD
-    if pdf_type == "ua2": all_n_pars = [4]
-    elif npars is not None: all_n_pars = [npars]
-=======
     if npars is not None: all_n_pars = [npars]
->>>>>>> 2520445c46d5583214afb0896373a14251f23032
     return [ pdf_factory(pdf_type, n_pars, mt, bkg_th1, name+'_npars'+str(n_pars), mt_scale, trigeff=trigeff) for n_pars in all_n_pars]
 
 
@@ -1296,10 +1290,9 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
     # get_winner = lambda i, j: i if cl_vals[(i,j)] > a_crit else j
 
     logger.info('Running F-test')
-    #winner = get_winner(0,1)
-    winner = 0
-    '''for i in range(2,len(pdfs)):
-        winner = get_winner(winner, i)'''
+    winner = get_winner(0,1)
+    for i in range(2,len(pdfs)):
+        winner = get_winner(winner, i)
     logger.info(f'Winner is pdf {winner} with {pdfs[winner].n_pars} parameters')
 
     # Print the table
@@ -1777,7 +1770,7 @@ def scan(cmd):
     cmd = bestfit(cmd)
     cmd.kwargs['--algo'] = 'grid'
     cmd.kwargs['--alignEdges'] = 1
-    rmin, rmax = pull_arg('-r', '--range', type=float, default=[0., 2.], nargs=2).range
+    rmin, rmax = pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
     cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
     cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
