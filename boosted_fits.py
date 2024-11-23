@@ -1415,7 +1415,7 @@ def read_dc_txt(txt):
         if len(syst) >= 3:
             try:
                 syst[2] = float(syst[2])
-            except TypeError:
+            except:
                 pass
         if len(syst)>1 and syst[1]=='extArg':
             dc.extargs.append(syst)
