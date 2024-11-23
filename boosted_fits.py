@@ -1508,9 +1508,12 @@ def make_multipdf(pdfs, name='roomultipdf'):
     multipdf = ROOT.RooMultiPdf(name, "All Pdfs", cat, pdf_arglist)
     multipdf.cat = cat
     multipdf.pdfs = pdfs
-    norm = ROOT.RooRealVar(name+'_norm', "Number of background events", 1.0, 0., 1.e6)
-    object_keeper.add_multiple([cat, norm, multipdf])
-    return multipdf, norm
+    norm_nominal = ROOT.RooRealVar(name+'_nominal', "Nominal component", 1.0, 0., 1.e6)
+    norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -10., 10.)
+    norm = ROOT.RooFormulaVar(name+'_norm', "@0+0.01*@1*sqrt(@0)", ROOT.RooArgList(norm_nominal,norm_theta))
+    norm_objs = [norm_nominal, norm_theta, norm]
+    object_keeper.add_multiple([cat, norm_objs, multipdf])
+    return multipdf, norm_objs
 
 
 def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=None, syst_th1s=None):
@@ -1528,7 +1531,7 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
         mt = bkg_pdf[0].mt
         multipdf, norm = make_multipdf(bkg_pdf)
         commit(multipdf.cat)
-        commit(norm)
+        for n in norm: commit(n)
         commit(multipdf)
     else:
         mt = bkg_pdf.mt
@@ -1562,7 +1565,10 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
             dc.systs.append([par.GetName(), 'flatParam'])
     [systs_for_pdf(p) for p in multipdf.pdfs] if is_multipdf else systs_for_pdf(bkg_pdf)
     # Rest of the systematics
-    if is_multipdf: dc.systs.append([multipdf.cat.GetName(), 'discrete'])
+    if is_multipdf:
+        dc.systs.append([multipdf.cat.GetName(), 'discrete'])
+        for n in norm:
+            if n.InheritsFrom("RooRealVar"): dc.systs.append([n.GetName(), 'flatParam'])
     if do_syst: dc.systs.extend(systs)
     txt = parse_dc(dc)
 
