@@ -64,10 +64,23 @@ def quick_ax(figsize=(12,12), outfile='test.png'):
 
 
 def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):
-    name = osp.basename(rootfile).rsplit('.',3)[0].replace('higgsCombine','')
-    if strip_obs_asimov:
-        name = name.replace('Observed_','').replace('Asimov_','')
-    name = name.replace('.MultiDimFit','')
+    param_tex = {
+        'mz': r'm_{\mathrm{Z}^{\prime}}',
+        'mdark': r'm_{\mathrm{dark}}',
+        'rinv': r'r_{\mathrm{inv}}',
+    }
+    meta = svj.metadata_from_path(rootfile)
+    if meta['sample_type']=='sig':
+        names = ['']
+        if not strip_obs_asimov:
+            names = [x for x in ['Observed','Asimov'] if x in rootfile]+names
+        name = names[0]
+        name += ' ($'+', '.join(val+'='+str(meta[key]) for key,val in param_tex.items())+'$)'
+    else:
+        name = osp.basename(rootfile).rsplit('.',3)[0].replace('higgsCombine','')
+        if strip_obs_asimov:
+            name = name.replace('Observed_','').replace('Asimov_','')
+        name = name.replace('.MultiDimFit','')
     return name
 
 def namespace_to_attrdict(args):
