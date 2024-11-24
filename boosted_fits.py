@@ -1508,7 +1508,7 @@ def make_multipdf(pdfs, name='roomultipdf'):
     multipdf = ROOT.RooMultiPdf(name, "All Pdfs", cat, pdf_arglist)
     multipdf.cat = cat
     multipdf.pdfs = pdfs
-    norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -10., 10.)
+    norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -100., 100.)
     norm = ROOT.RooFormulaVar(name+'_norm', "1+0.01*@0", ROOT.RooArgList(norm_theta))
     norm_objs = [norm_theta, norm]
     object_keeper.add_multiple([cat, norm_objs, multipdf])
