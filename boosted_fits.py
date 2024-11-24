@@ -1671,12 +1671,16 @@ class CombineCommand(object):
         logger.info('Using pdf %s', pdf)
         self.set_parameter('pdf_index', known_pdfs().index(pdf))
         pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
-        self.track_parameters.update(['r', 'n_exp_final_binbsvj_proc_roomultipdf'] + pdf_pars)
+        pars_to_track = ['r', 'n_exp_final_binbsvj_proc_roomultipdf', 'shapeBkg_roomultipdf_bsvj__norm', 'roomultipdf_theta'] + pdf_pars
+        self.track_parameters.update(pars_to_track)
+        self.track_errors.update(pars_to_track)
         self.freeze_parameters.add('pdf_index')
         for other_pdf in known_pdfs():
             if other_pdf==pdf: continue
             other_pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
             self.freeze_parameters.update(other_pdf_pars)
+        # extargs do not have errors
+        self.track_parameters.update([x[0] for x in self.dc.extargs])
 
     def asimov(self, flag=True):
         """
