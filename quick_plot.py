@@ -161,6 +161,8 @@ def extract_scans(rootfiles, correct_minimum=False):
                 branch = listofbranches[i_branch].GetName()
                 if branch.startswith('trackedParam_'):
                     keys[branch] = branch.replace('trackedParam_','')
+                elif branch.startswith('trackedError_'):
+                    keys[branch] = branch.replace('trackedError_','error_')
 
             # Read in the values from the TTree
             for _ in limit:
@@ -254,17 +256,15 @@ def muscan():
             alpha=.2
         if include_dots: draw_str += 'o'
 
-        for rootfile in rootfiles:
-            name = name_from_combine_rootfile(rootfile)
-            for scan in extract_scans(rootfile, correctminimum):
-                mu = scan.df['mu']
-                dnll = scan.df['dnll']
-                min_mu = min(min_mu, np.min(mu))
-                max_mu = max(max_mu, np.max(mu))
-                line = ax.plot(mu, dnll, draw_str, label=None if clean else name, alpha=alpha)[0]
-                if clean:
-                    cln = clean_scan(scan)
-                    ax.plot(cln.df['mu'], cln.df['dnll'], label=name, color=line.get_color())
+        for name,scan in get_scans(rootfiles, correctminimum).items():
+            mu = scan.df['mu']
+            dnll = scan.df['dnll']
+            min_mu = min(min_mu, np.min(mu))
+            max_mu = max(max_mu, np.max(mu))
+            line = ax.plot(mu, dnll, draw_str, label=None if clean else name, alpha=alpha)[0]
+            if clean:
+                cln = clean_scan(scan)
+                ax.plot(cln.df['mu'], cln.df['dnll'], label=name, color=line.get_color())
 
         ax.plot([min_mu, max_mu], [.0, .0], color='lightgray')
         ax.plot([min_mu, max_mu], [.5, .5], label='$1\sigma$')
@@ -274,6 +274,41 @@ def muscan():
         apply_ranges(ax)
         ax.legend(framealpha=0.)
 
+def get_scans(rootfiles, correct_minimum=False):
+    if isinstance(rootfiles, str): rootfiles = [rootfiles]
+    scans = {}
+    for rootfile in rootfiles:
+        name = name_from_combine_rootfile(rootfile)
+        stmp = extract_scans(rootfile, correct_minimum)
+        if len(stmp)==1: scans[name] = stmp[0]
+        else: logger.warning(f"{len(stmp)}!=1 scans found in {rootfile}, skipping")
+    return scans
+
+def plot_trackedparam(scans, param, outfile, clean, error=False):
+    drwstr = '-'
+    alpha = 1.
+    if clean:
+        drwstr += '-'
+        alpha = .2
+        if error: alpha = .6
+
+    def error_band(ax, scan, param):
+        ax.fill_between(scan.df['mu'], scan.df[param]-scan.df['error_'+param], scan.df[param]+scan.df['error_'+param], alpha=0.2)
+
+    with quick_ax(outfile=outfile) as ax:
+        for name,scan in scans.items():
+            ax.plot(scan.df['mu'], scan.df[param], drwstr, label=name, alpha=alpha)
+            if clean:
+                cln = clean_scan(scan)
+                ax.plot(cln.df['mu'], cln.df[param], label=name)
+                if error: error_band(ax, cln, param)
+            else:
+                if error: error_band(ax, scan, param)
+
+        ax.set_xlabel('$\mu$')
+        ax.set_ylabel(param)
+        apply_ranges(ax)
+        ax.legend(framealpha=0.)
 
 @scripter
 def trackedparam():
@@ -281,27 +316,23 @@ def trackedparam():
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
     clean = bsvj.pull_arg('--clean', action='store_true').clean
+    error = bsvj.pull_arg('--error', action='store_true').error
 
-    drwstr = '-'
-    alpha = 1.
-    if clean:
-        drwstr += '-'
-        alpha = .2
+    plot_trackedparam(get_scans(rootfiles), param, outfile, error)
 
-    with quick_ax(outfile=outfile) as ax:
-        for rootfile in rootfiles:
-            name = name_from_combine_rootfile(rootfile)
-            for scan in extract_scans(rootfile):
-                ax.plot(scan.df['mu'], scan.df[param], drwstr, label=name, alpha=alpha)
-                if clean:
-                    cln = clean_scan(scan)
-                    ax.plot(cln.df['mu'], cln.df[param], label=name)
+@scripter
+def trackedparams():
+    # automatically plot any param whose error is also stored
+    rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='{}.png').outfile
+    clean = bsvj.pull_arg('--clean', action='store_true').clean
 
-        ax.set_xlabel('$\mu$')
-        ax.set_ylabel(param)
-        apply_ranges(ax)
-        ax.legend(framealpha=0.)
-
+    scans = get_scans(rootfiles)
+    scan = scans[next(iter(scans))]
+    pars_to_scan = [par for par in scan.df if 'error_'+par in scan.df and par!='r']
+    for par in pars_to_scan:
+        logger.info(f"Plotting {par}")
+        plot_trackedparam(scans, par, outfile.format(par), clean, error=True)
 
 @scripter
 def mtdist():
