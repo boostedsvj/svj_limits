@@ -87,21 +87,25 @@ python3 cli_boosted.py impacts dc.txt --nfits 16 --asimov --normRange 0.1 2.0 --
 ```
 
 ## Plotting
-Bkg fit 
 
+Fit to background distribution:
 ```bash
-python3 quick_plot.py bkgfit ua2 --bkg cutbased/merged_20240920/bkg_sel-cutbased.json --sig cutbased/smooth_20240920/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json --outfile fit_bkg.png
+python quick_plot.py bkgfit ua2 --bkg cutbased/merged_20240920/bkg_sel-cutbased.json --sig cutbased/smooth_20240920/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json --outfile fit_bkg.png
 ```
 
 ΔNNL as a function of mu:
-
 ```bash
 python quick_plot.py muscan scans_Dec07/*bdt0p3*Scan*.root
 ```
 
-Fit to background distribution:
+Single parameter as a function of mu:
 ```bash
-python3 quick_plot.py bkgfit ua2 --bkg merged_20240729/bkg_sel-cutbased.json --sig smooth_20240729/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json --outfile fit_bkg.png
+python quick_plot.py trackedparam bsvj_bkgfitua2_npars3_p1 scans_cutbased/*Scan*.root
+```
+
+All fit parameters as a function of mu:
+```bash
+python quick_plot.py trackedparams scans_cutbased/*Scan*.root
 ```
 
 MT histogram, with bkg-only fit and and sig+bkg fit:
