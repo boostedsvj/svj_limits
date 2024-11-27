@@ -507,7 +507,7 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None):
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False):
         mz = int(self.metadata['mz'])
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
@@ -565,7 +565,12 @@ class InputData(object):
                 used_systs.add(syst_name)
             syst_th1s.append(hist.th1(f'{sig_name}_{syst_name}{direction}'))
 
-        outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}/dc_{osp.basename(self.sigfile).replace(".json","")}.txt')
+        nosystname = ""
+        if nosyst:
+            systs = [s for s in systs if s[1]=='extArg']
+            nosystname = "_nosyst"
+
+        outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}{nosystname}/dc_{osp.basename(self.sigfile).replace(".json","")}{nosystname}.txt')
         compile_datacard_macro(
             winner_pdfs, data_datahist, sig_datahist,
             outfile,
@@ -1410,7 +1415,7 @@ def read_dc_txt(txt):
         if len(syst) >= 3:
             try:
                 syst[2] = float(syst[2])
-            except TypeError:
+            except:
                 pass
         if len(syst)>1 and syst[1]=='extArg':
             dc.extargs.append(syst)
@@ -1503,9 +1508,11 @@ def make_multipdf(pdfs, name='roomultipdf'):
     multipdf = ROOT.RooMultiPdf(name, "All Pdfs", cat, pdf_arglist)
     multipdf.cat = cat
     multipdf.pdfs = pdfs
-    norm = ROOT.RooRealVar(name+'_norm', "Number of background events", 1.0, 0., 1.e6)
-    object_keeper.add_multiple([cat, norm, multipdf])
-    return multipdf, norm
+    norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -100., 100.)
+    norm = ROOT.RooFormulaVar(name+'_norm', "1+0.01*@0", ROOT.RooArgList(norm_theta))
+    norm_objs = [norm_theta, norm]
+    object_keeper.add_multiple([cat, norm_objs, multipdf])
+    return multipdf, norm_objs
 
 
 def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=None, syst_th1s=None):
@@ -1523,7 +1530,7 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
         mt = bkg_pdf[0].mt
         multipdf, norm = make_multipdf(bkg_pdf)
         commit(multipdf.cat)
-        commit(norm)
+        for n in norm: commit(n)
         commit(multipdf)
     else:
         mt = bkg_pdf.mt
@@ -1557,7 +1564,10 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
             dc.systs.append([par.GetName(), 'flatParam'])
     [systs_for_pdf(p) for p in multipdf.pdfs] if is_multipdf else systs_for_pdf(bkg_pdf)
     # Rest of the systematics
-    if is_multipdf: dc.systs.append([multipdf.cat.GetName(), 'discrete'])
+    if is_multipdf:
+        dc.systs.append([multipdf.cat.GetName(), 'discrete'])
+        for n in norm:
+            if n.InheritsFrom("RooRealVar"): dc.systs.append([n.GetName(), 'flatParam'])
     if do_syst: dc.systs.extend(systs)
     txt = parse_dc(dc)
 
@@ -1661,12 +1671,16 @@ class CombineCommand(object):
         logger.info('Using pdf %s', pdf)
         self.set_parameter('pdf_index', known_pdfs().index(pdf))
         pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
-        self.track_parameters.update(['r', 'n_exp_final_binbsvj_proc_roomultipdf'] + pdf_pars)
+        pars_to_track = ['r', 'n_exp_final_binbsvj_proc_roomultipdf', 'shapeBkg_roomultipdf_bsvj__norm', 'roomultipdf_theta'] + pdf_pars
+        self.track_parameters.update(pars_to_track)
+        self.track_errors.update(pars_to_track)
         self.freeze_parameters.add('pdf_index')
         for other_pdf in known_pdfs():
             if other_pdf==pdf: continue
             other_pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
             self.freeze_parameters.update(other_pdf_pars)
+        # extargs do not have errors
+        self.track_parameters.update([x[0] for x in self.dc.extargs])
 
     def asimov(self, flag=True):
         """
@@ -1676,10 +1690,10 @@ class CombineCommand(object):
             logger.info('Doing asimov')
             self.kwargs['-t'] = -1
             self.args.add('--toysFrequentist')
-            self.name = 'Asimov'
+            self.name += 'Asimov'
         else:
             logger.info('Doing observed')
-            self.name = 'Observed'
+            self.name += 'Observed'
 
     def configure_from_command_line(self):
         """
