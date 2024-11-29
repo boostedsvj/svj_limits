@@ -22,7 +22,7 @@ rinv_value="0p3"
 run_only_fits=false         # Default to generate datacards, toys, and fit
 sel="bdt=0.67"            # Default selection type
 test_type="self"            # Default test type
-siginj=false                  # Default no signal injected
+siginj="exp"                  # Default no signal injected
 mMed_values=(200 250 300 350 400 450 500 550)  # Default mMed values
 
 # Parse command-line arguments
@@ -33,7 +33,7 @@ while [[ "$#" -gt 0 ]]; do
         --sel) sel="$2"; shift ;;
         --test_type) test_type="$2"; shift ;;
         --hists_date) hists_date="$2"; shift ;;
-        --siginj) siginj=true ;;
+        --siginj) siginj="$2"; shift ;;
         --mDark) mDark_value="$2"; shift ;;
         --rinv) rinv_value="$2"; shift ;; 
         --mMed_values) IFS=' ' read -r -a mMed_values <<< "$2"; shift ;;  # Parse mMed_values as array
@@ -50,7 +50,7 @@ else
 fi
 
 # This is used for the 'siginj' directory 0 means no signal, 1 means signal injected (not sig strength)
-if [ "$siginj" == false ]; then
+if [ "$siginj" == 0 ]; then
     inj=0
 else
     inj=1
@@ -58,8 +58,12 @@ fi
 
 # Injected signal stregnth
 declare -A sig_strength # declare associative array (bash >= 4.0)
-sig_strength=( [200]=0.271 [250]=0.136 [300]=0.165 [350]=0.189 [400]=0.210 [450]=0.249 [500]=0.265 [550]=0.397 )
-# Cut-based values are needed!!
+if [ "$siginj" == "exp" ]; then
+    sig_strength=( [200]=0.271 [250]=0.136 [300]=0.165 [350]=0.189 [400]=0.210 [450]=0.249 [500]=0.265 [550]=0.397 )
+    # Cut-based values are needed!!
+else
+    sig_strength=( [200]=$siginj [250]=$siginj [300]=$siginj [350]=$siginj [400]=$siginj [450]=$siginj [500]=$siginj [550]=$siginj )
+fi 
 
 # Generate the datacards (skip if only running fits)
 if [ "$run_only_fits" == false ]; then
@@ -74,7 +78,7 @@ if [ "$run_only_fits" == false ]; then
   # First loop: Run the 'gentoys' command
   for mMed in "${mMed_values[@]}"
   do
-    if [ "$siginj" == true ]; then
+    if [ "$siginj" != 0 ]; then
       # Run the 'gentoys' command with the current mMed value and variable mDark
       python3 cli_boosted.py gentoys \
         dc_${dc_date}_${sel}/dc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.txt \
@@ -101,7 +105,7 @@ do
   # Run the 'fittoys' command with the current mMed value and variable mDark
   python3 cli_boosted.py fittoys \
     dc_${dc_date}_${sel}/dc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.txt \
-    --toysFile toys_${toys_date}/higgsCombineObserveddc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.GenerateOnly.mH120.1001.root \
+    --toysFile toys_${toys_date}/higgsCombineObserveddc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smoothNone.GenerateOnly.mH120.1001.root \
     --expectSignal 0 \
     --rMax 5 \
     --rMin -5 \
