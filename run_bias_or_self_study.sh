@@ -105,7 +105,7 @@ do
   # Run the 'fittoys' command with the current mMed value and variable mDark
   python3 cli_boosted.py fittoys \
     dc_${dc_date}_${sel}/dc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.txt \
-    --toysFile toys_${toys_date}/higgsCombineObserveddc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smoothNone.GenerateOnly.mH120.1001.root \
+    --toysFile toys_${toys_date}/higgsCombineObserveddc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.GenerateOnly.mH120.1001.root \
     --expectSignal 0 \
     --rMax 5 \
     --rMin -5 \
