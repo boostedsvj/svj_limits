@@ -29,7 +29,9 @@ def main():
                         help="Test type: 'bias' or 'self'")
     parser.add_argument('--mz', nargs='+', type=int, default=[200, 250, 300, 350, 400, 450, 500, 550],
                         help="List of mass points. Default is [200, 250, 300, 350, 400, 450, 500, 550]")
-    
+    parser.add_argument('--inj_value', type=float, default=None,
+                        help="Set all injection values to a specific number for testing (e.g., 0.3)")   
+ 
     args = parser.parse_args()
 
     # Switch between bias and self test
@@ -39,13 +41,18 @@ def main():
     elif test == 'self' : test_title = 'Self'
 
     # injected signal strength
-    # Needs to be aded for cutbased
-    inj ={}
-    if args.sel == 'bdt=0.67':
-        inj = {200 : 0.271, 250 : 0.136, 300 : 0.165, 350 : 0.189, 400 : 0.210, 450 : 0.249, 500 : 0.265, 550 : 0.397}
-    else :
+    # Needs to be added for cutbased
+    if args.inj_value is not None:
+        # If the user specifies --inj_value, override all injection values
+        inj = {mz: args.inj_value for mz in args.mz}
+    elif args.sel == 'bdt=0.67':
+        # Expected limit values for bdt=0.67
+        inj_values = [0.271, 0.136, 0.165, 0.189, 0.210, 0.249, 0.265, 0.397]
+        inj = {mz: inj_val for mz, inj_val in zip(args.mz, inj_values)}
+    else:
+        # Default case with warning
         print("WARNING: using 0.2 as injected signal value, please correct if unintended")
-        inj = {200 : 0.2, 250 : 0.2, 300 : 0.2, 350 : 0.2, 400 : 0.2, 450 : 0.2, 500 : 0.2, 550 : 0.2}
+        inj = {mz: 0.2 for mz in args.mz}
 
     # Directories for r_inj = 0 and r_inj = inj
     path_rinj0 = [(f"{args.base_dir}/siginj0/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_"
