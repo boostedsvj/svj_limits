@@ -397,6 +397,7 @@ all_pdfs = {
         },
         3: {
             "expr": 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})))',
+            "pars": {1: (-100., 100.), 2: (-50., 50.), 3: (-10., 10.)},
         },
         4: {
             "expr": 'exp(@1*(@0/{0})) * pow(@0/{0},@2*(1+@3*log(@0/{0})*(1+@4*log(@0/{0}))))',
@@ -532,10 +533,18 @@ class InputData(object):
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
+<<<<<<< Updated upstream
             # to force the fisher test to select with certain ua2 parameters
             #if pdf_type == "ua2": i_winner = 0
             #else: i_winner = do_fisher_test(mt, data_datahist, pdfs)
             i_winner = do_fisher_test(mt, data_datahist, pdfs)
+=======
+            # to force ua2 to pick certain function
+            if pdf_type == "ua2": i_winner = 2
+            elif pdf_type == "ua2mod": i_winner = 3
+            else: i_winner = do_fisher_test(mt, data_datahist, pdfs)
+            #i_winner = do_fisher_test(mt, data_datahist, pdfs)
+>>>>>>> Stashed changes
             winner_pdfs.append(pdfs[i_winner])
 
         systs = [
@@ -1052,7 +1061,11 @@ def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000', trigeff=None
     """
     if name is None: name = uid()
     all_n_pars = range(all_pdfs[pdf_type].n_min, all_pdfs[pdf_type].n_max+1)
+<<<<<<< Updated upstream
     # to force ua2 with 4 parameters
+=======
+    # to force ua2 to pick function with 4 parameters
+>>>>>>> Stashed changes
     #if pdf_type == "ua2": all_n_pars = [4]
     #elif npars is not None: all_n_pars = [npars]
     if npars is not None: all_n_pars = [npars]
@@ -1777,10 +1790,19 @@ def scan(cmd):
     cmd = bestfit(cmd)
     cmd.kwargs['--algo'] = 'grid'
     cmd.kwargs['--alignEdges'] = 1
+<<<<<<< Updated upstream
     rmin, rmax = pull_arg('-r', '--range', type=float, default=[0., 2.], nargs=2).range
     cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
     cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
+=======
+    #rmin, rmax = pull_arg('-r', '--range', type=float, default=[0., 0.60], nargs=2).range
+    rmin, rmax = pull_arg('-r', '--range', type=float, default=[0.12, 0.13], nargs=3).range
+    cmd.add_range('r', rmin, rmax)
+    cmd.track_parameters.add('r')
+    cmd.kwargs['--points'] = pull_arg('-n', type=int, default=2).n
+    #cmd.kwargs['--points'] = pull_arg('-n', type=int, default=11).n
+>>>>>>> Stashed changes
     return cmd
 
 
