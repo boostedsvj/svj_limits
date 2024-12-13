@@ -194,7 +194,17 @@ def extract_scans(rootfiles, correct_minimum=False):
 
                 scans.append(scan)
 
-    return scans
+    # keep lowest likelihood for each r value
+    min_scans = []
+    for scan in scans:
+        inds = np.lexsort((scan.df['dnll'], scan.df['mu']))
+        scan = scan[inds]
+        # remove duplicates
+        _, uniq_inds = np.unique(scan.df['mu'], return_index=True)
+        scan = scan[uniq_inds]
+        min_scans.append(scan)
+
+    return min_scans
 
 
 def clean_scan(scan):

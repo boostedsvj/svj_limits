@@ -1605,6 +1605,7 @@ class CombineCommand(object):
         self.parameters = OrderedDict()
         self.parameter_ranges = OrderedDict()
         self.pass_through = [] if pass_through is None else pass_through
+        self.pdf_pars = []
 
     def get_name_key(self):
         """
@@ -1675,6 +1676,7 @@ class CombineCommand(object):
         self.track_parameters.update(pars_to_track)
         self.track_errors.update(pars_to_track)
         self.freeze_parameters.add('pdf_index')
+        self.pdf_pars = ['roomultipdf_theta'] + pdf_pars
         for other_pdf in known_pdfs():
             if other_pdf==pdf: continue
             other_pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
@@ -1695,7 +1697,7 @@ class CombineCommand(object):
             logger.info('Doing observed')
             self.name += 'Observed'
 
-    def configure_from_command_line(self):
+    def configure_from_command_line(self, scan=False):
         """
         Configures the CombineCommand based on command line parameters.
         sys.argv is reset to its original state at the end of the function.
@@ -1707,6 +1709,12 @@ class CombineCommand(object):
             logger.info('Taking pdf from command line (default is ua2)')
             pdf = pull_arg('--pdf', type=str, choices=known_pdfs(), default='ua2').pdf
             self.pick_pdf(pdf)
+
+            # special settings to seed fits for likelihood scan
+            if scan:
+                self.kwargs['--pointsRandProf'] = 1
+                self.kwargs['--saveSpecifiedNuis'] = ','.join(self.pdf_pars)
+                self.kwargs['--setParameterRandomInitialValueRanges'] = ':'.join([p+'=prev,none' for p in self.pdf_pars])
 
             toyseed = pull_arg('-t', type=int).t
             if toyseed:

@@ -189,7 +189,7 @@ def make_bestfit_and_scan_commands(txtfile, args=None):
         cmd.name += osp.basename(dc.filename).replace('.txt','')
         scan = bsvj.scan(cmd)
         scan.name += 'Scan'
-        scan.configure_from_command_line()
+        scan.configure_from_command_line(scan=True)
         bestfit = bsvj.bestfit(cmd)
         bestfit.name += 'Bestfit'
         bestfit.configure_from_command_line()
