@@ -1712,9 +1712,9 @@ class CombineCommand(object):
 
             # special settings to seed fits for likelihood scan
             if scan:
-                self.kwargs['--pointsRandProf'] = 1
+                self.kwargs['--pointsRandProf'] = 5
                 self.kwargs['--saveSpecifiedNuis'] = ','.join(self.pdf_pars)
-                self.kwargs['--setParameterRandomInitialValueRanges'] = ':'.join([p+'=prev,none' for p in self.pdf_pars])
+                self.kwargs['--setParameterRandomInitialValueRanges'] = ':'.join([p+'=prev,err' for p in self.pdf_pars])
 
             toyseed = pull_arg('-t', type=int).t
             if toyseed:
