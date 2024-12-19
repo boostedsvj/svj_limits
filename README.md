@@ -3,19 +3,20 @@
 This repo contains all the setup required for limit setting for the BSVJ search. The first section describes setup and some possible analyses,
 then the last section of this README contains commands that operate high-level scripts for preforming the necessary statistical tests.
 
-## Setup 
+## Setup
 
-1. Follow the `combine` instructions: https://cms-analysis.github.io/HiggsAnalysis-CombinedLimit/#setting-up-the-environment-and-installation .
-Current results are using release `CMSSW_11_3_4`, tag v9.1.0.
-Make sure to install `CombineHarvester` as well (bottom of that page).
-
-2. Clone this repository and install dependencies:
+We are using a patched version of `combine` v9.2.0. The original instructions are here: https://cms-analysis.github.io/HiggsAnalysis-CombinedLimit/#setting-up-the-environment-and-installation .
 
 ```bash
-cd $CMSSW_BASE/src
+cmssw-el7
+cmsrel CMSSW_11_3_4
+cd CMSSW_11_3_4/src
 cmsenv
 scram-venv
 cmsenv
+git clone git@github.com:boostedsvj/HiggsAnalysis-CombinedLimit.git HiggsAnalysis/CombinedLimit -b seed_fit
+git clone https://github.com/cms-analysis/CombineHarvester.git CombineHarvester
+scram b -j 4
 pip3 install git+https://github.com/boostedsvj/seutils
 pip3 install git+https://github.com/boostedsvj/svj_ntuple_processing
 git clone git@github.com:boostedsvj/svj_limits.git boosted/svj_limits
