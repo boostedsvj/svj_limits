@@ -1751,7 +1751,8 @@ class CombineCommand(object):
         if not self.dc: raise Exception('self.dc must be a valid path')
         command.append('-d ' + self.dc.filename)
         command.extend(list(self.args))
-        command.extend([k+' '+str(v) for k, v in self.kwargs.items()])
+        # handle kwargs that can be used multiple times
+        command.extend([' '.join([k+' '+str(vv) for vv in v]) if isinstance(v,list) else k+' '+str(v) for k, v in self.kwargs.items()])
 
         for attr, command_str in self.comma_separated_arg_map.items():
             values = getattr(self, attr)

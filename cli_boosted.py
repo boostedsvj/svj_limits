@@ -355,7 +355,32 @@ def fittoys():
         fit_diag_file = 'fitDiagnostics{}.root'.format(cmd.name)
         os.rename(fit_diag_file, osp.join(outdir, fit_diag_file))
 
+@scripter
+def fithessian():
+    datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('hessianfits_%b%d')).outdir
+    if not osp.isdir(outdir): os.makedirs(outdir)
 
+    for dc_file in datacards:
+        dc = bsvj.Datacard.from_txt(dc_file)
+        cmd = bsvj.CombineCommand(dc)
+        cmd.configure_from_command_line()
+        cmd.name += osp.basename(dc.filename).replace('.txt','')
+
+        cmd.method = 'FitDiagnostics'
+        cmd.kwargs.pop('--algo', None)
+        cmd.args.add('--saveWorkspace')
+        cmd.kwargs['--X-rtd'] = ['REMOVE_CONSTANT_ZERO_POINT=1']
+        cmd.args.add('--bypassFrequentistFit')
+        cmd.kwargs['--X-rtd'].append('MINIMIZER_MaxCalls=100000')
+
+        assert '--expectSignal' in cmd.kwargs
+
+        bsvj.run_combine_command(cmd)
+        os.rename(cmd.outfile, osp.join(outdir, osp.basename(cmd.outfile)))
+
+        fit_diag_file = 'fitDiagnostics{}.root'.format(cmd.name)
+        os.rename(fit_diag_file, osp.join(outdir, fit_diag_file))
 
 @scripter
 def impacts():
