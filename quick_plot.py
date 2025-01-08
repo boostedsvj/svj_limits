@@ -17,6 +17,8 @@ import boosted_fits as bsvj
 logger = bsvj.setup_logger('quickplot')
 
 import numpy as np
+import matplotlib as mpl
+mpl.use('Agg') # in order to run in background / no-graphics environments
 import matplotlib.pyplot as plt # type:ignore
 
 def set_mpl_fontsize(small=22, medium=28, large=32, legend=None):
