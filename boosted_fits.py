@@ -1711,10 +1711,13 @@ class CombineCommand(object):
             self.pick_pdf(pdf)
 
             # special settings to seed fits for likelihood scan
+            # rand > 0 performs random fits; rand = 0 just seeds fit w/ prev values; rand < 0 disables this behavior
             if scan:
-                self.kwargs['--pointsRandProf'] = 10
-                self.kwargs['--saveSpecifiedNuis'] = ','.join(self.pdf_pars)
-                self.kwargs['--setParameterRandomInitialValueRanges'] = ':'.join([p+'=prev,err' for p in self.pdf_pars])
+                rand = pull_arg('--rand', type=int, default=10).rand
+                if rand>=0:
+                    self.kwargs['--pointsRandProf'] = rand
+                    self.kwargs['--saveSpecifiedNuis'] = ','.join(self.pdf_pars)
+                    self.kwargs['--setParameterRandomInitialValueRanges'] = ':'.join([p+'=prev,err' for p in self.pdf_pars])
 
             toyseed = pull_arg('-t', type=int).t
             if toyseed:
