@@ -363,6 +363,11 @@ class PdfInfo(object):
         parameters = [ROOT.RooRealVar(f'{prefix}_p{i}', f'p{i}', 1., par_ranges[i][0], par_ranges[i][1]) for i in range(1,n+1)]
         object_keeper.add_multiple(parameters)
         return parameters
+    def min_range(self, n, i):
+        self.check_n(n)
+        min_ranges = self.info[n].get("mins",{})
+        min_range = min_ranges.get(i, (None,None))
+        return min_range
 
 all_pdfs = {
     # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
@@ -726,7 +731,7 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
     if init_vals is not None:
         if len(init_vals) != len(pdf.parameters):
             raise Exception('Expected {} values; got {}'.format(len(pdf.parameters)-1, len(init_vals)))
-        for par, value in zip(pdf.parameters, init_vals):
+        for ipar, (par, value) in enumerate(zip(pdf.parameters, init_vals)):
             left, right = par.getMin(), par.getMax()
 
             # First check if the init_val is *outside* of the current range:
@@ -750,6 +755,10 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
             if abs(value) / (min(abs(left), abs(right))+eps) < 0.1:
                 new_left = -10.*abs(value)
                 new_right = 10.*abs(value)
+                min_range = all_pdfs[pdf.pdf_type].min_range(pdf.n_pars, ipar+1)
+                logger.info(f'Checking min range for {pdf.pdf_type} {pdf.n_pars} {ipar} {par.GetName()} -> {min_range}')
+                if min_range[0] is not None: new_left = min(new_left, min_range[0])
+                if min_range[1] is not None: new_right = max(new_right, min_range[1])
                 logger.info(
                     f'Decreasing range for {par.GetName()} on both sides:'
                     f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {new_right:.2f})'
