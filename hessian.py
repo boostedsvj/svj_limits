@@ -82,6 +82,7 @@ def compute_hessian(args):
         for iy in range(ix, npar):
             y = floatparams[iy]
             dy = args.scale*y.getError()
+            if dx==0 or dy==0: print(x,y,dx,dy)
             hess[ix, iy] = finitediff(nll, x, y, dx, dy)
 
     ilow  = np.tril_indices(npar, -1)
@@ -125,8 +126,8 @@ if __name__ == '__main__':
     print("Smallest eigenvalue of covariance matrix:", cov_eig[0])
 
     std = np.sqrt(np.diag(covar))
-    print("Largest standard deviation:", std.max(), "at", param[std.argmax()])
-    print("Smallest standard deviation:", std.min(), "at", param[std.argmin()])
+    print("Largest standard deviation:", std.max(), "at", param[std.argmax()], end='')
+    print("Smallest standard deviation:", std.min(), "at", param[std.argmin()], end='')
 
     corr = covar / std[:,None] / std[None,:]
     corr_eig, corr_eigv = np.linalg.eigh(corr)
@@ -137,3 +138,11 @@ if __name__ == '__main__':
     for mag, par in zip(normed_eigv[order], param[order]):
         print("  %6.3f %r" % (mag, par.GetName()))
 
+    print("All standard deviations:")
+    for s,p in sorted([(s,param[istd]) for istd,s in enumerate(std)]):
+        print(s, "at", p, end='')
+
+    print("Correlation matrix:")
+    print(" ".join([param[istd].GetName() for istd,s in enumerate(std)]))
+    with np.printoptions(precision=3, suppress=True):
+        print(corr)
