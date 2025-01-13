@@ -513,7 +513,7 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False):
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='chi2'):
         mz = int(self.metadata['mz'])
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
@@ -538,7 +538,7 @@ class InputData(object):
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-            i_winner = do_fisher_test(mt, data_datahist, pdfs)
+            i_winner = do_fisher_test(mt, data_datahist, pdfs, gof_type=gof_type)
             winner_pdfs.append(pdfs[i_winner])
 
         systs = [
@@ -1186,7 +1186,7 @@ def data_ploton_frame(frame, data, is_data=True):
     return data_graph
 
 
-def get_chi2_viaframe(mt, pdf, data, n_fit_parameters):
+def get_chi2_viaframe(mt, pdf, data):
     """
     Get the chi2 value of the fitted pdf on data by plotting it on
     a temporary frame.
@@ -1195,9 +1195,9 @@ def get_chi2_viaframe(mt, pdf, data, n_fit_parameters):
     """
     logger.debug('Using plotOn residuals')
     frame = mt.frame(ROOT.RooFit.Title(""))
-    pdf_ploton_frame(frame, pdf, norm=data.sumEntries())
+    pdf_ploton_frame(frame, pdf.pdf, norm=data.sumEntries())
     data_graph = data_ploton_frame(frame, data)
-    roochi2 = frame.chiSquare(pdf.GetName(), data.GetName(), n_fit_parameters)
+    roochi2 = frame.chiSquare(pdf.pdf.GetName(), data.GetName(), pdf.n_pars)
     # Number of degrees of freedom: data will contain zeros of mt binning
     # is finer than original data binning; don't count those zeros
     dhist = frame.findObject(data.GetName(),ROOT.RooHist.Class())
@@ -1207,13 +1207,13 @@ def get_chi2_viaframe(mt, pdf, data, n_fit_parameters):
         y = ctypes.c_double(0.)
         dhist.GetPoint(i,x,y)
         if y!=0: n_bins += 1
-    ndf = n_bins - n_fit_parameters
+    ndf = n_bins - pdf.n_pars
     chi2 = roochi2 * ndf
     roopro = ROOT.TMath.Prob(chi2, ndf)
-    return roochi2, chi2, roopro, ndf
+    return {'roochi2': roochi2, 'chi2': chi2, 'roopro': roopro, 'ndf': ndf, 'n_bins': n_bins}
 
 
-def get_rss_viaframe(mt, pdf, data, norm=None, return_n_bins=False):
+def get_rss_viaframe(mt, pdf, data):
     """
     Get the Residual Sum of Squares (RSS) of the fitted pdf on data by plotting it on
     a temporary frame.
@@ -1223,10 +1223,11 @@ def get_rss_viaframe(mt, pdf, data, norm=None, return_n_bins=False):
 
     For some reason this is much faster than the non-plotting method.
     """
+    pdf = pdf.pdf
     logger.info('Calculating RSS using plotOn residuals')
     rss = 0.
     frame = mt.frame(ROOT.RooFit.Title(""))
-    pdf_ploton_frame(frame, pdf, norm=(data.sumEntries() if norm is None else norm))
+    pdf_ploton_frame(frame, pdf, norm=data.sumEntries())
     data_graph = data_ploton_frame(frame, data)
 
     hist = data_graph.getHist()
@@ -1256,26 +1257,30 @@ def get_rss_viaframe(mt, pdf, data, norm=None, return_n_bins=False):
         n_bins += 1
     rss = sqrt(rss)
     logger.info('rss_viaframe: {}'.format(rss))
-    return (rss, n_bins) if return_n_bins else rss
+    return {'rss': rss, 'n_bins': n_bins}
 
 
-def do_fisher_test(mt, data, pdfs, a_crit=.07):
+def do_fisher_test(mt, data, pdfs, a_crit=.07, gof_type='chi2'):
     """
     Does a Fisher test. First computes the cl_vals for all combinations
     of pdfs, then picks the winner.
 
     Returns the pdf that won.
     """
-    rsss = [ get_rss_viaframe(mt, pdf.pdf, data, return_n_bins=True) for pdf in pdfs ]
+    gof_fns = {
+        'chi2': get_chi2_viaframe,
+        'rss': get_rss_viaframe,
+    }
+    gofs = [ gof_fns[gof_type](mt, pdf, data) for pdf in pdfs ]
     # Compute test values of all combinations beforehand
     cl_vals = {}
     for i in range(len(pdfs)-1):
         for j in range(i+1, len(pdfs)):
             n1 = pdfs[i].n_pars
             n2 = pdfs[j].n_pars
-            rss1, _      = rsss[i]
-            rss2, n_bins = rsss[j]
-            f = ((rss1-rss2)/(n2-n1)) / (rss2/(n_bins-n2))
+            gof1         = gofs[i][gof_type]
+            gof2, n_bins = gofs[j][gof_type], gofs[j]['n_bins']
+            f = ((gof1-gof2)/(n2-n1)) / (gof2/(n_bins-n2))
             cl = 1.-ROOT.TMath.FDistI(f, n2-n1, n_bins-n2)
             cl_vals[(i,j)] = cl
 
