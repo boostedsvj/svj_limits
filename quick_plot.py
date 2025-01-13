@@ -845,6 +845,7 @@ def bkgfit():
     linscale = bsvj.pull_arg('--lin', action='store_true').lin
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    gof_type = bsvj.pull_arg('--gof-type', type=str, default='chi2', choices=['chi2','rss']).gof_type
 
     input = bsvj.InputData(**jsons)
 
@@ -889,7 +890,7 @@ def bkgfit():
     np.testing.assert_almost_equal(y_pdf_eval, pdf.evaluate(bin_centers), decimal=2)
 
     # Do the fisher test and mark the winner pdf
-    winner = bsvj.do_fisher_test(mt, data_datahist, pdfs)
+    winner = bsvj.do_fisher_test(mt, data_datahist, pdfs, gof_type=gof_type)
     pdfs[winner].is_winner = True
 
     bkg_hist.vals = np.array(bkg_hist.vals)
@@ -919,8 +920,8 @@ def bkgfit():
         if getattr(pdf, 'is_winner', False):
             logger.warning('y_pdf post norm: %s (norm=%s)', y_pdf, y_pdf.sum())
 
-        chi2_vf = bsvj.get_chi2_viaframe(mt, pdf.pdf, data_datahist, pdf.n_pars)
-        chi2 = chi2_vf[1]
+        chi2_vf = bsvj.get_chi2_viaframe(mt, pdf, data_datahist)
+        chi2 = chi2_vf['chi2']
 
         label = (
             '{}, $\\chi^{{2}}={:.5f}$: ['.format(pdf.n_pars, chi2)
