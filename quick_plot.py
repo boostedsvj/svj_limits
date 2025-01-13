@@ -919,8 +919,8 @@ def bkgfit():
         if getattr(pdf, 'is_winner', False):
             logger.warning('y_pdf post norm: %s (norm=%s)', y_pdf, y_pdf.sum())
 
-        chi2 = ((y_pdf-bkg_hist.vals)**2 / y_pdf).sum()
-        # chi2 /= (len(bin_centers) - pdf.npars)
+        chi2_vf = bsvj.get_chi2_viaframe(mt, pdf.pdf, data_datahist, pdf.n_pars)
+        chi2 = chi2_vf[1]
 
         label = (
             '{}, $\\chi^{{2}}={:.5f}$: ['.format(pdf.n_pars, chi2)

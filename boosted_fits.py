@@ -18,6 +18,7 @@ def encode(s):
     return s.encode() if PY3 else s
 
 
+import ctypes
 import ROOT # type:ignore
 ROOT.TH1.SetDefaultSumw2()
 ROOT.TH1.AddDirectory(False)
@@ -1202,8 +1203,8 @@ def get_chi2_viaframe(mt, pdf, data, n_fit_parameters):
     dhist = frame.findObject(data.GetName(),ROOT.RooHist.Class())
     n_bins = 0
     for i in range(dhist.GetN()):
-        x = ROOT.Double(0.)
-        y = ROOT.Double(0.)
+        x = ctypes.c_double(0.)
+        y = ctypes.c_double(0.)
         dhist.GetPoint(i,x,y)
         if y!=0: n_bins += 1
     ndf = n_bins - n_fit_parameters
