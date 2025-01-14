@@ -555,6 +555,14 @@ class InputData(object):
         winner_pdfs = []
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
+            ress = []
+            init_vals = None
+            for pdf in pdfs:
+                if init_vals is not None and pdf.n_pars>len(init_vals):
+                    init_vals.extend([0]*(pdf.n_pars-len(init_vals)))
+                pdf_res = fit(pdf, cache=cache, prev_init=init_vals)
+                ress.append(pdf_res)
+                init_vals = [p.getVal() for p in pdf.parameters]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
             i_winner = do_fisher_test(mt, data_datahist, pdfs, gof_type=gof_type)
             winner_pdfs.append(pdfs[i_winner])
@@ -862,7 +870,7 @@ def single_fit_scipy(expression, histogram, init_vals=None, cache=None, **minimi
     return res
 
 
-def fit_scipy_robust(expression, histogram, cache='auto'):
+def fit_scipy_robust(expression, histogram, cache='auto', prev_init=None):
     """
     Main entry point for fitting an expression to a histogram with Scipy
     """
@@ -879,16 +887,20 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
         return res
 
     # Attempt 1: Fit with loose tolerance BFGS, then strict tolerance Nelder-Mead
-    res = single_fit_scipy(
-        expression, histogram,
-        tol=1e-3, method='BFGS',
-        cache=cache
-        )
+    if prev_init is not None:
+        init_vals = prev_init
+    else:
+        res = single_fit_scipy(
+            expression, histogram,
+            tol=1e-3, method='BFGS',
+            cache=cache
+            )
+        init_vals = res.x
     # Refit with output from first fit
     options_nm = {'maxfev':10000}
     res = single_fit_scipy(
         expression, histogram,
-        init_vals=res.x,
+        init_vals=init_vals,
         tol=1e-6, method='Nelder-Mead',
         cache=cache,
         options = options_nm
@@ -931,14 +943,14 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
     return res
 
 
-def fit(pdf, th1=None, cache='auto'):
+def fit(pdf, th1=None, cache='auto', prev_init=None):
     """
     Main bkg fit entry point for
     - first fitting pdf expression to bkg th1 with scipy
     - then using those initial values in RooFit
     """
     if th1 is None: th1 = getattr(pdf, 'th1', None)
-    res_scipy = fit_scipy_robust(pdf.expression, th1, cache=cache)
+    res_scipy = fit_scipy_robust(pdf.expression, th1, cache=cache, prev_init=prev_init)
     res_roofit_wscipy = fit_roofit(pdf, th1, init_vals=res_scipy.x)
     return res_roofit_wscipy
 

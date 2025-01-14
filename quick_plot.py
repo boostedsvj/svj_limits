@@ -862,9 +862,12 @@ def bkgfit():
 
     pdfs = bsvj.pdfs_factory(pdftype, mt, bkg_th1, name=pdftype)
 
+    init_vals = None
     for pdf in pdfs:
+        if init_vals is not None and pdf.n_pars>len(init_vals):
+            init_vals.extend([0]*(pdf.n_pars-len(init_vals)))
         if scipyonly:
-            pdf.res = bsvj.fit_scipy_robust(pdf.expression, pdf.th1, cache=None)
+            pdf.res = bsvj.fit_scipy_robust(pdf.expression, pdf.th1, cache=None, prev_init=init_vals)
             # Fill in the fitted parameters
             for p, val in zip(pdf.parameters, pdf.res.x):
                 # Make sure the newly fitted value is actually in range
@@ -872,7 +875,8 @@ def bkgfit():
                 if val > p.getMax(): p.setMax(val + 0.1*abs(val))
                 p.setVal(val)
         else:
-            pdf.res = bsvj.fit(pdf)
+            pdf.res = bsvj.fit(pdf, prev_init=init_vals)
+        init_vals = [p.getVal() for p in pdf.parameters]
 
 
     if not scipyonly:
