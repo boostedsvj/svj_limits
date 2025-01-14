@@ -378,6 +378,11 @@ class PdfInfo(object):
         min_ranges = self.info[n].get("mins",{})
         min_range = min_ranges.get(i, (None,None))
         return min_range
+    def max_range(self, n, i):
+        self.check_n(n)
+        max_ranges = self.info[n].get("maxs",{})
+        max_range = max_ranges.get(i, (None,None))
+        return max_range
 
 all_pdfs = {
     # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
@@ -751,6 +756,9 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
             # First check if the init_val is *outside* of the current range:
             if value < left:
                 new_left = value -10.*abs(value)
+                max_range = all_pdfs[pdf.pdf_type].max_range(pdf.n_pars, ipar+1)
+                logger.info(f'Checking max range for {pdf.pdf_type} {pdf.n_pars} {ipar} {par.GetName()} -> {max_range}')
+                if max_range[0] is not None: new_left = max(new_left, max_range[0])
                 logger.info(
                     f'Increasing range for {par.GetName()} on the left:'
                     f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {right:.2f})'
@@ -758,6 +766,9 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                 par.setMin(new_left)
             elif value > right:
                 new_right = value + 10.*abs(value)
+                max_range = all_pdfs[pdf.pdf_type].max_range(pdf.n_pars, ipar+1)
+                logger.info(f'Checking max range for {pdf.pdf_type} {pdf.n_pars} {ipar} {par.GetName()} -> {max_range}')
+                if max_range[1] is not None: new_right = min(new_right, max_range[1])
                 logger.info(
                     f'Increasing range for {par.GetName()} on the right:'
                     f'({left:.2f}, {right:.2f}) -> ({left:.2f}, {new_right:.2f})'
