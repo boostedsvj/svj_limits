@@ -177,10 +177,10 @@ class AttrDict(dict):
 def safer_divide(a, b):
     return np.nan_to_num(
         np.divide(
-            a, b, out=np.zeros_like(a),
+            a, b, out=np.inf*np.ones_like(a),
             where=((np.nan_to_num(b)!=0) & ~((np.abs(a)==np.inf) & (np.abs(b)==np.inf)))
         ),
-        posinf=np.inf, neginf=-np.inf
+        nan=np.inf, posinf=np.inf, neginf=-np.inf
     )
 
 # _______________________________________________________________________
