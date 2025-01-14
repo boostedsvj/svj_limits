@@ -1793,7 +1793,7 @@ class CombineCommand(object):
         return command
 
 
-def bestfit(cmd):
+def bestfit(cmd, range=None):
     """
     Takes a CombineComand, and applies options on it to turn it into
     MultiDimFit best-fit command
@@ -1804,21 +1804,21 @@ def bestfit(cmd):
     cmd.args.add('--saveNLL')
     cmd.redefine_signal_pois.add('r')
     cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
+    if range is None: range = pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
+    cmd.add_range('r', range[0], range[1])
     # Possibly delete some settings too
     cmd.kwargs.pop('--algo', None)
     return cmd
 
 
-def scan(cmd):
+def scan(cmd, range=None):
     """
     Takes a CombineComand, and applies options on it to turn it into
     scan over r
     """
-    cmd = bestfit(cmd)
+    cmd = bestfit(cmd, range)
     cmd.kwargs['--algo'] = 'grid'
     cmd.kwargs['--alignEdges'] = 1
-    rmin, rmax = pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
-    cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
     cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
     return cmd

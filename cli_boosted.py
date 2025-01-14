@@ -183,15 +183,17 @@ def simple_test_fit():
 
 
 def make_bestfit_and_scan_commands(txtfile, args=None):
+    # this is shared between both commands, so pull it out first
+    range = bsvj.pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
     if args is None: args = sys.argv[1:]
     with bsvj.set_args(sys.argv[:1] + args):
         dc = bsvj.Datacard.from_txt(txtfile)
         cmd = bsvj.CombineCommand(dc)
         cmd.name += osp.basename(dc.filename).replace('.txt','')
-        scan = bsvj.scan(cmd)
+        scan = bsvj.scan(cmd, range)
         scan.name += 'Scan'
         scan.configure_from_command_line(scan=True)
-        bestfit = bsvj.bestfit(cmd)
+        bestfit = bsvj.bestfit(cmd, range)
         bestfit.name += 'Bestfit'
         bestfit.configure_from_command_line()
     return bestfit, scan
