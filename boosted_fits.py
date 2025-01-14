@@ -174,6 +174,15 @@ class AttrDict(dict):
         self.__dict__ = self
 
 
+def safer_divide(a, b):
+    return np.nan_to_num(
+        np.divide(
+            a, b, out=np.zeros_like(a),
+            where=((np.nan_to_num(b)!=0) & ~((np.abs(a)==np.inf) & (np.abs(b)==np.inf)))
+        ),
+        posinf=np.inf, neginf=-np.inf
+    )
+
 # _______________________________________________________________________
 # JSON Input interface
 
@@ -688,8 +697,8 @@ def build_chi2(expr, h):
         parameters.insert(0, mt_array)
         y_pdf = eval_expression(expr, parameters)
         # Normalize pdf to counts too before evaluating, so as the compare only shape
-        y_pdf = (y_pdf/y_pdf.sum()) * hist.vals.sum()
-        return np.sum((hist.vals-y_pdf)**2 / y_pdf)
+        y_pdf = safer_divide(y_pdf,y_pdf.sum()) * hist.vals.sum()
+        return np.sum(safer_divide((hist.vals-y_pdf)**2, y_pdf))
     return chi2
 
 
