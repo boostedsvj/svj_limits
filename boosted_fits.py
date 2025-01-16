@@ -1738,7 +1738,7 @@ class CombineCommand(object):
 
             # special settings to seed fits for likelihood scan
             # rand > 0 performs random fits; rand = 0 just seeds fit w/ prev values; rand < 0 disables this behavior
-            rand = pull_arg('--rand', type=int, default=10).rand
+            rand = pull_arg('--rand', type=int, default=0).rand
             ext = pull_arg('--ext', type=str, default="").ext
             range_factor = pull_arg('--range-factor', type=str, default="err").range_factor
             if scan and rand>=0:
