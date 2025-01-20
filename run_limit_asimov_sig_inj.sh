@@ -67,8 +67,7 @@ if [ "$run_only_fits" = false ]; then
   if [ "$only_inj" = false ]; then
     python3 cli_boosted.py likelihood_scan_mp \
       dc_${dc_date}_${sel}/dc*mDark-${mDark_value}_rinv-${rinv_value}*${sel}*smooth.txt \
-      --rMin 0.0 \
-      --rMax 5.0 \
+      --range 0.0 2.0 \
       --seed 1001 \
       --asimov
   fi
@@ -79,11 +78,10 @@ fi
 # These become the 'observed' files
 python3 cli_boosted.py likelihood_scan_mp \
   dc_${dc_date}_${sel}/dc*mDark-${mDark_value}_rinv-${rinv_value}*${sel}*smooth.txt \
-  --rMin 0.0 \
-  --rMax 5.0 \
+  --range 0.0 2.0 \
   --seed 1001 \
-  -t -1 \
-  --toysFile toys_${dc_date}/higgsCombineObserveddc_SVJ_s-channel_mMed-${mInj}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.GenerateOnly.mH120.1001.root
+  --toysFile toys_${dc_date}/higgsCombineObserveddc_SVJ_s-channel_mMed-${mInj}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.GenerateOnly.mH120.1001.root \
+  -t -1
 
 # plot
 python3 quick_plot.py brazil \

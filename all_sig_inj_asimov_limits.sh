@@ -16,7 +16,7 @@ mMed_values=(200 250 300 350 400 450 500 550)
 
 # Injected signal stregnth
 declare -A sig_strength # declare associative array (bash >= 4.0)
-sig_strength=( [200]=0.271 [250]=0.136 [300]=0.165 [350]=0.189 [400]=0.210 [450]=0.249 [500]=0.265 [550]=0.397 )
+sig_strength=( [200]=0.267 [250]=0.129 [300]=0.160 [350]=0.184 [400]=0.208 [450]=0.248 [500]=0.262 [550]=0.396 )
 
 for mMed in "${mMed_values[@]}"
 do
