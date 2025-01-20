@@ -47,7 +47,7 @@ def main():
         inj = {mz: args.inj_value for mz in args.mz}
     elif args.sel == 'bdt=0.67':
         # Expected limit values for bdt=0.67
-        inj_values = [0.271, 0.136, 0.165, 0.189, 0.210, 0.249, 0.265, 0.397]
+        inj_values = [0.267, 0.129, 0.160, 0.184, 0.208, 0.248, 0.262, 0.396]
         inj = {mz: inj_val for mz, inj_val in zip(args.mz, inj_values)}
     else:
         # Default case with warning
