@@ -49,7 +49,7 @@ else
     pdf_option="ua2"
 fi
 
-# This is used for the 'siginj' directory 0 means no signal, 1 means signal injected (not sig strength)
+# This is used for naming the 'siginj' directory: 0 means no signal, 1 means signal injected (not sig strength)
 if [ "$siginj" == 0 ]; then
     inj_dir=0
 else
