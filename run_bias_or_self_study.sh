@@ -51,15 +51,15 @@ fi
 
 # This is used for the 'siginj' directory 0 means no signal, 1 means signal injected (not sig strength)
 if [ "$siginj" == 0 ]; then
-    inj=0
+    inj_dir=0
 else
-    inj=1
+    inj_dir=1
 fi
 
 # Injected signal stregnth
 declare -A sig_strength # declare associative array (bash >= 4.0)
 if [ "$siginj" == "exp" ]; then
-    sig_strength=( [200]=0.271 [250]=0.136 [300]=0.165 [350]=0.189 [400]=0.210 [450]=0.249 [500]=0.265 [550]=0.397 )
+    sig_strength=( [200]=0.267 [250]=0.129 [300]=0.160 [350]=0.184 [400]=0.208 [450]=0.248 [500]=0.262 [550]=0.396 )
     # Cut-based values are needed!!
 else
     sig_strength=( [200]=$siginj [250]=$siginj [300]=$siginj [350]=$siginj [400]=$siginj [450]=$siginj [500]=$siginj [550]=$siginj )
@@ -114,7 +114,7 @@ do
 done
 
 # Create the results directory that is expected by the plotting code
-results_dir="${test_type}_test/siginj${inj}"
+results_dir="${test_type}_test/siginj${inj_dir}"
 mkdir -p "$results_dir"
 
 # Copy the ROOT files from the generated toyfits directory to the new results directory
