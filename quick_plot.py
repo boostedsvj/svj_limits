@@ -845,7 +845,7 @@ def bkgfit():
     linscale = bsvj.pull_arg('--lin', action='store_true').lin
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
-    gof_type = bsvj.pull_arg('--gof-type', type=str, default='chi2', choices=['chi2','rss']).gof_type
+    gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=['chi2','rss']).gof_type
 
     input = bsvj.InputData(**jsons)
 
