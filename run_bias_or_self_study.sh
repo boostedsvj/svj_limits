@@ -103,6 +103,7 @@ fi
 for mMed in "${mMed_values[@]}"
 do
   # Run the 'fittoys' command with the current mMed value and variable mDark
+  # --range is used for likelihood fits and rMin/rMax for toy fits
   python3 cli_boosted.py fittoys \
     dc_${dc_date}_${sel}/dc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.txt \
     --toysFile toys_${toys_date}/higgsCombineObserveddc_SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth.GenerateOnly.mH120.1001.root \
