@@ -18,6 +18,7 @@ def encode(s):
     return s.encode() if PY3 else s
 
 
+import ctypes
 import ROOT # type:ignore
 ROOT.TH1.SetDefaultSumw2()
 ROOT.TH1.AddDirectory(False)
@@ -363,6 +364,16 @@ class PdfInfo(object):
         parameters = [ROOT.RooRealVar(f'{prefix}_p{i}', f'p{i}', 1., par_ranges[i][0], par_ranges[i][1]) for i in range(1,n+1)]
         object_keeper.add_multiple(parameters)
         return parameters
+    def min_range(self, n, i):
+        self.check_n(n)
+        min_ranges = self.info[n].get("mins",{})
+        min_range = min_ranges.get(i, (None,None))
+        return min_range
+    def max_range(self, n, i):
+        self.check_n(n)
+        max_ranges = self.info[n].get("maxs",{})
+        max_range = max_ranges.get(i, (None,None))
+        return max_range
 
 all_pdfs = {
     # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
@@ -507,7 +518,7 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False):
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss'):
         mz = int(self.metadata['mz'])
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
@@ -532,7 +543,7 @@ class InputData(object):
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-            i_winner = do_fisher_test(mt, data_datahist, pdfs)
+            i_winner = do_fisher_test(mt, data_datahist, pdfs, gof_type=gof_type)
             winner_pdfs.append(pdfs[i_winner])
 
         systs = [
@@ -726,12 +737,15 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
     if init_vals is not None:
         if len(init_vals) != len(pdf.parameters):
             raise Exception('Expected {} values; got {}'.format(len(pdf.parameters)-1, len(init_vals)))
-        for par, value in zip(pdf.parameters, init_vals):
+        for ipar, (par, value) in enumerate(zip(pdf.parameters, init_vals)):
             left, right = par.getMin(), par.getMax()
 
             # First check if the init_val is *outside* of the current range:
             if value < left:
                 new_left = value -10.*abs(value)
+                max_range = all_pdfs[pdf.pdf_type].max_range(pdf.n_pars, ipar+1)
+                logger.info(f'Checking max range for {pdf.pdf_type} {pdf.n_pars} {ipar} {par.GetName()} -> {max_range}')
+                if max_range[0] is not None: new_left = max(new_left, max_range[0])
                 logger.info(
                     f'Increasing range for {par.GetName()} on the left:'
                     f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {right:.2f})'
@@ -739,6 +753,9 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
                 par.setMin(new_left)
             elif value > right:
                 new_right = value + 10.*abs(value)
+                max_range = all_pdfs[pdf.pdf_type].max_range(pdf.n_pars, ipar+1)
+                logger.info(f'Checking max range for {pdf.pdf_type} {pdf.n_pars} {ipar} {par.GetName()} -> {max_range}')
+                if max_range[1] is not None: new_right = min(new_right, max_range[1])
                 logger.info(
                     f'Increasing range for {par.GetName()} on the right:'
                     f'({left:.2f}, {right:.2f}) -> ({left:.2f}, {new_right:.2f})'
@@ -750,6 +767,10 @@ def fit_roofit(pdf, data_hist=None, init_vals=None, init_ranges=None):
             if abs(value) / (min(abs(left), abs(right))+eps) < 0.1:
                 new_left = -10.*abs(value)
                 new_right = 10.*abs(value)
+                min_range = all_pdfs[pdf.pdf_type].min_range(pdf.n_pars, ipar+1)
+                logger.info(f'Checking min range for {pdf.pdf_type} {pdf.n_pars} {ipar} {par.GetName()} -> {min_range}')
+                if min_range[0] is not None: new_left = min(new_left, min_range[0])
+                if min_range[1] is not None: new_right = max(new_right, min_range[1])
                 logger.info(
                     f'Decreasing range for {par.GetName()} on both sides:'
                     f'({left:.2f}, {right:.2f}) -> ({new_left:.2f}, {new_right:.2f})'
@@ -1176,7 +1197,7 @@ def data_ploton_frame(frame, data, is_data=True):
     return data_graph
 
 
-def get_chi2_viaframe(mt, pdf, data, n_fit_parameters):
+def get_chi2_viaframe(mt, pdf, data):
     """
     Get the chi2 value of the fitted pdf on data by plotting it on
     a temporary frame.
@@ -1185,25 +1206,25 @@ def get_chi2_viaframe(mt, pdf, data, n_fit_parameters):
     """
     logger.debug('Using plotOn residuals')
     frame = mt.frame(ROOT.RooFit.Title(""))
-    pdf_ploton_frame(frame, pdf, norm=data.sumEntries())
+    pdf_ploton_frame(frame, pdf.pdf, norm=data.sumEntries())
     data_graph = data_ploton_frame(frame, data)
-    roochi2 = frame.chiSquare(pdf.GetName(), data.GetName(), n_fit_parameters)
+    roochi2 = frame.chiSquare(pdf.pdf.GetName(), data.GetName(), pdf.n_pars)
     # Number of degrees of freedom: data will contain zeros of mt binning
     # is finer than original data binning; don't count those zeros
     dhist = frame.findObject(data.GetName(),ROOT.RooHist.Class())
     n_bins = 0
     for i in range(dhist.GetN()):
-        x = ROOT.Double(0.)
-        y = ROOT.Double(0.)
+        x = ctypes.c_double(0.)
+        y = ctypes.c_double(0.)
         dhist.GetPoint(i,x,y)
         if y!=0: n_bins += 1
-    ndf = n_bins - n_fit_parameters
+    ndf = n_bins - pdf.n_pars
     chi2 = roochi2 * ndf
     roopro = ROOT.TMath.Prob(chi2, ndf)
-    return roochi2, chi2, roopro, ndf
+    return {'roochi2': roochi2, 'chi2': chi2, 'roopro': roopro, 'ndf': ndf, 'n_bins': n_bins}
 
 
-def get_rss_viaframe(mt, pdf, data, norm=None, return_n_bins=False):
+def get_rss_viaframe(mt, pdf, data):
     """
     Get the Residual Sum of Squares (RSS) of the fitted pdf on data by plotting it on
     a temporary frame.
@@ -1213,10 +1234,11 @@ def get_rss_viaframe(mt, pdf, data, norm=None, return_n_bins=False):
 
     For some reason this is much faster than the non-plotting method.
     """
+    pdf = pdf.pdf
     logger.info('Calculating RSS using plotOn residuals')
     rss = 0.
     frame = mt.frame(ROOT.RooFit.Title(""))
-    pdf_ploton_frame(frame, pdf, norm=(data.sumEntries() if norm is None else norm))
+    pdf_ploton_frame(frame, pdf, norm=data.sumEntries())
     data_graph = data_ploton_frame(frame, data)
 
     hist = data_graph.getHist()
@@ -1246,26 +1268,30 @@ def get_rss_viaframe(mt, pdf, data, norm=None, return_n_bins=False):
         n_bins += 1
     rss = sqrt(rss)
     logger.info('rss_viaframe: {}'.format(rss))
-    return (rss, n_bins) if return_n_bins else rss
+    return {'rss': rss, 'n_bins': n_bins}
 
 
-def do_fisher_test(mt, data, pdfs, a_crit=.07):
+def do_fisher_test(mt, data, pdfs, a_crit=.07, gof_type='rss'):
     """
     Does a Fisher test. First computes the cl_vals for all combinations
     of pdfs, then picks the winner.
 
     Returns the pdf that won.
     """
-    rsss = [ get_rss_viaframe(mt, pdf.pdf, data, return_n_bins=True) for pdf in pdfs ]
+    gof_fns = {
+        'chi2': get_chi2_viaframe,
+        'rss': get_rss_viaframe,
+    }
+    gofs = [ gof_fns[gof_type](mt, pdf, data) for pdf in pdfs ]
     # Compute test values of all combinations beforehand
     cl_vals = {}
     for i in range(len(pdfs)-1):
         for j in range(i+1, len(pdfs)):
             n1 = pdfs[i].n_pars
             n2 = pdfs[j].n_pars
-            rss1, _      = rsss[i]
-            rss2, n_bins = rsss[j]
-            f = ((rss1-rss2)/(n2-n1)) / (rss2/(n_bins-n2))
+            gof1         = gofs[i][gof_type]
+            gof2, n_bins = gofs[j][gof_type], gofs[j]['n_bins']
+            f = ((gof1-gof2)/(n2-n1)) / (gof2/(n_bins-n2))
             cl = 1.-ROOT.TMath.FDistI(f, n2-n1, n_bins-n2)
             cl_vals[(i,j)] = cl
 
@@ -1605,6 +1631,7 @@ class CombineCommand(object):
         self.parameters = OrderedDict()
         self.parameter_ranges = OrderedDict()
         self.pass_through = [] if pass_through is None else pass_through
+        self.pdf_pars = []
 
     def get_name_key(self):
         """
@@ -1675,6 +1702,7 @@ class CombineCommand(object):
         self.track_parameters.update(pars_to_track)
         self.track_errors.update(pars_to_track)
         self.freeze_parameters.add('pdf_index')
+        self.pdf_pars = ['roomultipdf_theta'] + pdf_pars
         for other_pdf in known_pdfs():
             if other_pdf==pdf: continue
             other_pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
@@ -1695,7 +1723,7 @@ class CombineCommand(object):
             logger.info('Doing observed')
             self.name += 'Observed'
 
-    def configure_from_command_line(self):
+    def configure_from_command_line(self, scan=False):
         """
         Configures the CombineCommand based on command line parameters.
         sys.argv is reset to its original state at the end of the function.
@@ -1707,6 +1735,21 @@ class CombineCommand(object):
             logger.info('Taking pdf from command line (default is ua2)')
             pdf = pull_arg('--pdf', type=str, choices=known_pdfs(), default='ua2').pdf
             self.pick_pdf(pdf)
+
+            # special settings to seed fits for likelihood scan
+            # rand > 0 performs random fits; rand = 0 just seeds fit w/ prev values; rand < 0 disables this behavior
+            rand = pull_arg('--rand', type=int, default=0).rand
+            ext = pull_arg('--ext', type=str, default="").ext
+            range_factor = pull_arg('--range-factor', type=str, default="err").range_factor
+            if scan and rand>=0:
+                self.kwargs['--pointsRandProf'] = rand
+                self.kwargs['--saveSpecifiedNuis'] = ','.join(self.pdf_pars)
+                self.args.add('--saveSpecifiedNuisErrors')
+                if len(ext)>0:
+                    self.kwargs['--setParameterRandomInitialValueRanges'] = ':'.join([p+'=ext,'+range_factor for p in self.pdf_pars])
+                    self.kwargs['--extPointsFile'] = ext
+                else:
+                    self.kwargs['--setParameterRandomInitialValueRanges'] = ':'.join([p+'=prev,'+range_factor for p in self.pdf_pars])
 
             toyseed = pull_arg('-t', type=int).t
             if toyseed:
@@ -1740,7 +1783,8 @@ class CombineCommand(object):
         if not self.dc: raise Exception('self.dc must be a valid path')
         command.append('-d ' + self.dc.filename)
         command.extend(list(self.args))
-        command.extend([k+' '+str(v) for k, v in self.kwargs.items()])
+        # handle kwargs that can be used multiple times
+        command.extend([' '.join([k+' '+str(vv) for vv in v]) if isinstance(v,list) else k+' '+str(v) for k, v in self.kwargs.items()])
 
         for attr, command_str in self.comma_separated_arg_map.items():
             values = getattr(self, attr)
@@ -1760,7 +1804,7 @@ class CombineCommand(object):
         return command
 
 
-def bestfit(cmd):
+def bestfit(cmd, range=None):
     """
     Takes a CombineComand, and applies options on it to turn it into
     MultiDimFit best-fit command
@@ -1771,21 +1815,21 @@ def bestfit(cmd):
     cmd.args.add('--saveNLL')
     cmd.redefine_signal_pois.add('r')
     cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
+    if range is None: range = pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
+    cmd.add_range('r', range[0], range[1])
     # Possibly delete some settings too
     cmd.kwargs.pop('--algo', None)
     return cmd
 
 
-def scan(cmd):
+def scan(cmd, range=None):
     """
     Takes a CombineComand, and applies options on it to turn it into
     scan over r
     """
-    cmd = bestfit(cmd)
+    cmd = bestfit(cmd, range)
     cmd.kwargs['--algo'] = 'grid'
     cmd.kwargs['--alignEdges'] = 1
-    rmin, rmax = pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
-    cmd.add_range('r', rmin, rmax)
     cmd.track_parameters.add('r')
     cmd.kwargs['--points'] = pull_arg('-n', type=int, default=100).n
     return cmd

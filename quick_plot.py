@@ -17,6 +17,8 @@ import boosted_fits as bsvj
 logger = bsvj.setup_logger('quickplot')
 
 import numpy as np
+import matplotlib as mpl
+mpl.use('Agg') # in order to run in background / no-graphics environments
 import matplotlib.pyplot as plt # type:ignore
 
 def set_mpl_fontsize(small=22, medium=28, large=32, legend=None):
@@ -139,7 +141,7 @@ class Scan(object):
         for arr in self.df.values():
             return len(arr)
 
-def extract_scans(rootfiles, correct_minimum=False):
+def extract_scans(rootfiles, correct_minimum=False, keep_all=False):
     if isinstance(rootfiles, str): rootfiles = [rootfiles]
     scans = []
 
@@ -194,7 +196,21 @@ def extract_scans(rootfiles, correct_minimum=False):
 
                 scans.append(scan)
 
-    return scans
+    # for debugging
+    if keep_all:
+        return scans
+
+    # keep lowest likelihood for each r value
+    min_scans = []
+    for scan in scans:
+        inds = np.lexsort((scan.df['dnll'], scan.df['mu']))
+        scan = scan[inds]
+        # remove duplicates
+        _, uniq_inds = np.unique(scan.df['mu'], return_index=True)
+        scan = scan[uniq_inds]
+        min_scans.append(scan)
+
+    return min_scans
 
 
 def clean_scan(scan):
@@ -227,16 +243,17 @@ def clean_scan(scan):
     return scan[keep]
 
 
-def apply_ranges(ax):
-    xmin = bsvj.read_arg('--xmin', type=float).xmin
-    xmax = bsvj.read_arg('--xmax', type=float).xmax
-    ymin = bsvj.read_arg('--ymin', type=float).ymin
-    ymax = bsvj.read_arg('--ymax', type=float).ymax
-    if xmax is not None: ax.set_xlim(right=xmax)
-    if xmin is not None: ax.set_xlim(left=xmin)
-    if ymax is not None: ax.set_ylim(top=ymax)
-    if ymin is not None: ax.set_ylim(bottom=ymin)
-
+def apply_ranges(ax, do_x=True, do_y=True):
+    if do_x:
+        xmin = bsvj.read_arg('--xmin', type=float).xmin
+        xmax = bsvj.read_arg('--xmax', type=float).xmax
+        if xmax is not None: ax.set_xlim(right=xmax)
+        if xmin is not None: ax.set_xlim(left=xmin)
+    if do_y:
+        ymin = bsvj.read_arg('--ymin', type=float).ymin
+        ymax = bsvj.read_arg('--ymax', type=float).ymax
+        if ymax is not None: ax.set_ylim(top=ymax)
+        if ymin is not None: ax.set_ylim(bottom=ymin)
 
 @scripter
 def muscan():
@@ -274,12 +291,12 @@ def muscan():
         apply_ranges(ax)
         ax.legend(framealpha=0.)
 
-def get_scans(rootfiles, correct_minimum=False):
+def get_scans(rootfiles, correct_minimum=False, keep_all=False):
     if isinstance(rootfiles, str): rootfiles = [rootfiles]
     scans = {}
     for rootfile in rootfiles:
         name = name_from_combine_rootfile(rootfile)
-        stmp = extract_scans(rootfile, correct_minimum)
+        stmp = extract_scans(rootfile, correct_minimum, keep_all)
         if len(stmp)==1: scans[name] = stmp[0]
         else: logger.warning(f"{len(stmp)}!=1 scans found in {rootfile}, skipping")
     return scans
@@ -333,6 +350,60 @@ def trackedparams():
     for par in pars_to_scan:
         logger.info(f"Plotting {par}")
         plot_trackedparam(scans, par, outfile.format(par), clean, error=True)
+
+@scripter
+def debugparams():
+    # plot params vs. likelihood for specified r value
+    # expects input from MultiDimFit w/ --debugRandIteration option
+    rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='debugparams.png').outfile
+    r_debug = bsvj.read_arg('-r', '--mu', type=float).mu
+    eps_debug = bsvj.read_arg('-e', '--eps', type=float, default=0.0001).eps
+    sigma_debug = bsvj.read_arg('-s', '--sigma', type=float, default=4).sigma
+
+    scans = get_scans(rootfiles, keep_all=True)
+    scan = scans[next(iter(scans))]
+    # only consider params with stored errors, but exclude r and auto-generated normalization params
+    # i.e. only show params actually varied during fit
+    pars_to_scan = [par for par in scan.df if 'error_'+par in scan.df and par!='r' and (par.startswith('bsvj') or 'bsvj' not in par)]
+
+    # based on https://stackoverflow.com/a/60417813
+    y_axis_dist = 0.2
+    def plot_with_y_axis(scan, ax, param, idx, colors):
+        canvas = ax
+        # generate a new y axis and move to left side
+        if idx>0:
+            # advance cycle
+            canvas = ax.twinx()
+            canvas.spines['left'].set_position(("axes", -y_axis_dist*idx))
+            canvas.set_frame_on(True)
+            canvas.patch.set_visible(False)
+            for nsp,sp in canvas.spines.items():
+                if nsp!='left': sp.set_visible(False)
+        else:
+            canvas.set_xlabel('$\Delta NLL$')
+        # todo: show error bars?
+        pcolor = next(colors)
+        canvas.scatter(scan.df['dnll'], scan.df[param], marker='o', facecolors='none', color=pcolor)
+        apply_ranges(canvas, do_y=False)
+        canvas.set_ylabel(param)
+        canvas.yaxis.label.set_color(pcolor)
+        canvas.tick_params(axis='y', colors=pcolor)
+        canvas.yaxis.set_label_position('left')
+        canvas.yaxis.set_ticks_position('left')
+
+    for name,scan in scans.items():
+        oname = outfile.replace(".png","_"+name.split()[0]+".png")
+        # pick desired r value
+        scan = scan[abs(scan.df['mu']-r_debug)<eps_debug]
+        # remove extreme outliers
+        scan = scan[abs(scan.df['dnll']-np.mean(scan.df['dnll']))<sigma_debug*np.std(scan.df['dnll'])]
+        from itertools import cycle
+        prop_cycle = plt.rcParams['axes.prop_cycle']
+        colors = cycle(prop_cycle.by_key()['color'])
+        with quick_ax(outfile=oname) as ax:
+            for ipar,par in enumerate(pars_to_scan):
+                plot_with_y_axis(scan, ax, par, ipar, colors)
 
 @scripter
 def mtdist():
@@ -774,6 +845,7 @@ def bkgfit():
     linscale = bsvj.pull_arg('--lin', action='store_true').lin
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    gof_type = bsvj.pull_arg('--gof-type', type=str, default='chi2', choices=['chi2','rss']).gof_type
 
     input = bsvj.InputData(**jsons)
 
@@ -818,7 +890,7 @@ def bkgfit():
     np.testing.assert_almost_equal(y_pdf_eval, pdf.evaluate(bin_centers), decimal=2)
 
     # Do the fisher test and mark the winner pdf
-    winner = bsvj.do_fisher_test(mt, data_datahist, pdfs)
+    winner = bsvj.do_fisher_test(mt, data_datahist, pdfs, gof_type=gof_type)
     pdfs[winner].is_winner = True
 
     bkg_hist.vals = np.array(bkg_hist.vals)
@@ -848,8 +920,8 @@ def bkgfit():
         if getattr(pdf, 'is_winner', False):
             logger.warning('y_pdf post norm: %s (norm=%s)', y_pdf, y_pdf.sum())
 
-        chi2 = ((y_pdf-bkg_hist.vals)**2 / y_pdf).sum()
-        # chi2 /= (len(bin_centers) - pdf.npars)
+        chi2_vf = bsvj.get_chi2_viaframe(mt, pdf, data_datahist)
+        chi2 = chi2_vf['chi2']
 
         label = (
             '{}, $\\chi^{{2}}={:.5f}$: ['.format(pdf.n_pars, chi2)
