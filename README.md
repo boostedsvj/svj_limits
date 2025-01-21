@@ -164,17 +164,17 @@ Example from the BDT based search:
 ```bash
 # Self test
 # no signal injected
-./run_bias_or_self_test.sh 
-# signal injected
-./run_bias_or_self_test.sh --siginj
+./run_bias_or_self_test.sh --siginj 0
+# signal injected at expected limit
+./run_bias_or_self_test.sh --siginj exp
 # plot
 python3 plot_bias_or_self_study.py --base_dir ./self_test --sel bdt=0.67 --test self
 
 # Bias test
 # no signal injected
-./run_bias_or_self_study.sh --test_type bias
-# signal injected
-./run_bias_or_self_study.sh --test_type bias --siginj
+./run_bias_or_self_study.sh --test_type bias --siginj 0
+# signal injected at expected limit
+./run_bias_or_self_study.sh --test_type bias --siginj exp
 # plot
 python3 plot_bias_or_self_study.py --base_dir ./bias_test --sel bdt=0.67 --test bias
 ```
@@ -188,7 +188,7 @@ and mass can be configured.
 ```bash
 # Running with signal injected at mZ' 200 with a strength of 0.271
 ./run_limit_asimov_sig_inj.sh --mInj 200 --siginj 0.271
-# Then to run all signal masses
+# Or to run all signal masses (at expected limit strength)
 ./all_sig_inj_asimov_limits.sh
 ```
 
