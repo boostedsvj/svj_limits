@@ -1722,6 +1722,9 @@ class CombineCommand(object):
         else:
             logger.info('Doing observed')
             self.name += 'Observed'
+            if read_arg("--tIsToyIndex", default=False, action="store_true").tIsToyIndex:
+                toy_index = read_arg('-t', type=int).t
+                self.name += f'Toy{toy_index}'
 
     def configure_from_command_line(self, scan=False):
         """
