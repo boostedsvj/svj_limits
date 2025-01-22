@@ -410,7 +410,6 @@ def mtdist():
     rootfile = bsvj.pull_arg('rootfile', type=str).rootfile
     only_sig = bsvj.pull_arg('--onlysig', action='store_true').onlysig
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.png').outfile
-    #toyrootfile = bsvj.pull_arg('--toyrootfile', type=str).toyrootfile
 
     from scipy.interpolate import make_interp_spline # type:ignore
 
@@ -457,10 +456,6 @@ def mtdist():
     y_data = bsvj.roodataset_values(data)[1]
 
     # Get histogram from generated toy
-    #with bsvj.open_root(toyrootfile) as f:
-    #  toy = f.Get("toys/toy_1")
-    #data = ROOT.RooDataSet(toy,'mt')
-    #y_data = bsvj.roodataset_values(data)[1]
     errs_data = np.sqrt(y_data)
     logger.info(f'Prefit data # entries = {y_data.sum():.2f}, should match with datacard')
 
@@ -514,7 +509,6 @@ def mtdist():
             xerr=.5*mt_bin_widths, yerr=errs_data,
             fmt='o', c='black', label='Data'
             )
-        # logger.warning('data (roodst):  %s', y_data)
 
         ax.step(mt_binning[:-1], y_bkg_init, where='post', c='purple', label=r'$B_{prefit}$')
         ax2.step(
