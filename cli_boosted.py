@@ -159,7 +159,9 @@ def gen_datacards():
     if mtmax is not None: jsons["mt_max"] = mtmax
     nosyst = bsvj.pull_arg('--nosyst', default=False, action="store_true").nosyst
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
-    bsvj.InputData(**jsons, asimov=asimov).gen_datacard(nosyst=nosyst, gof_type=gof_type)
+    winner = bsvj.pull_arg('--winner', default=None, nargs=2, action="append").winner
+    winners = {a:int(b) for a,b in winner} if winner is not None else None
+    bsvj.InputData(**jsons, asimov=asimov).gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners)
 
 @scripter
 def simple_test_fit():

@@ -547,7 +547,7 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss'):
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None):
         mz = int(self.metadata['mz'])
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
@@ -559,12 +559,16 @@ class InputData(object):
             from fit_cache import FitCache
             cache = FitCache(lock=fit_cache_lock)
 
+        winner_indices = winners if winners else {}
         winner_pdfs = []
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
             i_winner = do_fisher_test(self.mtvar, self.data_datahist, pdfs, gof_type=gof_type)
-            winner_pdfs.append(pdfs[i_winner])
+            # take i_winner if pdf not in manually specified dictionary of winner indices
+            i_winner_final = winner_indices.get(pdf_type, i_winner)
+            logger.info(f'gen_datacard: chose n_pars={pdfs[i_winner_final].n_pars} for {pdf_type}')
+            winner_pdfs.append(pdfs[i_winner_final])
 
         systs = [
             ['lumi', 'lnN', 1.016, '-'],
