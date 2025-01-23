@@ -81,9 +81,9 @@ if [ "$run_only_fits" == false ] || [ "$skip_dc" == false ]; then
   do
     get_signame
     # Generate datacards for the current mMed value with variable mDark and hists_date
-    python3 cli_boosted.py gen_datacards \
+    (set -x; python3 cli_boosted.py gen_datacards \
       --bkg hists/merged_${hists_date}/bkg_sel-${sel}.json \
-      --sig hists/smooth_${hists_date}/${sig_name}.json
+      --sig hists/smooth_${hists_date}/${sig_name}.json)
   done
 fi
 
@@ -97,12 +97,12 @@ if [ "$run_only_fits" == false ]; then
 	  expect_sig=${sig_strength[$mMed]}
 	fi
     # Run the 'gentoys' command with the current mMed value and variable mDark
-    python3 cli_boosted.py gentoys \
+    (set -x; python3 cli_boosted.py gentoys \
       dc_${dc_date}_${sel}/dc_${sig_name}.txt \
       -t 300 \
       --expectSignal ${expect_sig} \
       -s ${toy_seed} \
-      --pdf $pdf_option
+      --pdf ${pdf_option})
   done
 fi
 
@@ -112,14 +112,14 @@ do
   get_signame
   # Run the 'fittoys' command with the current mMed value and variable mDark
   # --range is used for likelihood fits and rMin/rMax for toy fits
-  python3 cli_boosted.py fittoys \
+  (set -x; python3 cli_boosted.py fittoys \
     dc_${dc_date}_${sel}/dc_${sig_name}.txt \
     --toysFile toys_${toys_date}/higgsCombineObserveddc_${sig_name}.GenerateOnly.mH120.${toy_seed}.root \
     --expectSignal 0 \
     --rMax ${rmax} \
     --rMin -${rmax} \
     --pdf ua2 \
-    --cminDefaultMinimizerStrategy=0
+    --cminDefaultMinimizerStrategy=0)
 done
 
 # Create the results directory that is expected by the plotting code
