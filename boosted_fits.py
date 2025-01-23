@@ -547,7 +547,7 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None):
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None, brute=False):
         mz = int(self.metadata['mz'])
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
@@ -563,7 +563,7 @@ class InputData(object):
         winner_pdfs = []
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
-            ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
+            ress = [ fit(pdf, cache=cache, brute=brute) for pdf in pdfs ]
             i_winner = do_fisher_test(self.mtvar, self.data_datahist, pdfs, gof_type=gof_type)
             # take i_winner if pdf not in manually specified dictionary of winner indices
             i_winner_final = winner_indices.get(pdf_type, i_winner)
@@ -875,7 +875,7 @@ def single_fit_scipy(expression, histogram, init_vals=None, cache=None, **minimi
     return res
 
 
-def fit_scipy_robust(expression, histogram, cache='auto'):
+def fit_scipy_robust(expression, histogram, cache='auto', brute=False):
     """
     Main entry point for fitting an expression to a histogram with Scipy
     """
@@ -907,7 +907,7 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
         options = options_nm
         )
 
-    if res.success:
+    if res.success and not brute:
         # Fit successful, save in the cache and return
         if cache: cache.write(fit_hash, res)
         logger.info('Converged with simple fitting strategy, result:\n%s', res)
@@ -944,14 +944,14 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
     return res
 
 
-def fit(pdf, th1=None, cache='auto'):
+def fit(pdf, th1=None, cache='auto', brute=False):
     """
     Main bkg fit entry point for
     - first fitting pdf expression to bkg th1 with scipy
     - then using those initial values in RooFit
     """
     if th1 is None: th1 = getattr(pdf, 'th1', None)
-    res_scipy = fit_scipy_robust(pdf.expression, th1, cache=cache)
+    res_scipy = fit_scipy_robust(pdf.expression, th1, cache=cache, brute=brute)
     res_roofit_wscipy = fit_roofit(pdf, th1, init_vals=res_scipy.x)
     return res_roofit_wscipy
 

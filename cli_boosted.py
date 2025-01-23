@@ -161,7 +161,8 @@ def gen_datacards():
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
     winner = bsvj.pull_arg('--winner', default=None, nargs=2, action="append").winner
     winners = {a:int(b) for a,b in winner} if winner is not None else None
-    bsvj.InputData(**jsons, asimov=asimov).gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners)
+    brute = bsvj.pull_arg('--brute', default=False, action="store_true").brute
+    bsvj.InputData(**jsons, asimov=asimov).gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute)
 
 @scripter
 def simple_test_fit():
