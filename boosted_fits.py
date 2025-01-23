@@ -479,6 +479,11 @@ all_pdfs = {
     }),
 }
 
+def PoissonErrorUp(N):
+    alpha = 1 - 0.6827 #1 sigma interval
+    U = ROOT.Math.gamma_quantile_c(alpha/2,N+1,1.)
+    return U-N
+
 class InputData(object):
     """
     9 Feb 2024: Reworked .json input format.
@@ -487,12 +492,19 @@ class InputData(object):
     That way, datacard generation can be made class methods.
     """
     def __init__(self, mt_min=180., mt_max=650., **kwargs):
+        self.asimov = kwargs.pop('asimov',False)
         for file in ['sigfile','bkgfile','datafile']:
             setattr(self, file, kwargs.pop(file))
             obj = file.replace('file','')
             if getattr(self, file) is None:
                 setattr(self, obj, None)
             else:
+                if file=='bkgfile' and self.asimov:
+                    f = ROOT.TFile.Open(getattr(self,file))
+                    atoy = f.Get("toys/toy_asimov")
+                    setattr(self, obj, atoy)
+                    f.Close()
+                    continue
                 with open(getattr(self,file), 'r') as f:
                     d = json.load(f, cls=Decoder)
                     # cut mt range
@@ -506,6 +518,23 @@ class InputData(object):
 
         self.mt = self.sig['central'].binning
         self.metadata = self.sig['central'].metadata
+
+        # further initializations
+        self.mtvar = get_mt(self.mt[0], self.mt[-1], self.n_bins, name='mt')
+
+        if self.asimov:
+            self.data_datahist = self.bkg.binnedClone("data_obs")
+            self.bkg_th1 = self.data_datahist.createHistogram("mt")
+            # RooFit sets err = w when creating weighted histograms
+            for i in range(self.bkg_th1.GetNbinsX()):
+                self.bkg_th1.SetBinError(i+1,PoissonErrorUp(self.bkg_th1.GetBinContent(i+1)))
+        else:
+            self.bkg_th1 = self.bkg['bkg'].th1('bkg')
+            if self.data is not None:
+                data_th1 = self.data['data'].th1('data')
+            else:
+                data_th1 = self.bkg_th1
+            self.data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(self.mtvar), data_th1, 1.)
 
     def copy(self):
         return copy.deepcopy(self)
@@ -523,16 +552,7 @@ class InputData(object):
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
 
-        bkg_th1 = self.bkg['bkg'].th1('bkg')
-        mt = get_mt(self.mt[0], self.mt[-1], self.n_bins, name='mt')
-
-        if self.data is not None:
-            data_th1 = self.data['data'].th1('data')
-        else:
-            data_th1 = bkg_th1
-        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
-
-        pdfs_dict = {pdf : make_pdf(pdf, mt, bkg_th1) for pdf in known_pdfs()}
+        pdfs_dict = {pdf : make_pdf(pdf, self.mtvar, self.bkg_th1) for pdf in known_pdfs()}
 
         cache = None
         if use_cache:
@@ -543,7 +563,7 @@ class InputData(object):
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-            i_winner = do_fisher_test(mt, data_datahist, pdfs, gof_type=gof_type)
+            i_winner = do_fisher_test(self.mtvar, self.data_datahist, pdfs, gof_type=gof_type)
             winner_pdfs.append(pdfs[i_winner])
 
         systs = [
@@ -558,7 +578,7 @@ class InputData(object):
 
         sig_name = 'mz{:.0f}_rinv{:.1f}_mdark{:.0f}'.format(mz, rinv, mdark)
         sig_th1 = self.sig['central'].th1(sig_name)
-        sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
+        sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(self.mtvar), sig_th1, 1.)
 
         syst_th1s = []
         used_systs = set()
@@ -580,10 +600,12 @@ class InputData(object):
         if nosyst:
             systs = [s for s in systs if s[1]=='extArg']
             nosystname = "_nosyst"
+        if self.asimov:
+            nosystname = nosystname + "_asimov"
 
         outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}{nosystname}/dc_{osp.basename(self.sigfile).replace(".json","")}{nosystname}.txt')
         compile_datacard_macro(
-            winner_pdfs, data_datahist, sig_datahist,
+            winner_pdfs, self.data_datahist, sig_datahist,
             outfile,
             systs=systs,
             syst_th1s=syst_th1s,

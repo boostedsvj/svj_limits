@@ -840,21 +840,14 @@ def bkgfit():
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
     gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=['chi2','rss']).gof_type
+    asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
 
-    input = bsvj.InputData(**jsons)
+    input = bsvj.InputData(**jsons, asimov=asimov)
 
-    mt = bsvj.get_mt(input.mt[0], input.mt[-1], input.n_bins, name='mt')
     bin_centers = .5*(input.mt_array[:-1]+input.mt_array[1:])
     bin_width = input.mt[1] - input.mt[0]
-    bkg_hist = input.bkg['bkg']
-    bkg_th1 = bkg_hist.th1('bkg')
-    if input.data is not None:
-        data_th1 = input.data['data'].th1('data')
-    else:
-       data_th1 = bkg_th1
-    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
-    pdfs = bsvj.pdfs_factory(pdftype, mt, bkg_th1, name=pdftype)
+    pdfs = bsvj.pdfs_factory(pdftype, input.mtvar, input.bkg_th1, name=pdftype)
 
     for pdf in pdfs:
         if scipyonly:
@@ -884,18 +877,17 @@ def bkgfit():
     np.testing.assert_almost_equal(y_pdf_eval, pdf.evaluate(bin_centers), decimal=2)
 
     # Do the fisher test and mark the winner pdf
-    winner = bsvj.do_fisher_test(mt, data_datahist, pdfs, gof_type=gof_type)
+    winner = bsvj.do_fisher_test(input.mtvar, input.data_datahist, pdfs, gof_type=gof_type)
     pdfs[winner].is_winner = True
 
-    bkg_hist.vals = np.array(bkg_hist.vals)
-    bkg_hist.shape = bkg_hist.vals / (bkg_hist.vals.sum()*bin_width)
+    bkg_vals = np.asarray([input.bkg_th1.GetBinContent(i+1) for i in range(input.bkg_th1.GetNbinsX())])
+    bkg_errs = np.asarray([input.bkg_th1.GetBinError(i+1) for i in range(input.bkg_th1.GetNbinsX())])
 
     figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16))
 
     ax.plot([], [], ' ', label=f'{pdftype}, {input.metadata["selection"]}')
-    ax.step(input.mt[:-1], bkg_hist.vals, where='post', label=r'BKG', c='b')
+    ax.step(input.mt[:-1], bkg_vals, where='post', label=r'BKG', c='b')
     ax2.plot([input.mt[0], input.mt[-1]], [0.,0.], c='gray')
-
 
     fine_mt_axis = np.linspace(input.mt[0], input.mt[-1], 100)
     for pdf in pdfs:
@@ -908,13 +900,12 @@ def bkgfit():
             logger.warning('par vals: %s', par_vals)
             logger.warning('y_pdf pre norm: %s (norm=%s)', y_pdf, y_pdf.sum())
 
-        y_pdf *= bkg_hist.vals.sum()
-        # y_pdf *= fit_norm(y_pdf, bkg_hist.vals) # Should be close to 1.0
+        y_pdf *= bkg_vals.sum()
 
         if getattr(pdf, 'is_winner', False):
             logger.warning('y_pdf post norm: %s (norm=%s)', y_pdf, y_pdf.sum())
 
-        chi2_vf = bsvj.get_chi2_viaframe(mt, pdf, data_datahist)
+        chi2_vf = bsvj.get_chi2_viaframe(input.mtvar, pdf, input.data_datahist)
         chi2 = chi2_vf['chi2']
 
         label = (
@@ -925,17 +916,16 @@ def bkgfit():
 
         y_pdf_fine = bsvj.eval_expression(pdf.expression, [fine_mt_axis] + par_vals)
         bin_scale = bin_width / (fine_mt_axis[1]-fine_mt_axis[0])
-        y_pdf_fine = y_pdf_fine / y_pdf_fine.sum() * sum(bkg_hist.vals) * bin_scale
+        y_pdf_fine = y_pdf_fine / y_pdf_fine.sum() * sum(bkg_vals) * bin_scale
         line = ax.plot(fine_mt_axis, y_pdf_fine, label=label)[0]
 
-        pulls = (y_pdf - bkg_hist.vals) / bkg_hist.errs
+        pulls = (bkg_vals - y_pdf) / bkg_errs
         ax2.scatter(bin_centers, pulls, color=line.get_color())
-
 
     ax.legend(fontsize=18, framealpha=0.0)
     ax.set_ylabel('$N_{events}$')
 
-    ax2.set_ylabel(r'(pdf - bkg) / $\Delta$bkg')
+    ax2.set_ylabel(r'(bkg - pdf) / $\Delta$bkg')
     ax2.set_xlabel(r'$m_{T}$ (GeV)')
     if not linscale: ax.set_yscale('log')
     plt.savefig(outfile, bbox_inches='tight')
