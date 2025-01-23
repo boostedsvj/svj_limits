@@ -26,6 +26,7 @@ sel="bdt=0.67"            # Default selection type
 test_type="self"            # Default test type
 siginj="exp"                  # Default signal injected at exp limit strength
 mMed_values=(200 250 300 350 400 450 500 550)  # Default mMed values
+rmax=5
 
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -38,6 +39,7 @@ while [[ "$#" -gt 0 ]]; do
         --dc_date) dc_date="$2"; shift ;;
         --hists_date) hists_date="$2"; shift ;;
         --siginj) siginj="$2"; shift ;;
+        --rmax) rmax="$2"; shift ;;
         --mDark) mDark_value="$2"; shift ;;
         --rinv) rinv_value="$2"; shift ;; 
         --mMed_values) IFS=' ' read -r -a mMed_values <<< "$2"; shift ;;  # Parse mMed_values as array
@@ -114,8 +116,8 @@ do
     dc_${dc_date}_${sel}/dc_${sig_name}.txt \
     --toysFile toys_${toys_date}/higgsCombineObserveddc_${sig_name}.GenerateOnly.mH120.${toy_seed}.root \
     --expectSignal 0 \
-    --rMax 5 \
-    --rMin -5 \
+    --rMax ${rmax} \
+    --rMin -${rmax} \
     --pdf ua2 \
     --cminDefaultMinimizerStrategy=0
 done
