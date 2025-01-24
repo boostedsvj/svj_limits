@@ -1,4 +1,7 @@
 import matplotlib
+
+matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
@@ -6,7 +9,6 @@ import uproot
 import glob
 import mplhep as hep
 
-matplotlib.use("Agg")
 matplotlib.style.use(hep.style.CMS)
 
 
