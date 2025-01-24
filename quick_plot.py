@@ -407,6 +407,9 @@ def debugparams():
 
 @scripter
 def mtdist():
+    import warnings
+    warnings.filterwarnings('ignore', r'The value of the smallest subnormal')
+
     rootfile = bsvj.pull_arg('rootfile', type=str).rootfile
     only_sig = bsvj.pull_arg('--onlysig', action='store_true').onlysig
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.png').outfile
@@ -490,19 +493,24 @@ def mtdist():
         y_sb = y_bkg + y_sig_postfit
 
     fig, (ax, ax2) = plt.subplots(
-        2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16)
+        2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True
         )
+    plt.subplots_adjust(hspace=0.05)
 
-    ax.plot([], [], ' ', label=name_from_combine_rootfile(rootfile))
-    ax2.plot([mt_binning[0], mt_binning[-1]], [0,0], c='gray')
+    ax2.plot([mt_binning[0], mt_binning[-1]], [0,0], c='black')
+
+    # petroff 6-color scheme
+    colors = ["#5790fc", "#f89c20", "#e42536", "#964a8b", "#9c9ca1", "#7a21dd"]
+    cnames = ["blue", "orange", "red", "mauve", "gray", "purple"]
+    petroff = {cname:color for cname,color in zip(cnames,colors)}
 
     if only_sig:
-        ax.step(mt_binning[:-1], y_sig, where='post', c='purple', label=r'$S_{prefit}$')
-        ax.step(mt_binning[:-1], y_sig_postfit, where='post', c='cyan', label=f'$S_{{postfit}}$ ($\mu={mu:.3f}$)')
-        ax.step(mt_binning[:-1], y_sig_postfit/mu, where='post', c='red', label=r'$S_{postfit}$ ($\mu=1$)')
-        ax2.plot([mt_binning[0], mt_binning[-1]], [1,1], c='purple')
-        ax2.step(mt_binning[:-1], y_sig_postfit/y_sig, where='post', c='cyan')
-        ax2.step(mt_binning[:-1], y_sig_postfit/y_sig/mu, where='post', c='red')
+        ax.step(mt_binning[:-1], y_sig, where='post', c=petroff["orange"], label=r'$S_{prefit}$')
+        ax.step(mt_binning[:-1], y_sig_postfit, where='post', c=petroff["red"], label=f'$S_{{fit}}$ ($\mu={mu:.3f}$)')
+        ax.step(mt_binning[:-1], y_sig_postfit/mu, where='post', c=petroff["purple"], label=r'$S_{fit}$ ($\mu=1$)')
+        ax2.plot([mt_binning[0], mt_binning[-1]], [1,1], c='black')
+        ax2.step(mt_binning[:-1], y_sig_postfit/y_sig, where='post', c=petroff["red"])
+        ax2.step(mt_binning[:-1], y_sig_postfit/y_sig/mu, where='post', c=petroff["purple"])
     else:
         ax.errorbar(
             mt_bin_centers, y_data,
@@ -510,36 +518,55 @@ def mtdist():
             fmt='o', c='black', label='Data'
             )
 
-        ax.step(mt_binning[:-1], y_bkg_init, where='post', c='purple', label=r'$B_{prefit}$')
-        ax2.step(
-            mt_binning[:-1], (y_bkg_init - y_data) / np.sqrt(y_data), where='post', c='purple',
-            )
+        class RangeChecker():
+            def __init__(self):
+                self.ymin = -1
+                self.ymax = 1
+            def __call__(self, lines):
+                line = lines[0]
+                self.ymin = np.minimum(self.ymin, np.min(line.get_ydata()))
+                self.ymax = np.maximum(self.ymax, np.max(line.get_ydata()))
+        checker = RangeChecker()
+
+        # set order here to get correct order in legend
 
         mt_fine = np.linspace(mt_binning[0], mt_binning[-1], 100) # For fine plotting
         spl = make_interp_spline(mt_bin_centers, y_bkg, k=3)  # type of this is BSpline
         y_bkg_fine = spl(mt_fine)
-        ax.plot(mt_fine, y_bkg_fine, label=r'$B_{fit}$', c='b')
-        ax2.step(
-            mt_binning[:-1], (y_bkg - y_data) / np.sqrt(y_data), where='post', c='b',
-            )
+        ax.plot(mt_fine, y_bkg_fine, label=r'$B_{\mathrm{fit}}$', c=petroff["blue"])
+        _ = ax2.step(mt_binning[:-1], (y_data - y_bkg) / np.sqrt(y_data), where='post', c=petroff["blue"])
+        checker(_)
 
-        ax.step(
-            mt_binning[:-1], y_sb, where='post', c='r',
-            label=r'$B_{{fit}}+\mu_{{fit}}$S ($\mu_{{fit}}$={0:.1f})'.format(mu)
-            )
-        ax2.step(
-            mt_binning[:-1], (y_sb - y_data) / np.sqrt(y_data), where='post', c='r',
-            )
+        ax.step(mt_binning[:-1], y_sig_postfit, where='post', label=r'$S_{{\mathrm{{fit}}}}$ ($\mu_{{\mathrm{{fit}}}}={0:.2f}$)'.format(mu), c=petroff["red"])
+        _ = ax2.step(mt_binning[:-1], y_sig_postfit / np.sqrt(y_data), where='post', c=petroff["red"])
+        checker(_)
 
-        ax.step(mt_binning[:-1], y_sig, where='post', label=r'S ($\mu$=1)', c='g')
+        ax.step(mt_binning[:-1], y_sb, where='post', c=petroff["mauve"], label=r'$B_{\mathrm{fit}}+S_{\mathrm{fit}}$')
+        _ = ax2.step(mt_binning[:-1], (y_data - y_sb) / np.sqrt(y_data), where='post', c=petroff["mauve"])
+        checker(_)
 
-    ax.legend(framealpha=0.0, fontsize=22)
-    ax.set_ylabel('$N_{events}$')
-    ax.set_xlabel(r'$m_{T}$ (GeV)')
+        ax.step(mt_binning[:-1], y_bkg_init, where='post', c=petroff["gray"], linestyle='--', label=r'$B_{\mathrm{prefit}}$')
+        _ = ax2.step(mt_binning[:-1], (y_data - y_bkg_init) / np.sqrt(y_data), where='post', c=petroff["gray"], linestyle='--')
+        checker(_)
+
+        ax.step(mt_binning[:-1], y_sig, where='post', label=r'$S_{\mathrm{prefit}}$ ($\mu=1$)', c=petroff["orange"], linestyle='--')
+        ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
+        # do not check range
+
+    leg = ax.legend(framealpha=0.0, fontsize=22, title=name_from_combine_rootfile(rootfile), ncol=1 if only_sig else 2)
+    leg._legend_box.align = "left"
+    ax.set_ylabel('$N_{\mathrm{events}}$')
+    ax2.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
     ax.set_yscale('log')
-    ax2.set_ylabel('(pdf - data) / sqrt(data)', fontsize=18)
-    if only_sig: ax2.set_ylabel('postfit / prefit', fontsize=18)
-    ax.set_ylim(1., None)
+    ax2.set_ylabel('(data - fit) / $\sqrt{\mathrm{data}}$')
+    if only_sig: ax2.set_ylabel('postfit / prefit')
+
+    # axis ranges
+    if only_sig:
+        ax.set_ylim(1., None)
+    else:
+        ax.set_ylim(np.power(10, np.floor(np.log10(np.min(y_data[y_data>0])))), None)
+        ax2.set_ylim(1.1*checker.ymin, 1.1*checker.ymax)
 
     plt.savefig(outfile, bbox_inches='tight')
     if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
