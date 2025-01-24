@@ -76,7 +76,7 @@ else
 fi
 
 # Generate the datacards (skip if only running fits)
-if [ "$run_only_fits" == false ] || [ "$skip_dc" == false ]; then
+if [ "$run_only_fits" == false ] && [ "$skip_dc" == false ]; then
   for mMed in "${mMed_values[@]}"
   do
     get_signame
