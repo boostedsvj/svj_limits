@@ -405,6 +405,16 @@ def debugparams():
             for ipar,par in enumerate(pars_to_scan):
                 plot_with_y_axis(scan, ax, par, ipar, colors)
 
+def get_toy(file):
+    toys = file.Get("toys")
+    if toys==None: return None
+    # pick the first RooDataSet
+    for key in toys.GetListOfKeys():
+        obj = toys.Get(key.GetName())
+        if isinstance(obj, ROOT.RooDataSet):
+            return obj
+    return None
+
 @scripter
 def mtdist():
     import warnings
@@ -418,6 +428,7 @@ def mtdist():
 
     with bsvj.open_root(rootfile) as f:
         ws = bsvj.get_ws(f)
+        toy = get_toy(f)
 
     mt = ws.var('mt')
     mt_binning = bsvj.binning_from_roorealvar(mt)
@@ -456,7 +467,10 @@ def mtdist():
 
     # Get the data histogram
     data = ws.data('data_obs')
+    # check for a toy
+    if toy is not None: data = toy
     y_data = bsvj.roodataset_values(data)[1]
+    logger.warning('y_data: %s', y_data)
 
     # Get histogram from generated toy
     errs_data = np.sqrt(y_data)
@@ -537,7 +551,7 @@ def mtdist():
         _ = ax2.step(mt_binning[:-1], (y_data - y_bkg) / np.sqrt(y_data), where='post', c=petroff["blue"])
         checker(_)
 
-        ax.step(mt_binning[:-1], y_sig_postfit, where='post', label=r'$S_{{\mathrm{{fit}}}}$ ($\mu_{{\mathrm{{fit}}}}={0:.2f}$)'.format(mu), c=petroff["red"])
+        ax.step(mt_binning[:-1], np.abs(y_sig_postfit), where='post', label=r'$S_{{\mathrm{{fit}}}}$ ($\mu_{{\mathrm{{fit}}}}={0:.2f}$)'.format(mu), c=petroff["red"])
         _ = ax2.step(mt_binning[:-1], y_sig_postfit / np.sqrt(y_data), where='post', c=petroff["red"])
         checker(_)
 
