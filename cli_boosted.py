@@ -428,7 +428,6 @@ def impacts():
         if 'mcstat' in syst: continue
         if syst in base_cmd.freeze_parameters: continue
         systs.append(syst)
-    systs.append('shapeBkg_roomultipdf_bsvj__norm')
     bsvj.logger.info(f'Doing systematics: {" ".join(systs)}')
 
     # calculate all impacts
