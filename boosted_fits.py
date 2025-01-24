@@ -1417,6 +1417,18 @@ def read_dc(datacard):
     with open(datacard, 'r') as f:
         dc = read_dc_txt(f.read())
     dc.filename = datacard
+    # option to run t2w
+    if pull_arg('--t2w', default=False, action="store_true").t2w:
+        s_noflat = '--X-no-flatParam-prior'
+        noflat = pull_arg(s_noflat, default=False, action="store_true").X_no_flatParam_prior
+        if not noflat: s_noflat = ''
+        dc_dir = os.path.dirname(dc.filename)
+        dc_wsf = os.path.basename(dc.filename).replace('dc_','ws_').replace('.txt','.root')
+        dc_out = os.path.join(dc_dir,dc_wsf)
+        dc_log = os.path.join(dc_dir,f'log_{dc_wsf.replace(".root",".log")}')
+        command = f"text2workspace.py {s_noflat} {dc.filename} -o {dc_out}"
+        run_generic_command(command, logfile=dc_log)
+        dc.wsfilename = dc_out
     return dc
 
 
@@ -1810,7 +1822,7 @@ class CombineCommand(object):
         command = [self.exe]
         command.append('-M ' + self.method)
         if not self.dc: raise Exception('self.dc must be a valid path')
-        command.append('-d ' + self.dc.filename)
+        command.append('-d ' + getattr(self.dc,'wsfilename',self.dc.filename))
         command.extend(list(self.args))
         # handle kwargs that can be used multiple times
         command.extend([' '.join([k+' '+str(vv) for vv in v]) if isinstance(v,list) else k+' '+str(v) for k, v in self.kwargs.items()])
@@ -2012,6 +2024,14 @@ def run_combine_command(cmd, chdir=None, logfile=None):
         cmd.dc = osp.abspath(cmd.dc)
     logger.info('Running {0}'.format(cmd))
     out = run_command(cmd.str, chdir)
+    if logfile is not None:
+        with open(logfile, 'w') as f:
+            f.write(''.join(out))
+    return out
+
+def run_generic_command(cmd, chdir=None, logfile=None):
+    logger.info('Running {0}'.format(cmd))
+    out = run_command(cmd, chdir)
     if logfile is not None:
         with open(logfile, 'w') as f:
             f.write(''.join(out))
