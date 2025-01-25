@@ -15,7 +15,7 @@ cmsenv
 scram-venv
 cmsenv
 git clone git@github.com:boostedsvj/HiggsAnalysis-CombinedLimit.git HiggsAnalysis/CombinedLimit -b seed_fit
-git clone https://github.com/cms-analysis/CombineHarvester.git CombineHarvester
+git clone https://github.com/cms-analysis/CombineHarvester.git CombineHarvester && cd CombineHarvester && git checkout 610d8ded8d1f71ed4db4d634cd9e2d7b8ae7b560 && cd -
 scram b -j 4
 pip3 install git+https://github.com/boostedsvj/seutils
 pip3 install git+https://github.com/boostedsvj/svj_ntuple_processing

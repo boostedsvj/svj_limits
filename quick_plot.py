@@ -828,7 +828,7 @@ def brazil():
 
     with quick_ax(figsize=(12,10), outfile=outfile) as ax:
         ax.plot([],[],label='95% CL upper limits (cut-based)',color='white')
-        ax.plot([],[],label=r'$m_{dark}$=10 GeV, $r_{inv}$=0.3',color='white')
+        ax.plot([],[],label=r'$m_{\mathrm{dark}}=10$ GeV, $r_{\mathrm{inv}}=0.3$',color='white')
 
         ax.fill_between(
             [p.mz for p in points if p.limit.twosigma_success],
@@ -860,11 +860,11 @@ def brazil():
         )
         #ax.text(1.5,0.7,'95% CL upper limits (cut-based)',fontsize=10)
         #ax.text(1.5,0.5, r'$m_{dark}$=10 GeV, $r_{inv}$=0.3',fontsize=10)
-        ax.set_xlabel(r'$m_{Z\prime}$ (GeV)')
+        ax.set_xlabel(r'$m_{\mathrm{Z}^{\prime}}$ [GeV]')
         ax.set_ylim(0.1,50)
         ax.grid(True)
         #ax.set_ylabel(r'$\mu$')
-        ax.set_ylabel(r'$\sigma \times BR$(pb)')
+        ax.set_ylabel(r'$\sigma B$ [pb]')
         ax.set_yscale('log')
         apply_ranges(ax)
         ax.legend(framealpha=0.0)

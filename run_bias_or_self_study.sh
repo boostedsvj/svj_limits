@@ -13,6 +13,7 @@
 # ./run_bias_study.sh -d 20240930 -f --sel cutbased --test_type bias --siginj 1.0 --mMed_values "200 300 500"
 
 # Default values
+hists_dir="hists"
 hists_date="20241115"   # Date of the histograms used to make the data cards
 dc_date=$(date +%Y%m%d)     # Today's date for gentoys command
 toys_date=$(date +%Y%m%d)   # Today's date for fittoys command
@@ -37,6 +38,7 @@ while [[ "$#" -gt 0 ]]; do
         --sel) sel="$2"; shift ;;
         --test_type) test_type="$2"; shift ;;
         --dc_date) dc_date="$2"; shift ;;
+        --hists_dir) hists_dir="$2"; shift ;;
         --hists_date) hists_date="$2"; shift ;;
         --siginj) siginj="$2"; shift ;;
         --rmax) rmax="$2"; shift ;;
@@ -85,8 +87,8 @@ if [ "$run_only_fits" == false ] && [ "$skip_dc" == false ]; then
     get_signame
     # Generate datacards for the current mMed value with variable mDark and hists_date
     (set -x; python3 cli_boosted.py gen_datacards \
-      --bkg hists/merged_${hists_date}/bkg_sel-${sel}.json \
-      --sig hists/smooth_${hists_date}/${sig_name}.json)
+      --bkg ${hists_dir}/merged_${hists_date}/bkg_sel-${sel}.json \
+      --sig ${hists_dir}/smooth_${hists_date}/${sig_name}.json)
   done
 fi
 
