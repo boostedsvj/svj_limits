@@ -5,11 +5,11 @@
 # Author(s): Brendan Regnery --------------------------------------------------
 #------------------------------------------------------------------------------
 # Basic functionality:
-#   run a bias (main/alt toy gen + ua2 fit) or self test (ua2 gen + ua2 fit) 
-#   default is a self test with no signal injected with options to change 
+#   run a bias (main/alt toy gen + ua2 fit) or self test (ua2 gen + ua2 fit)
+#   default is a self test with no signal injected with options to change
 #------------------------------------------------------------------------------
-# To run with default values: ./run_bias_or_self_study.sh 
-# To run with specific options: 
+# To run with default values: ./run_bias_or_self_study.sh
+# To run with specific options:
 # ./run_bias_study.sh -d 20240930 -f --sel cutbased --test_type bias --siginj 1.0 --mMed_values "200 300 500"
 
 # Default values
@@ -31,7 +31,7 @@ rmax=5
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        -d) toys_date="$2"; shift ;; 
+        -d) toys_date="$2"; shift ;;
         -f) run_only_fits=true ;; # option to only run toy fits on existing toys
         --skip_dc) skip_dc=true ;;
         --sel) sel="$2"; shift ;;
@@ -41,7 +41,7 @@ while [[ "$#" -gt 0 ]]; do
         --siginj) siginj="$2"; shift ;;
         --rmax) rmax="$2"; shift ;;
         --mDark) mDark_value="$2"; shift ;;
-        --rinv) rinv_value="$2"; shift ;; 
+        --rinv) rinv_value="$2"; shift ;;
         --mMed_values) IFS=' ' read -r -a mMed_values <<< "$2"; shift ;;  # Parse mMed_values as array
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
@@ -69,8 +69,11 @@ fi
 # Injected signal stregnth
 declare -A sig_strength # declare associative array (bash >= 4.0)
 if [ "$siginj" == "exp" ]; then
+  if [ "$sel" == "cutbased" ] ; then
+    sig_strength=( [200]=0.427 [250]=0.377 [300]=0.340 [350]=0.279 [400]=0.364 [450]=0.772 [500]=0.859 [550]=0.897 )
+  else
     sig_strength=( [200]=0.267 [250]=0.129 [300]=0.160 [350]=0.184 [400]=0.208 [450]=0.248 [500]=0.262 [550]=0.396 )
-    # Cut-based values are needed!!
+  fi
 else
     sig_strength=( [200]=$siginj [250]=$siginj [300]=$siginj [350]=$siginj [400]=$siginj [450]=$siginj [500]=$siginj [550]=$siginj )
 fi
