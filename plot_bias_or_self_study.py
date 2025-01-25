@@ -49,6 +49,9 @@ def main():
         # Expected limit values for bdt=0.67
         inj_values = [0.267, 0.129, 0.160, 0.184, 0.208, 0.248, 0.262, 0.396]
         inj = {mz: inj_val for mz, inj_val in zip(args.mz, inj_values)}
+    elif args.sel == "cutbased":
+        inj_values = [0.427, 0.377, 0.340, 0.279, 0.364, 0.772, 0.859, 0.897]
+        inj = {mz: inj_val for mz, inj_val in zip(args.mz, inj_values)}
     else:
         # Default case with warning
         print("WARNING: using 0.2 as injected signal value, please correct if unintended")
