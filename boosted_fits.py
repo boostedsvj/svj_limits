@@ -479,6 +479,11 @@ all_pdfs = {
     }),
 }
 
+def PoissonErrorUp(N):
+    alpha = 1 - 0.6827 #1 sigma interval
+    U = ROOT.Math.gamma_quantile_c(alpha/2,N+1,1.)
+    return U-N
+
 class InputData(object):
     """
     9 Feb 2024: Reworked .json input format.
@@ -487,12 +492,19 @@ class InputData(object):
     That way, datacard generation can be made class methods.
     """
     def __init__(self, mt_min=180., mt_max=650., **kwargs):
+        self.asimov = kwargs.pop('asimov',False)
         for file in ['sigfile','bkgfile','datafile']:
             setattr(self, file, kwargs.pop(file))
             obj = file.replace('file','')
             if getattr(self, file) is None:
                 setattr(self, obj, None)
             else:
+                if file=='bkgfile' and self.asimov:
+                    f = ROOT.TFile.Open(getattr(self,file))
+                    atoy = f.Get("toys/toy_asimov")
+                    setattr(self, obj, atoy)
+                    f.Close()
+                    continue
                 with open(getattr(self,file), 'r') as f:
                     d = json.load(f, cls=Decoder)
                     # cut mt range
@@ -507,6 +519,23 @@ class InputData(object):
         self.mt = self.sig['central'].binning
         self.metadata = self.sig['central'].metadata
 
+        # further initializations
+        self.mtvar = get_mt(self.mt[0], self.mt[-1], self.n_bins, name='mt')
+
+        if self.asimov:
+            self.data_datahist = self.bkg.binnedClone("data_obs")
+            self.bkg_th1 = self.data_datahist.createHistogram("mt")
+            # RooFit sets err = w when creating weighted histograms
+            for i in range(self.bkg_th1.GetNbinsX()):
+                self.bkg_th1.SetBinError(i+1,PoissonErrorUp(self.bkg_th1.GetBinContent(i+1)))
+        else:
+            self.bkg_th1 = self.bkg['bkg'].th1('bkg')
+            if self.data is not None:
+                data_th1 = self.data['data'].th1('data')
+            else:
+                data_th1 = self.bkg_th1
+            self.data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(self.mtvar), data_th1, 1.)
+
     def copy(self):
         return copy.deepcopy(self)
 
@@ -518,33 +547,28 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss'):
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None, brute=False):
         mz = int(self.metadata['mz'])
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
 
-        bkg_th1 = self.bkg['bkg'].th1('bkg')
-        mt = get_mt(self.mt[0], self.mt[-1], self.n_bins, name='mt')
-
-        if self.data is not None:
-            data_th1 = self.data['data'].th1('data')
-        else:
-            data_th1 = bkg_th1
-        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
-
-        pdfs_dict = {pdf : make_pdf(pdf, mt, bkg_th1) for pdf in known_pdfs()}
+        pdfs_dict = {pdf : make_pdf(pdf, self.mtvar, self.bkg_th1) for pdf in known_pdfs()}
 
         cache = None
         if use_cache:
             from fit_cache import FitCache
             cache = FitCache(lock=fit_cache_lock)
 
+        winner_indices = winners if winners else {}
         winner_pdfs = []
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
-            ress = [ fit(pdf, cache=cache) for pdf in pdfs ]
-            i_winner = do_fisher_test(mt, data_datahist, pdfs, gof_type=gof_type)
-            winner_pdfs.append(pdfs[i_winner])
+            ress = [ fit(pdf, cache=cache, brute=brute) for pdf in pdfs ]
+            i_winner = do_fisher_test(self.mtvar, self.data_datahist, pdfs, gof_type=gof_type)
+            # take i_winner if pdf not in manually specified dictionary of winner indices
+            i_winner_final = winner_indices.get(pdf_type, i_winner)
+            logger.info(f'gen_datacard: chose n_pars={pdfs[i_winner_final].n_pars} for {pdf_type}')
+            winner_pdfs.append(pdfs[i_winner_final])
 
         systs = [
             ['lumi', 'lnN', 1.016, '-'],
@@ -558,7 +582,7 @@ class InputData(object):
 
         sig_name = 'mz{:.0f}_rinv{:.1f}_mdark{:.0f}'.format(mz, rinv, mdark)
         sig_th1 = self.sig['central'].th1(sig_name)
-        sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
+        sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(self.mtvar), sig_th1, 1.)
 
         syst_th1s = []
         used_systs = set()
@@ -580,10 +604,12 @@ class InputData(object):
         if nosyst:
             systs = [s for s in systs if s[1]=='extArg']
             nosystname = "_nosyst"
+        if self.asimov:
+            nosystname = nosystname + "_asimov"
 
         outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}{nosystname}/dc_{osp.basename(self.sigfile).replace(".json","")}{nosystname}.txt')
         compile_datacard_macro(
-            winner_pdfs, data_datahist, sig_datahist,
+            winner_pdfs, self.data_datahist, sig_datahist,
             outfile,
             systs=systs,
             syst_th1s=syst_th1s,
@@ -849,7 +875,7 @@ def single_fit_scipy(expression, histogram, init_vals=None, cache=None, **minimi
     return res
 
 
-def fit_scipy_robust(expression, histogram, cache='auto'):
+def fit_scipy_robust(expression, histogram, cache='auto', brute=False):
     """
     Main entry point for fitting an expression to a histogram with Scipy
     """
@@ -881,7 +907,7 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
         options = options_nm
         )
 
-    if res.success:
+    if res.success and not brute:
         # Fit successful, save in the cache and return
         if cache: cache.write(fit_hash, res)
         logger.info('Converged with simple fitting strategy, result:\n%s', res)
@@ -918,14 +944,14 @@ def fit_scipy_robust(expression, histogram, cache='auto'):
     return res
 
 
-def fit(pdf, th1=None, cache='auto'):
+def fit(pdf, th1=None, cache='auto', brute=False):
     """
     Main bkg fit entry point for
     - first fitting pdf expression to bkg th1 with scipy
     - then using those initial values in RooFit
     """
     if th1 is None: th1 = getattr(pdf, 'th1', None)
-    res_scipy = fit_scipy_robust(pdf.expression, th1, cache=cache)
+    res_scipy = fit_scipy_robust(pdf.expression, th1, cache=cache, brute=brute)
     res_roofit_wscipy = fit_roofit(pdf, th1, init_vals=res_scipy.x)
     return res_roofit_wscipy
 
@@ -1722,6 +1748,9 @@ class CombineCommand(object):
         else:
             logger.info('Doing observed')
             self.name += 'Observed'
+            if read_arg("--tIsToyIndex", default=False, action="store_true").tIsToyIndex:
+                toy_index = read_arg('-t', type=int).t
+                self.name += f'Toy{toy_index}'
 
     def configure_from_command_line(self, scan=False):
         """

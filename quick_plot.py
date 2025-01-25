@@ -405,17 +405,30 @@ def debugparams():
             for ipar,par in enumerate(pars_to_scan):
                 plot_with_y_axis(scan, ax, par, ipar, colors)
 
+def get_toy(file):
+    toys = file.Get("toys")
+    if toys==None: return None
+    # pick the first RooDataSet
+    for key in toys.GetListOfKeys():
+        obj = toys.Get(key.GetName())
+        if isinstance(obj, ROOT.RooDataSet):
+            return obj
+    return None
+
 @scripter
 def mtdist():
+    import warnings
+    warnings.filterwarnings('ignore', r'The value of the smallest subnormal')
+
     rootfile = bsvj.pull_arg('rootfile', type=str).rootfile
     only_sig = bsvj.pull_arg('--onlysig', action='store_true').onlysig
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.png').outfile
-    #toyrootfile = bsvj.pull_arg('--toyrootfile', type=str).toyrootfile
 
     from scipy.interpolate import make_interp_spline # type:ignore
 
     with bsvj.open_root(rootfile) as f:
         ws = bsvj.get_ws(f)
+        toy = get_toy(f)
 
     mt = ws.var('mt')
     mt_binning = bsvj.binning_from_roorealvar(mt)
@@ -454,13 +467,12 @@ def mtdist():
 
     # Get the data histogram
     data = ws.data('data_obs')
+    # check for a toy
+    if toy is not None: data = toy
     y_data = bsvj.roodataset_values(data)[1]
+    logger.warning('y_data: %s', y_data)
 
     # Get histogram from generated toy
-    #with bsvj.open_root(toyrootfile) as f:
-    #  toy = f.Get("toys/toy_1")
-    #data = ROOT.RooDataSet(toy,'mt')
-    #y_data = bsvj.roodataset_values(data)[1]
     errs_data = np.sqrt(y_data)
     logger.info(f'Prefit data # entries = {y_data.sum():.2f}, should match with datacard')
 
@@ -495,57 +507,80 @@ def mtdist():
         y_sb = y_bkg + y_sig_postfit
 
     fig, (ax, ax2) = plt.subplots(
-        2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16)
+        2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True
         )
+    plt.subplots_adjust(hspace=0.05)
 
-    ax.plot([], [], ' ', label=name_from_combine_rootfile(rootfile))
-    ax2.plot([mt_binning[0], mt_binning[-1]], [0,0], c='gray')
+    ax2.plot([mt_binning[0], mt_binning[-1]], [0,0], c='black')
+
+    # petroff 6-color scheme
+    colors = ["#5790fc", "#f89c20", "#e42536", "#964a8b", "#9c9ca1", "#7a21dd"]
+    cnames = ["blue", "orange", "red", "mauve", "gray", "purple"]
+    petroff = {cname:color for cname,color in zip(cnames,colors)}
 
     if only_sig:
-        ax.step(mt_binning[:-1], y_sig, where='post', c='purple', label=r'$S_{prefit}$')
-        ax.step(mt_binning[:-1], y_sig_postfit, where='post', c='cyan', label=f'$S_{{postfit}}$ ($\mu={mu:.3f}$)')
-        ax.step(mt_binning[:-1], y_sig_postfit/mu, where='post', c='red', label=r'$S_{postfit}$ ($\mu=1$)')
-        ax2.plot([mt_binning[0], mt_binning[-1]], [1,1], c='purple')
-        ax2.step(mt_binning[:-1], y_sig_postfit/y_sig, where='post', c='cyan')
-        ax2.step(mt_binning[:-1], y_sig_postfit/y_sig/mu, where='post', c='red')
+        ax.step(mt_binning[:-1], y_sig, where='post', c=petroff["orange"], label=r'$S_{prefit}$')
+        ax.step(mt_binning[:-1], y_sig_postfit, where='post', c=petroff["red"], label=f'$S_{{fit}}$ ($\mu={mu:.3f}$)')
+        ax.step(mt_binning[:-1], y_sig_postfit/mu, where='post', c=petroff["purple"], label=r'$S_{fit}$ ($\mu=1$)')
+        ax2.plot([mt_binning[0], mt_binning[-1]], [1,1], c='black')
+        ax2.step(mt_binning[:-1], y_sig_postfit/y_sig, where='post', c=petroff["red"])
+        ax2.step(mt_binning[:-1], y_sig_postfit/y_sig/mu, where='post', c=petroff["purple"])
     else:
         ax.errorbar(
             mt_bin_centers, y_data,
             xerr=.5*mt_bin_widths, yerr=errs_data,
             fmt='o', c='black', label='Data'
             )
-        # logger.warning('data (roodst):  %s', y_data)
 
-        ax.step(mt_binning[:-1], y_bkg_init, where='post', c='purple', label=r'$B_{prefit}$')
-        ax2.step(
-            mt_binning[:-1], (y_bkg_init - y_data) / np.sqrt(y_data), where='post', c='purple',
-            )
+        class RangeChecker():
+            def __init__(self):
+                self.ymin = -1
+                self.ymax = 1
+            def __call__(self, lines):
+                line = lines[0]
+                self.ymin = np.minimum(self.ymin, np.min(line.get_ydata()))
+                self.ymax = np.maximum(self.ymax, np.max(line.get_ydata()))
+        checker = RangeChecker()
+
+        # set order here to get correct order in legend
 
         mt_fine = np.linspace(mt_binning[0], mt_binning[-1], 100) # For fine plotting
         spl = make_interp_spline(mt_bin_centers, y_bkg, k=3)  # type of this is BSpline
         y_bkg_fine = spl(mt_fine)
-        ax.plot(mt_fine, y_bkg_fine, label=r'$B_{fit}$', c='b')
-        ax2.step(
-            mt_binning[:-1], (y_bkg - y_data) / np.sqrt(y_data), where='post', c='b',
-            )
+        ax.plot(mt_fine, y_bkg_fine, label=r'$B_{\mathrm{fit}}$', c=petroff["blue"])
+        _ = ax2.step(mt_binning[:-1], (y_data - y_bkg) / np.sqrt(y_data), where='post', c=petroff["blue"])
+        checker(_)
 
-        ax.step(
-            mt_binning[:-1], y_sb, where='post', c='r',
-            label=r'$B_{{fit}}+\mu_{{fit}}$S ($\mu_{{fit}}$={0:.1f})'.format(mu)
-            )
-        ax2.step(
-            mt_binning[:-1], (y_sb - y_data) / np.sqrt(y_data), where='post', c='r',
-            )
+        ax.step(mt_binning[:-1], np.abs(y_sig_postfit), where='post', label=r'$S_{{\mathrm{{fit}}}}$ ($\mu_{{\mathrm{{fit}}}}={0:.2f}$)'.format(mu), c=petroff["red"])
+        _ = ax2.step(mt_binning[:-1], y_sig_postfit / np.sqrt(y_data), where='post', c=petroff["red"])
+        checker(_)
 
-        ax.step(mt_binning[:-1], y_sig, where='post', label=r'S ($\mu$=1)', c='g')
+        ax.step(mt_binning[:-1], y_sb, where='post', c=petroff["mauve"], label=r'$B_{\mathrm{fit}}+S_{\mathrm{fit}}$')
+        _ = ax2.step(mt_binning[:-1], (y_data - y_sb) / np.sqrt(y_data), where='post', c=petroff["mauve"])
+        checker(_)
 
-    ax.legend(framealpha=0.0, fontsize=22)
-    ax.set_ylabel('$N_{events}$')
-    ax.set_xlabel(r'$m_{T}$ (GeV)')
+        ax.step(mt_binning[:-1], y_bkg_init, where='post', c=petroff["gray"], linestyle='--', label=r'$B_{\mathrm{prefit}}$')
+        _ = ax2.step(mt_binning[:-1], (y_data - y_bkg_init) / np.sqrt(y_data), where='post', c=petroff["gray"], linestyle='--')
+        checker(_)
+
+        ax.step(mt_binning[:-1], y_sig, where='post', label=r'$S_{\mathrm{prefit}}$ ($\mu=1$)', c=petroff["orange"], linestyle='--')
+        ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
+        # do not check range
+
+    leg = ax.legend(framealpha=0.0, fontsize=22, title=name_from_combine_rootfile(rootfile), ncol=1 if only_sig else 2)
+    leg._legend_box.align = "left"
+    ax.set_ylabel('$N_{\mathrm{events}}$')
+    ax2.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
     ax.set_yscale('log')
-    ax2.set_ylabel('(pdf - data) / sqrt(data)', fontsize=18)
-    if only_sig: ax2.set_ylabel('postfit / prefit', fontsize=18)
-    ax.set_ylim(1., None)
+    ax2.set_ylabel('(data - fit) / $\sqrt{\mathrm{data}}$')
+    if only_sig: ax2.set_ylabel('postfit / prefit')
+
+    # axis ranges
+    if only_sig:
+        ax.set_ylim(1., None)
+    else:
+        ax.set_ylim(np.power(10, np.floor(np.log10(np.min(y_data[y_data>0])))), None)
+        ax2.set_ylim(1.1*checker.ymin, 1.1*checker.ymax)
 
     plt.savefig(outfile, bbox_inches='tight')
     if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
@@ -845,22 +880,15 @@ def bkgfit():
     linscale = bsvj.pull_arg('--lin', action='store_true').lin
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
-    gof_type = bsvj.pull_arg('--gof-type', type=str, default='chi2', choices=['chi2','rss']).gof_type
+    gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=['chi2','rss']).gof_type
+    asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
 
-    input = bsvj.InputData(**jsons)
+    input = bsvj.InputData(**jsons, asimov=asimov)
 
-    mt = bsvj.get_mt(input.mt[0], input.mt[-1], input.n_bins, name='mt')
     bin_centers = .5*(input.mt_array[:-1]+input.mt_array[1:])
     bin_width = input.mt[1] - input.mt[0]
-    bkg_hist = input.bkg['bkg']
-    bkg_th1 = bkg_hist.th1('bkg')
-    if input.data is not None:
-        data_th1 = input.data['data'].th1('data')
-    else:
-       data_th1 = bkg_th1
-    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
-    pdfs = bsvj.pdfs_factory(pdftype, mt, bkg_th1, name=pdftype)
+    pdfs = bsvj.pdfs_factory(pdftype, input.mtvar, input.bkg_th1, name=pdftype)
 
     for pdf in pdfs:
         if scipyonly:
@@ -890,18 +918,17 @@ def bkgfit():
     np.testing.assert_almost_equal(y_pdf_eval, pdf.evaluate(bin_centers), decimal=2)
 
     # Do the fisher test and mark the winner pdf
-    winner = bsvj.do_fisher_test(mt, data_datahist, pdfs, gof_type=gof_type)
+    winner = bsvj.do_fisher_test(input.mtvar, input.data_datahist, pdfs, gof_type=gof_type)
     pdfs[winner].is_winner = True
 
-    bkg_hist.vals = np.array(bkg_hist.vals)
-    bkg_hist.shape = bkg_hist.vals / (bkg_hist.vals.sum()*bin_width)
+    bkg_vals = np.asarray([input.bkg_th1.GetBinContent(i+1) for i in range(input.bkg_th1.GetNbinsX())])
+    bkg_errs = np.asarray([input.bkg_th1.GetBinError(i+1) for i in range(input.bkg_th1.GetNbinsX())])
 
     figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16))
 
     ax.plot([], [], ' ', label=f'{pdftype}, {input.metadata["selection"]}')
-    ax.step(input.mt[:-1], bkg_hist.vals, where='post', label=r'BKG', c='b')
+    ax.step(input.mt[:-1], bkg_vals, where='post', label=r'BKG', c='b')
     ax2.plot([input.mt[0], input.mt[-1]], [0.,0.], c='gray')
-
 
     fine_mt_axis = np.linspace(input.mt[0], input.mt[-1], 100)
     for pdf in pdfs:
@@ -914,13 +941,12 @@ def bkgfit():
             logger.warning('par vals: %s', par_vals)
             logger.warning('y_pdf pre norm: %s (norm=%s)', y_pdf, y_pdf.sum())
 
-        y_pdf *= bkg_hist.vals.sum()
-        # y_pdf *= fit_norm(y_pdf, bkg_hist.vals) # Should be close to 1.0
+        y_pdf *= bkg_vals.sum()
 
         if getattr(pdf, 'is_winner', False):
             logger.warning('y_pdf post norm: %s (norm=%s)', y_pdf, y_pdf.sum())
 
-        chi2_vf = bsvj.get_chi2_viaframe(mt, pdf, data_datahist)
+        chi2_vf = bsvj.get_chi2_viaframe(input.mtvar, pdf, input.data_datahist)
         chi2 = chi2_vf['chi2']
 
         label = (
@@ -931,17 +957,16 @@ def bkgfit():
 
         y_pdf_fine = bsvj.eval_expression(pdf.expression, [fine_mt_axis] + par_vals)
         bin_scale = bin_width / (fine_mt_axis[1]-fine_mt_axis[0])
-        y_pdf_fine = y_pdf_fine / y_pdf_fine.sum() * sum(bkg_hist.vals) * bin_scale
+        y_pdf_fine = y_pdf_fine / y_pdf_fine.sum() * sum(bkg_vals) * bin_scale
         line = ax.plot(fine_mt_axis, y_pdf_fine, label=label)[0]
 
-        pulls = (y_pdf - bkg_hist.vals) / bkg_hist.errs
+        pulls = (bkg_vals - y_pdf) / bkg_errs
         ax2.scatter(bin_centers, pulls, color=line.get_color())
-
 
     ax.legend(fontsize=18, framealpha=0.0)
     ax.set_ylabel('$N_{events}$')
 
-    ax2.set_ylabel(r'(pdf - bkg) / $\Delta$bkg')
+    ax2.set_ylabel(r'(bkg - pdf) / $\Delta$bkg')
     ax2.set_xlabel(r'$m_{T}$ (GeV)')
     if not linscale: ax.set_yscale('log')
     plt.savefig(outfile, bbox_inches='tight')

@@ -158,7 +158,11 @@ def gen_datacards():
     if mtmin is not None: jsons["mt_min"] = mtmin
     if mtmax is not None: jsons["mt_max"] = mtmax
     nosyst = bsvj.pull_arg('--nosyst', default=False, action="store_true").nosyst
-    bsvj.InputData(**jsons).gen_datacard(nosyst=nosyst, gof_type=gof_type)
+    asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
+    winner = bsvj.pull_arg('--winner', default=None, nargs=2, action="append").winner
+    winners = {a:int(b) for a,b in winner} if winner is not None else None
+    brute = bsvj.pull_arg('--brute', default=False, action="store_true").brute
+    bsvj.InputData(**jsons, asimov=asimov).gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute)
 
 @scripter
 def simple_test_fit():
@@ -215,6 +219,10 @@ def bestfit(txtfile=None):
         else:
             txtfile = osp.abspath(txtfiles[0])
 
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('bestfits_%Y%m%d')).outdir
+    outdir = osp.abspath(outdir)
+    os.makedirs(outdir, exist_ok=True)
+
     dc = bsvj.Datacard.from_txt(txtfile)
     cmd = bsvj.CombineCommand(dc)
     cmd.configure_from_command_line()
@@ -223,9 +231,6 @@ def bestfit(txtfile=None):
     cmd.name += 'Bestfit_' + osp.basename(txtfile).replace('.txt','')
     bsvj.run_combine_command(cmd, logfile=cmd.logfile)
 
-    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('bestfits_%Y%m%d')).outdir
-    outdir = osp.abspath(outdir)
-    os.makedirs(outdir, exist_ok=True)
     bsvj.logger.info(f'{cmd.outfile} -> {osp.join(outdir, osp.basename(cmd.outfile))}')
     shutil.move(cmd.outfile, osp.join(outdir, osp.basename(cmd.outfile)))
     shutil.move(cmd.logfile, osp.join(outdir, osp.basename(cmd.logfile)))
