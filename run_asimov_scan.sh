@@ -72,13 +72,13 @@ done
 function get_result() {
   rfile="scans_${scan_date}/higgsCombinedc_$(get_signame $1 $2 $3)Scan${4}.MultiDimFit.mH120.${toy_seed}.root"
   if [[ -f $rfile ]]; then
-    python3 -c "import uproot ; print(uproot.open('$rfile')['limit'].arrays()[b'deltaNLL'][-1] > 1.5);"
+    python3 -c "import uproot ; print(uproot.open('$rfile')['limit'].arrays()[b'deltaNLL'][-1] > 1.01);"
   else
     echo "False"
   fi
 }
 
-for rmax in 2 3 5 10 20 30 50; do
+for rmax in 2 3 5 10; do
   required_dcs=""
   for mMed in "${mMed_values[@]}"; do
     for mDark in "${mDark_values[@]}"; do
