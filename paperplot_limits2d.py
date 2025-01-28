@@ -104,7 +104,7 @@ if __name__ == "__main__":
         "-m",
         type=float,
         default=10,
-        choices=[10],
+        choices=[1, 5, 10],
         help="Dark meson mass point to use for plotting",
     )
     parser.add_argument(
