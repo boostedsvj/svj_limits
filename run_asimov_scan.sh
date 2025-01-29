@@ -62,38 +62,28 @@ for mMed in "${mMed_values[@]}"; do
         python3 cli_boosted.py gen_datacards \
           --bkg ${hists_dir}/merged_${hists_date}/bkg_sel-${sel}.json \
           --sig ${hists_dir}/smooth_${hists_date}/$(get_signame $mMed $mDark $rinv).json
-      )&
+      ) &
     done
     wait
   done
 done
 
-# Generating the asimov toy as this is background only, we dont need to do additional selection
-get_signame ${mInj}
-(
-  set -x
-  python3 cli_boosted.py gentoys \
-    dc_${scran_date}_${sel}/dc_$(get_signame 350 10 0p3).txt \
-    -t -1 \
-    --expectSignal 0.0 \
-    -s ${toy_seed}
-)
 
 function get_result() {
-  rfile="scans_${scan_date}/higgsCombinedc_$(get_signame $1 $2 $3)ScanAsimov.MultiDimFit.mH120.${toy_seed}.root"
+  rfile="scans_${scan_date}/higgsCombinedc_$(get_signame $1 $2 $3)Scan${4}.MultiDimFit.mH120.${toy_seed}.root"
   if [[ -f $rfile ]]; then
-    python3 -c "import uproot ; print(uproot.open('$rfile')['limit'].arrays()[b'deltaNLL'][-1] > 1.5);"
+    python3 -c "import uproot ; print(uproot.open('$rfile')['limit'].arrays()[b'deltaNLL'][-1] > 1.01);"
   else
     echo "False"
   fi
 }
 
-for rmax in 2 3; do
+for rmax in 2 3 5 10; do
   required_dcs=""
   for mMed in "${mMed_values[@]}"; do
     for mDark in "${mDark_values[@]}"; do
-      for rinv in "${rinv_values[@]}" ; do
-        if [ $(get_result $mMed $mDark $rinv) = "True" ]; then
+      for rinv in "${rinv_values[@]}"; do
+        if [ $(get_result $mMed $mDark $rinv Asimov) = "True" ]; then
           echo "Got good result for mMed-${mMed} mDark-${mDark} rinv-${rinv}"
         else
           required_dcs="${required_dcs} dc_${scan_date}_${sel}/dc_$(get_signame $mMed $mDark $rinv).txt"
@@ -102,8 +92,11 @@ for rmax in 2 3; do
     done
   done
   echo $required_dcs
-  python3 cli_boosted.py likelihood_scan_mp ${required_dcs} \
-    --range 0.0 ${rmax} \
-    --seed ${toy_seed} \
-    --asimov
+  (
+    set -x
+    python3 cli_boosted.py likelihood_scan_mp ${required_dcs} \
+      --range 0.0 ${rmax} \
+      --seed ${toy_seed} \
+      --asimov
+  )
 done
