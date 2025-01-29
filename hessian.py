@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import print_function
+import os
 import argparse
 import numpy as np
 import ROOT
@@ -142,6 +143,11 @@ if __name__ == '__main__':
     for s,p in sorted([(s,param[istd]) for istd,s in enumerate(std)]):
         print(s, "at", p, end='')
 
+    try:
+        cols = os.get_terminal_size().columns
+    except:
+        cols = 1000
+    np.set_printoptions(linewidth=cols)
     print("Correlation matrix:")
     print(" ".join([param[istd].GetName() for istd,s in enumerate(std)]))
     with np.printoptions(precision=3, suppress=True):
