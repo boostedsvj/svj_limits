@@ -567,7 +567,24 @@ def mtdist():
         ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
         # do not check range
 
+    # calculate chi square for prefit bkg fit
+    chi2_prefit_vf = bsvj.get_chi2_viaframe(mt, y_bkg_init, data)
+    chi2_prefit = chi2_prefit_vf['chi2']
+
+    # calculate chi square for s+b
+    chi2_sb_vf = bsvj.get_chi2_viaframe(mt, y_sb, data)
+    chi2_sb = chi2_sb_vf['chi2']
+
     leg = ax.legend(framealpha=0.0, fontsize=22, title=name_from_combine_rootfile(rootfile), ncol=1 if only_sig else 2)
+    # Add chi square values to the legend
+    custom_legend_entries = [
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=10, label=f'x^2_bprefit = {chi_prefit}'),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10, label=f'x^2_sb = {chi_sb}')
+    ]
+    handles, labels = ax.get_legend_handles_labels()
+    handles.extend([entry for entry in custom_legend_entries])
+    labels.extend([entry.get_label() for entry in custom_legend_entries])
+    leg = ax.legend(handles=handles, labels=labels, framealpha=0.0, fontsize=22, title=name_from_combine_rootfile(rootfile), ncol=1 if only_sig else 2)
     leg._legend_box.align = "left"
     ax.set_ylabel('$N_{\mathrm{events}}$')
     ax2.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
