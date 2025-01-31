@@ -364,6 +364,13 @@ class PdfInfo(object):
         parameters = [ROOT.RooRealVar(f'{prefix}_p{i}', f'p{i}', 1., par_ranges[i][0], par_ranges[i][1]) for i in range(1,n+1)]
         object_keeper.add_multiple(parameters)
         return parameters
+    def init_vals(self, n):
+        init_dict = self.info[n].get("init",None)
+        if init_dict:
+            if any(i not in init_dict for i in range(1,n+1)):
+                raise ValueError(f"init dict for {self.name} {n}-par is missing parameters")
+            return np.asarray([init_dict[i] for i in range(1,n+1)])
+        return None
     def min_range(self, n, i):
         self.check_n(n)
         min_ranges = self.info[n].get("mins",{})
@@ -1083,8 +1090,11 @@ def fit(pdf, th1=None, cache='auto', brute=False):
     - then using those initial values in RooFit
     """
     if th1 is None: th1 = getattr(pdf, 'th1', None)
-    res_scipy = fit_scipy_robust(pdf.expression, th1, cache=cache, brute=brute)
-    res_roofit_wscipy = fit_roofit(pdf, th1, init_vals=res_scipy.x)
+    manual_init = all_pdfs[pdf.pdf_type].init_vals(pdf.n_pars)
+    if manual_init is None:
+        res_scipy = fit_scipy_robust(pdf.expression, th1, cache=cache, brute=brute)
+        manual_init = res_scipy.x
+    res_roofit_wscipy = fit_roofit(pdf, th1, init_vals=manual_init)
     return res_roofit_wscipy
 
 
