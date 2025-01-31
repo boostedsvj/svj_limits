@@ -8,13 +8,13 @@
 #   Creates limits with expected 'asimov' values with an observed limit of an
 #      asimov toy with signal injected at 350 GeV (same toy for all mass points)
 #------------------------------------------------------------------------------
-# To run fully: ./run_limit_asimov_sig_inj.sh 
+# To run fully: ./run_limit_asimov_sig_inj.sh
 # To run with a specfic date: ./run_limit_asimov_sig_inj.sh --mMed_values "300 350"
 
 # Default values
 hists_dir="hists"
 hists_date="20241115"  # Date of the histograms used for making datacards
-dc_date=$(date +%Y%m%d)    # Dynamically set today's date 
+dc_date=$(date +%Y%m%d)    # Dynamically set today's date
 scan_date=$(date +%Y%m%d)
 toy_seed=1001
 sel="bdt=0.67"
@@ -30,7 +30,7 @@ only_inj=false
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        -d) toys_date="$2"; shift ;; 
+        -d) toys_date="$2"; shift ;;
         -f) run_only_fits=true ;; # option to only run likelihood scan
         --skip_dc) skip_dc=true ;;
         --only_inj) only_inj=true ;; # only generates and fits 'observed' signal injected asimov toy
@@ -41,7 +41,7 @@ while [[ "$#" -gt 0 ]]; do
         --siginj) siginj="$2"; shift ;;
         --mInj) mInj="$2"; shift ;;
         --mDark) mDark_value="$2"; shift ;;
-        --rinv) rinv_value="$2"; shift ;; 
+        --rinv) rinv_value="$2"; shift ;;
         --mMed_values) IFS=' ' read -r -a mMed_values <<< "$2"; shift ;;  # Parse mMed_values as array
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
@@ -101,5 +101,5 @@ get_signame ${mInj}
 
 # plot
 (set -x; python3 quick_plot.py brazil \
-  scans_${dc_date}/higgsCombine*rinv-${rinv_value}*.root \
+  scans_${dc_date}/higgsCombine*_mDark-${mDark_value}_rinv-${rinv_value}_*Scan*.root \
   -o asimov_${mInj}_sig_test_${rinv_value}_mdark${mDark_value}.pdf)

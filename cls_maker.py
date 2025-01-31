@@ -9,10 +9,10 @@ rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
 clean  = bsvj.pull_arg('--clean', action='store_true').clean
 mz     = bsvj.pull_arg('--mz',type=float).mz
 rinv   = bsvj.pull_arg('--rinv',type=float).rinv
+mdark  = bsvj.pull_arg('--mdark', type=float).mdark
 
-
-#make a new ttree (limit) in a new root file, write cls into it 
-file = r.TFile.Open("Limits/Limit_mz{}_rinv{}.root".format(mz,rinv),"RECREATE")
+#make a new ttree (limit) in a new root file, write cls into it
+file = r.TFile.Open("Limits/Limit_mz{}_mdark{}_rinv{}.root".format(mz,mdark,rinv),"RECREATE")
 tree = r.TTree("limit","limit")
 
 base_qtys = ["quantileExpected"]
@@ -34,13 +34,13 @@ for observed, asimov in zip(*tools.organize_rootfiles(rootfiles)):
     asimov = tools.clean_scan(asimov)
   cls = tools.get_cls(obs, asimov)
   limit = tools.interpolate_95cl_limit(cls)
-  lim = {limit.expected: 0.5, limit.observed:-1, limit.twosigma_down:0.975, limit.onesigma_down:0.84, limit.onesigma_up: 0.16, limit.twosigma_up:0.025}
+  lim = {-1: limit.observed,0.5: limit.expected, 0.975: limit.twosigma_down, 0.84: limit.onesigma_down, 0.16: limit.onesigma_up, 0.025: limit.twosigma_up}
   for key, value in lim.items():
-    qobj.limit = key
-    qobj.quantileExpected = value
-    qobj.trackedParam_mZprime = mz 
-    qobj.trackedParam_mDark = 10 
-    qobj.trackedParam_rinv = rinv 
+    qobj.limit = value
+    qobj.quantileExpected = key
+    qobj.trackedParam_mZprime = mz
+    qobj.trackedParam_mDark = mdark
+    qobj.trackedParam_rinv = rinv
     qobj.trackedParam_xsec = bsvj.get_xs(mz)
     tree.Fill()
 file.Write()
