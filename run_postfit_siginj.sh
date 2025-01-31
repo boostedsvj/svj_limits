@@ -81,11 +81,13 @@ if [ "$skip_dc" == false ]; then
       --toysFile toys_${dc_date}/higgsCombineObserveddc_${sig_name}.GenerateOnly.mH120.${toy_seed}.root )
 
     # Plot the bestfit
+    #bestfits_${dc_date}/higgsCombineObservedBestfit_dc_${sig_name}.MultiDimFit.mH120.root \
     (set -x; python3 quick_plot.py mtdist \
       bestfits_${dc_date}/higgsCombineObservedToy-1Bestfit_dc_${sig_name}.MultiDimFit.mH120.${toy_seed}.root \
       --outfile postfit_${mInj}.pdf )
 
     # Plot the bestfit
+    #bestfits_${dc_date}/higgsCombineObservedBestfit_dc_${sig_name}.MultiDimFit.mH120.root \
     (set -x; python3 quick_plot.py mtdist \
       bestfits_${dc_date}/higgsCombineObservedToy-1Bestfit_dc_${sig_name}.MultiDimFit.mH120.${toy_seed}.root \
       --outfile postfit_${mInj}.png )
