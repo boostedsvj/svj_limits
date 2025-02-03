@@ -1804,7 +1804,6 @@ def camel_to_snake(name):
     name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', name).lower()
 
-
 class CombineCommand(object):
 
     comma_separated_args = [
@@ -1934,6 +1933,14 @@ class CombineCommand(object):
             logger.info('Taking pdf from command line (default is ua2)')
             pdf = pull_arg('--pdf', type=str, choices=known_pdfs(), default='ua2').pdf
             self.pick_pdf(pdf)
+
+            # allow setting parameter initial values from command line
+            # todo: add support for setParameterRanges
+            setParameters = pull_arg('--setParameters', type=str, default="").setParameters
+            if len(setParameters)>0:
+                for setParam in setParameters.split(','):
+                    k,v = setParam.split('=')
+                    self.set_parameter(k,v)
 
             # special settings to seed fits for likelihood scan
             # rand > 0 performs random fits; rand = 0 just seeds fit w/ prev values; rand < 0 disables this behavior
