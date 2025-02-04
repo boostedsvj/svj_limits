@@ -155,6 +155,7 @@ def gen_datacards():
     mtmin = bsvj.pull_arg('--mtmin', type=float, default=None).mtmin
     mtmax = bsvj.pull_arg('--mtmax', type=float, default=None).mtmax
     gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=['chi2','rss']).gof_type
+    norm_type = bsvj.pull_arg('--norm-type', type=str, default='theta', choices=['free','theta']).norm_type
     if mtmin is not None: jsons["mt_min"] = mtmin
     if mtmax is not None: jsons["mt_max"] = mtmax
     nosyst = bsvj.pull_arg('--nosyst', default=False, action="store_true").nosyst
@@ -162,7 +163,7 @@ def gen_datacards():
     winner = bsvj.pull_arg('--winner', default=None, nargs=2, action="append").winner
     winners = {a:int(b) for a,b in winner} if winner is not None else None
     brute = bsvj.pull_arg('--brute', default=False, action="store_true").brute
-    bsvj.InputData(**jsons, asimov=asimov).gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute)
+    bsvj.InputData(**jsons, asimov=asimov).gen_datacard(nosyst=nosyst, gof_type=gof_type, norm_type=norm_type, winners=winners, brute=brute)
 
 @scripter
 def simple_test_fit():

@@ -702,7 +702,7 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None, brute=False):
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None, brute=False, norm_type='theta'):
         mz = int(self.metadata['mz'])
         rinv = float(self.metadata['rinv'])
         mdark = int(self.metadata['mdark'])
@@ -765,6 +765,7 @@ class InputData(object):
         outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}{nosystname}/dc_{osp.basename(self.sigfile).replace(".json","")}{nosystname}.txt')
         compile_datacard_macro(
             winner_pdfs, self.data_datahist, sig_datahist,
+            norm_type,
             outfile,
             systs=systs,
             syst_th1s=syst_th1s,
@@ -1723,21 +1724,33 @@ def tabelize(data):
         )
 
 
-def make_multipdf(pdfs, name='roomultipdf'):
+def make_multipdf(pdfs, name):
     cat = ROOT.RooCategory('pdf_index', "Index of Pdf which is active")
     pdf_arglist = ROOT.RooArgList()
     for pdf in pdfs: pdf_arglist.add(pdf.pdf)
     multipdf = ROOT.RooMultiPdf(name, "All Pdfs", cat, pdf_arglist)
     multipdf.cat = cat
     multipdf.pdfs = pdfs
-    norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -100., 100.)
-    norm = ROOT.RooFormulaVar(name+'_norm', "1+0.01*@0", ROOT.RooArgList(norm_theta))
-    norm_objs = [norm_theta, norm]
-    object_keeper.add_multiple([cat, norm_objs, multipdf])
-    return multipdf, norm_objs
+    object_keeper.add_multiple([cat, multipdf])
+    return multipdf
 
 
-def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=None, syst_th1s=None):
+def make_norm(norm_type, name):
+    norm_objs = []
+    if norm_type=="free":
+        norm = ROOT.RooRealVar(name+'_norm', "Number of background events", 1.0, 0., 1.e6)
+        norm_objs.extend([norm])
+    elif norm_type=="theta":
+        norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -100., 100.)
+        norm = ROOT.RooFormulaVar(name+'_norm', "1+0.01*@0", ROOT.RooArgList(norm_theta))
+        norm_objs.extend([norm_theta, norm])
+    else:
+        raise ValueError(f"Unknown norm type {norm_type}")
+    object_keeper.add_multiple(norm_objs)
+    return norm_objs
+
+
+def compile_datacard_macro(bkg_pdf, data_obs, sig, norm_type, outfile='dc_bsvj.txt', systs=None, syst_th1s=None):
     do_syst = systs is not None
     w = ROOT.RooWorkspace("SVJ", "workspace")
 
@@ -1748,15 +1761,20 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
 
     # Bkg pdf: May be multiple
     is_multipdf = hasattr(bkg_pdf, '__len__')
+    bkg_name = 'roomultipdf' if is_multipdf else 'bkg'
+
+    # normalization of bkg pdf
+    norm = make_norm(norm_type, bkg_name)
+    for n in norm: commit(n)
+
     if is_multipdf:
         mt = bkg_pdf[0].mt
-        multipdf, norm = make_multipdf(bkg_pdf)
+        multipdf = make_multipdf(bkg_pdf, bkg_name)
         commit(multipdf.cat)
-        for n in norm: commit(n)
         commit(multipdf)
     else:
         mt = bkg_pdf.mt
-        commit(bkg_pdf, ROOT.RooFit.RenameVariable(bkg_pdf.GetName(), 'bkg'))
+        commit(bkg_pdf, ROOT.RooFit.RenameVariable(bkg_pdf.GetName(), bkg_name))
 
     commit(data_obs)
     commit(sig, ROOT.RooFit.Rename('sig'))
@@ -1773,13 +1791,13 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
 
     # Write the dc
     dc = Datacard()
-    dc.shapes.append(['roomultipdf' if is_multipdf else 'bkg', 'bsvj', wsfile, 'SVJ:$PROCESS'])
+    dc.shapes.append([bkg_name, 'bsvj', wsfile, 'SVJ:$PROCESS'])
     dc.shapes.append(['sig', 'bsvj', wsfile, 'SVJ:$PROCESS'] + (['SVJ:$PROCESS_$SYSTEMATIC'] if do_syst else []))
     dc.shapes.append(['data_obs', 'bsvj', wsfile, 'SVJ:$PROCESS'])
     dc.channels.append(('bsvj', int(data_obs.sumEntries())))
     dc.rates['bsvj'] = OrderedDict()
     dc.rates['bsvj']['sig'] = sig.sumEntries()
-    dc.rates['bsvj']['roomultipdf' if is_multipdf else 'bkg'] = data_obs.sumEntries()
+    dc.rates['bsvj'][bkg_name] = data_obs.sumEntries()
     # Freely floating bkg parameters
     def systs_for_pdf(pdf):
         for par in pdf.parameters:
@@ -1893,11 +1911,15 @@ class CombineCommand(object):
         logger.info('Using pdf %s', pdf)
         self.set_parameter('pdf_index', known_pdfs().index(pdf))
         pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
-        pars_to_track = ['r', 'n_exp_final_binbsvj_proc_roomultipdf', 'shapeBkg_roomultipdf_bsvj__norm', 'roomultipdf_theta'] + pdf_pars
+        optional_pars = ['roomultipdf_theta']
+        optional_pars = [opar for opar in optional_pars if opar in self.dc.syst_names]
+        pdf_pars += optional_pars
+        pars_to_track = ['r', 'n_exp_final_binbsvj_proc_roomultipdf', 'shapeBkg_roomultipdf_bsvj__norm']
+        pars_to_track += pdf_pars
         self.track_parameters.update(pars_to_track)
         self.track_errors.update(pars_to_track)
         self.freeze_parameters.add('pdf_index')
-        self.pdf_pars = ['roomultipdf_theta'] + pdf_pars
+        self.pdf_pars = pdf_pars
         for other_pdf in known_pdfs():
             if other_pdf==pdf: continue
             other_pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % other_pdf)
