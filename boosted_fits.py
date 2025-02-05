@@ -1740,13 +1740,10 @@ def make_norm(norm_type, name):
     if norm_type=="free":
         norm = ROOT.RooRealVar(name+'_norm', "Number of background events", 1.0, 0., 1.e6)
         norm_objs.extend([norm])
-    elif norm_type=="theta":
+    elif norm_type=="theta" or norm_type=="gauss":
         norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -100., 100.)
         norm = ROOT.RooFormulaVar(name+'_norm', "1+0.01*@0", ROOT.RooArgList(norm_theta))
         norm_objs.extend([norm_theta, norm])
-    elif norm_type=="gauss":
-        norm = ROOT.RooRealVar(name+'_norm', "Number of background events", 1.0, 0., 1.e6)
-        norm_objs.extend([norm])
     else:
         raise ValueError(f"Unknown norm type {norm_type}")
     object_keeper.add_multiple(norm_objs)
@@ -1812,8 +1809,7 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, norm_type, outfile='dc_bsvj.t
         for n in norm:
             if n.InheritsFrom("RooRealVar"):
                 if norm_type=="gauss":
-                    dc.systs.append([n.GetName(), 'rateParam', 'bsvj', bkg_name, dc.rates['bsvj'][bkg_name]])
-                    dc.systs.append([n.GetName(), 'param', dc.rates['bsvj'][bkg_name], np.sqrt(dc.rates['bsvj'][bkg_name])])
+                    dc.systs.append([n.GetName(), 'param', 0, np.sqrt(dc.rates['bsvj'][bkg_name])/dc.rates['bsvj'][bkg_name]/0.01])
                 else:
                     dc.systs.append([n.GetName(), 'flatParam'])
     if do_syst: dc.systs.extend(systs)
