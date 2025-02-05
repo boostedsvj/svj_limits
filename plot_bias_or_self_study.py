@@ -18,20 +18,24 @@ import argparse
 ROOT.gROOT.SetBatch(True)  # Prevents ROOT from opening canvases
 
 def main():
+    imgs = ["pdf", "png"]
 
     parser = argparse.ArgumentParser(description="Configure base directory and parameters for bias test")
-    parser.add_argument('--base_dir', type=str, required=True,
-                        help=("Directory path contianing the test subdirectories, e.g. '/path/to/test/'," 
+    parser.add_argument('--base-dir', type=str, required=True,
+                        help=("Directory path containing the test subdirectories, e.g. '/path/to/test/',"
                               " it expects two subdirectories: siginj0 and siginj1"))
+    parser.add_argument('--suff', type=str, default="",
+                        help="Suffix for siginj0 and siginj1 dir names")
     parser.add_argument('--sel', type=str, required=True, choices=['cutbased', 'bdt=0.65', 'bdt=0.67'],
                         help="Selection type: 'cutbased' or 'bdt=0.67' or add additional bdt values as needed")
     parser.add_argument('--test', type=str, required=True, choices=['bias', 'self'],
                         help="Test type: 'bias' or 'self'")
     parser.add_argument('--mz', nargs='+', type=int, default=[200, 250, 300, 350, 400, 450, 500, 550],
                         help="List of mass points. Default is [200, 250, 300, 350, 400, 450, 500, 550]")
-    parser.add_argument('--inj_value', type=float, default=None,
-                        help="Set all injection values to a specific number for testing (e.g., 0.3)")   
- 
+    parser.add_argument('--inj-types', type=int, choices=[0,1], nargs='*', default=[0,1],
+                        help="which signal injection type(s) to plot")
+    parser.add_argument('--inj-value', type=float, default=None,
+                        help="Set all injection values to a specific number for testing (e.g., 0.3)")
     args = parser.parse_args()
 
     # Switch between bias and self test
@@ -58,77 +62,66 @@ def main():
         inj = {mz: 0.2 for mz in args.mz}
 
     # Directories for r_inj = 0 and r_inj = inj
-    path_rinj0 = [(f"{args.base_dir}/siginj0/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_"
-                   f"rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root") for mz in args.mz]
-    path_rinj1 = [(f"{args.base_dir}/siginj1/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_"
-                   f"rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root") for mz in args.mz]
+    results = {}
+    for inj_type in args.inj_types:
+        inj_val = {mz: 0 for mz in args.mz} if inj_type==0 else inj
 
-    mean_rinj0, emean_rinj0, sigma_rinj0, esigma_rinj0 = [], [], [], []
-    mean_rinj1, emean_rinj1, sigma_rinj1, esigma_rinj1 = [], [], [], []
+        path = [f"{args.base_dir}/siginj{inj_type}{args.suff}/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root" for mz in args.mz]
 
-    for i, (mz, f_rinj0, f_rinj1) in enumerate(zip(args.mz, path_rinj0, path_rinj1)):
-        afile_rinj0 = ROOT.TFile(f_rinj0)
-        atree_rinj0 = afile_rinj0.Get("tree_fit_sb")
-        
-        afile_rinj1 = ROOT.TFile(f_rinj1)
-        atree_rinj1 = afile_rinj1.Get("tree_fit_sb")
-        
-        # Create histograms for r/rErr for both r_inj=0 and r_inj=1
-        histo_rinj0 = ROOT.TH1F(f"histo_rinj0_{mz}", f"Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = {mz} GeV (r_inj=0)", 50, -10, 10)
-        histo_rinj1 = ROOT.TH1F(f"histo_rinj1_{mz}", f"Histogram of (r-rinj)/(0.5*(rHiErr+rLoErr)) for MZ = {mz} GeV (r_inj={inj[mz]})", 50, -10, 10)
-        
-        # Draw r/rErr for both r_inj=0 and r_inj=1 into their respective histograms
-        atree_rinj0.Draw("(r)/rErr>>%s" % histo_rinj0.GetName(), "fit_status==0 || fit_status==1")
-        atree_rinj1.Draw(f"(r - {inj[mz]})/rErr>>%s" % histo_rinj1.GetName(), "fit_status==0 || fit_status==1")
-        
-        # Perform Gaussian fits for both histograms
-        fit_rinj0 = histo_rinj0.Fit("gaus", "S", "Q")
-        fit_rinj1 = histo_rinj1.Fit("gaus", "S", "Q")
-        
-        # Store means and sigmas for both fits
-        mean_rinj0.append(fit_rinj0.Parameter(1))
-        emean_rinj0.append(fit_rinj0.ParError(1))
-        sigma_rinj0.append(fit_rinj0.Parameter(2))
-        esigma_rinj0.append(fit_rinj0.ParError(2))
-        
-        mean_rinj1.append(fit_rinj1.Parameter(1))
-        emean_rinj1.append(fit_rinj1.ParError(1))
-        sigma_rinj1.append(fit_rinj1.Parameter(2))
-        esigma_rinj1.append(fit_rinj1.ParError(2))
+        results[inj_type] = {"mean": [], "emean": [], "sigma": [], "esigma": []}
 
-        # Save the histograms as PDFs and PNGs
-        canvas = ROOT.TCanvas("canvas", "canvas", 800, 600)
-        histo_rinj0.Draw()
-        canvas.SaveAs(f"{test}_siginj_rinj0_MZ_{mz}_GeV.pdf")
-        canvas.SaveAs(f"{test}_siginj_rinj0_MZ_{mz}_GeV.png")
-        
-        histo_rinj1.Draw()
-        canvas.SaveAs(f"{test}_siginj_rinj1_MZ_{mz}_GeV.pdf")
-        canvas.SaveAs(f"{test}_siginj_rinj1_MZ_{mz}_GeV.png")
+        for i, (mz, f_inj) in enumerate(zip(args.mz, path)):
+            afile = ROOT.TFile(f_inj)
+            atree = afile.Get("tree_fit_sb")
+
+            # Create histograms for r/rErr
+            histo = ROOT.TH1F(f"histo_rinj{inj_type}_{mz}", f"Histogram of (r-rinj)/(0.5*(rLoErr+rHiErr)) for MZ = {mz} GeV (r_inj={inj_val[mz]})", 50, -10, 10)
+
+            # Draw r/rErr into the histogram
+            atree.Draw(f"(r - {inj_val[mz]})/(0.5*(rLoErr+rHiErr))>>{histo.GetName()}", "fit_status==0 || fit_status==1")
+
+            # Perform Gaussian fit
+            fit = histo.Fit("gaus", "S", "Q")
+
+            # Store means and sigmas for both fits
+            results[inj_type]["mean"].append(fit.Parameter(1))
+            results[inj_type]["emean"].append(fit.ParError(1))
+            results[inj_type]["sigma"].append(fit.Parameter(2))
+            results[inj_type]["esigma"].append(fit.ParError(2))
+
+            # Save the histograms as PDFs and PNGs
+            canvas = ROOT.TCanvas("canvas", "canvas", 800, 600)
+            histo.Draw()
+            for img in imgs:
+                canvas.SaveAs(f"{test}_siginj_rinj{inj_type}_MZ_{mz}_GeV.{img}")
+
+    # keep consistent colors
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
     # Plot mean for both r_inj = 0 and r_inj = 1
-    plt.errorbar(args.mz, mean_rinj0, yerr=emean_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
-    plt.errorbar(args.mz, mean_rinj1, yerr=emean_rinj1, marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=Expected$')
+    inj_label = ["0", "Expected"]
+    for inj_type in args.inj_types:
+        plt.errorbar(args.mz, results[inj_type]["mean"], yerr=results[inj_type]["emean"], color=color_cycle[inj_type], marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=${inj_label[inj_type]}')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('Mean', fontsize=12)
-    plt.title(f'{test_title} Test: Mean of Gaussian Fit to (r-$r_{{inj}})$/rErr', fontsize=15)
+    plt.title(f'{test_title} Test: Gaussian $\mu$ of $(r-r_{{inj}})/\\langle\\varepsilon_{{r}}\\rangle$', fontsize=15)
     plt.ylim(-1.5, 1.5)
     plt.fill_between(plt.xlim(), 0.5, -0.5, color='#f88379', alpha=0.25, label='$\pm 0.5$')
-    plt.savefig(f'{test}_pull_mean.png')
-    plt.savefig(f'{test}_pull_mean.pdf')
+    for img in imgs:
+        plt.savefig(f'{test}_pull_mean.{img}')
     plt.close()
 
     # Plot sigma for both r_inj = 0 and r_inj = 1
-    plt.errorbar(args.mz, sigma_rinj0, yerr=esigma_rinj0, marker='.', markersize=8, linestyle='--', label='$r_{inj}=0$')
-    plt.errorbar(args.mz, sigma_rinj1, yerr=esigma_rinj1, marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=Expected$')
+    for inj_type in args.inj_types:
+        plt.errorbar(args.mz, results[inj_type]["sigma"], yerr=results[inj_type]["esigma"], color=color_cycle[inj_type], marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=${inj_label[inj_type]}')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('$\sigma$', fontsize=12)
-    plt.title(f'{test_title} Test: $\sigma$ of Gaussian Fit to (r-$r_{{inj}})$/rErr', fontsize=15)
+    plt.title(f'{test_title} Test: Gaussian $\sigma$ of $(r-r_{{inj}})/\\langle\\varepsilon_{{r}}\\rangle$', fontsize=15)
     plt.ylim(0.5, 2.5)
-    plt.savefig(f'{test}_pull_stdev.png')
-    plt.savefig(f'{test}_pull_stdev.pdf')
+    for img in imgs:
+        plt.savefig(f'{test}_pull_stdev.{img}')
     plt.close()
 
 main()

@@ -169,7 +169,7 @@ Example from the BDT based search:
 # signal injected at expected limit
 ./run_bias_or_self_test.sh --siginj exp
 # plot
-python3 plot_bias_or_self_study.py --base_dir ./self_test --sel bdt=0.67 --test self
+python3 plot_bias_or_self_study.py --base-dir ./self_test --sel bdt=0.67 --test self
 
 # Bias test
 # no signal injected
@@ -177,7 +177,7 @@ python3 plot_bias_or_self_study.py --base_dir ./self_test --sel bdt=0.67 --test 
 # signal injected at expected limit
 ./run_bias_or_self_study.sh --test_type bias --siginj exp
 # plot
-python3 plot_bias_or_self_study.py --base_dir ./bias_test --sel bdt=0.67 --test bias
+python3 plot_bias_or_self_study.py --base-dir ./bias_test --sel bdt=0.67 --test bias
 ```
 
 ### Limits: Expected + Observed = Asimov toy with signal injected at 350
