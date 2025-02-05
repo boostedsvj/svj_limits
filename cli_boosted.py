@@ -155,7 +155,7 @@ def gen_datacards():
     mtmin = bsvj.pull_arg('--mtmin', type=float, default=None).mtmin
     mtmax = bsvj.pull_arg('--mtmax', type=float, default=None).mtmax
     gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=['chi2','rss']).gof_type
-    norm_type = bsvj.pull_arg('--norm-type', type=str, default='theta', choices=['free','theta']).norm_type
+    norm_type = bsvj.pull_arg('--norm-type', type=str, default='theta', choices=['free','theta','gauss']).norm_type
     if mtmin is not None: jsons["mt_min"] = mtmin
     if mtmax is not None: jsons["mt_max"] = mtmax
     nosyst = bsvj.pull_arg('--nosyst', default=False, action="store_true").nosyst
