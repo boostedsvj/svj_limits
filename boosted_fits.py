@@ -764,8 +764,8 @@ class InputData(object):
 
         outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}{nosystname}/dc_{osp.basename(self.sigfile).replace(".json","")}{nosystname}.txt')
         compile_datacard_macro(
-            winner_pdfs, self.data_datahist, sig_datahist,
-            norm_type,
+            winner_pdfs, self.data_datahist, sig_datahist, self.bkg_th1.Integral(),
+            norm_type, self.metadata["selection"],
             outfile,
             systs=systs,
             syst_th1s=syst_th1s,
@@ -1750,7 +1750,7 @@ def make_norm(norm_type, name):
     return norm_objs
 
 
-def compile_datacard_macro(bkg_pdf, data_obs, sig, norm_type, outfile='dc_bsvj.txt', systs=None, syst_th1s=None):
+def compile_datacard_macro(bkg_pdf, data_obs, sig, bkg_yield, norm_type, selection, outfile='dc_bsvj.txt', systs=None, syst_th1s=None):
     do_syst = systs is not None
     w = ROOT.RooWorkspace("SVJ", "workspace")
 
@@ -1798,6 +1798,23 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, norm_type, outfile='dc_bsvj.t
     dc.rates['bsvj'] = OrderedDict()
     dc.rates['bsvj']['sig'] = sig.sumEntries()
     dc.rates['bsvj'][bkg_name] = data_obs.sumEntries()
+
+    if norm_type=="gauss":
+        # transfer factor constants
+        if selection=="cutbased":
+            yield_bkg_CRloose = 67239.91314785543
+            yield_obs_CRloose = 76340.0
+        else:
+            raise ValueError(f"Gaussian constraint (transfer factor method) not implemented yet for {selection}")
+
+        # compute prediction and uncertainty
+        yield_bkg_SR = bkg_yield
+        tf = yield_bkg_SR/yield_bkg_CRloose
+        yield_pred_SR = np.round(tf*yield_obs_CRloose)
+        unc_pred_SR = tf*np.sqrt(yield_obs_CRloose)/yield_obs_CRloose
+
+        dc.rates['bsvj'][bkg_name] = yield_pred_SR
+
     # Freely floating bkg parameters
     def systs_for_pdf(pdf):
         for par in pdf.parameters:
@@ -1809,7 +1826,7 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, norm_type, outfile='dc_bsvj.t
         for n in norm:
             if n.InheritsFrom("RooRealVar"):
                 if norm_type=="gauss":
-                    dc.systs.append([n.GetName(), 'param', 0, np.sqrt(dc.rates['bsvj'][bkg_name])/dc.rates['bsvj'][bkg_name]/0.01])
+                    dc.systs.append([n.GetName(), 'param', 0, unc_pred_SR/0.01])
                 else:
                     dc.systs.append([n.GetName(), 'flatParam'])
     if do_syst: dc.systs.extend(systs)
