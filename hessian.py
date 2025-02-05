@@ -126,7 +126,11 @@ if __name__ == '__main__':
     print("Largest eigenvalue of covariance matrix:", cov_eig[-1])
     print("Smallest eigenvalue of covariance matrix:", cov_eig[0])
 
-    std = np.sqrt(np.diag(covar))
+    covar_diag = np.diag(covar)
+    covar_diag_pos = np.abs(covar_diag)
+    if not np.array_equiv(covar_diag, covar_diag_pos):
+        print("Warning: covariance matrix has negative diagonal elements, forcing pos-def")
+    std = np.sqrt(covar_diag_pos)
     print("Largest standard deviation:", std.max(), "at", param[std.argmax()], end='')
     print("Smallest standard deviation:", std.min(), "at", param[std.argmin()], end='')
 
