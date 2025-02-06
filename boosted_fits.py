@@ -209,7 +209,7 @@ class Histogram:
         """Returns a copy"""
         return copy.deepcopy(self)
 
-    def th1(self, name):
+    def th1(self, name, rebin=1):
         """
         Converts histogram to a ROOT.TH1F
         """
@@ -221,6 +221,8 @@ class Histogram:
         for i in range(n_bins):
             th1.SetBinContent(i+1, self.vals[i])
             th1.SetBinError(i+1, self.errs[i])
+        if rebin>1:
+            th1.Rebin(rebin)
         return th1
 
     @property
@@ -326,9 +328,9 @@ class Decoder(json.JSONDecoder):
 # get set of json files from command line (used for datacard creation)
 def get_jsons():
     result = dict(
-        sigfile = pull_arg('--sig', type=str, required=True).sig,
-        bkgfile = pull_arg('--bkg', type=str, required=True).bkg,
-        datafile = pull_arg('--data', type=str, default=None).data,
+        sigfiles = pull_arg('--sig', type=str, nargs='+').sig,
+        bkgfiles = pull_arg('--bkg', type=str, nargs='+').bkg,
+        datafiles = pull_arg('--data', type=str, nargs='*').data,
     )
     return result
 
@@ -486,20 +488,72 @@ all_pdfs = {
     }),
 }
 
+
+def dump_ws_to_file(filename, ws):
+    logger.info('Dumping ws {} to {}'.format(ws.GetName(), filename))
+    dirname = osp.dirname(osp.abspath(filename))
+    if not osp.isdir(dirname): os.makedirs(dirname)
+    wstatus = ws.writeToFile(filename, True)
+    return wstatus
+
+
+def make_multipdf(pdfs, name):
+    cat = ROOT.RooCategory('pdf_index', "Index of Pdf which is active")
+    pdf_arglist = ROOT.RooArgList()
+    for pdf in pdfs: pdf_arglist.add(pdf.pdf)
+    multipdf = ROOT.RooMultiPdf(name, "All Pdfs", cat, pdf_arglist)
+    multipdf.cat = cat
+    multipdf.pdfs = pdfs
+    object_keeper.add_multiple([cat, multipdf])
+    return multipdf
+
+
+def make_norm(norm_type, name):
+    norm_objs = []
+    if norm_type=="free":
+        norm = ROOT.RooRealVar(name+'_norm', "Number of background events", 1.0, 0., 1.e6)
+        norm_objs.extend([norm])
+    elif norm_type=="crtf":
+        norm = ROOT.RooRealVar(name+'_norm', "Background rate", 1.0, 0.0, 2.0)
+        norm_objs.extend([norm])
+    elif norm_type=="theta" or norm_type=="gauss":
+        norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -100., 100.)
+        norm = ROOT.RooFormulaVar(name+'_norm', "1+0.01*@0", ROOT.RooArgList(norm_theta))
+        norm_objs.extend([norm_theta, norm])
+    else:
+        raise ValueError(f"Unknown norm type {norm_type}")
+    object_keeper.add_multiple(norm_objs)
+    return norm_objs
+
+
 def PoissonErrorUp(N):
     alpha = 1 - 0.6827 #1 sigma interval
     U = ROOT.Math.gamma_quantile_c(alpha/2,N+1,1.)
     return U-N
 
-class InputData(object):
+
+def get_default_systs(mz,mdark,rinv):
+    systs = [
+        ['lumi', 'lnN', 1.016, '-'],
+        ['trigger_cr', 'lnN', 1.02, '-'],
+        ['trigger_sim', 'lnN', 1.021, '-'],
+        ['mZprime','extArg', mz],
+        ['mDark',  'extArg', mdark],
+        ['rinv',   'extArg', rinv],
+        ['xsec',   'extArg', get_xs(mz)],
+        ]
+    return systs
+
+
+class InputRegion(object):
     """
-    9 Feb 2024: Reworked .json input format.
-    Now only one signal model per .json file, so one InputDataV2 instance represents
-    one signal model parameter variation.
-    That way, datacard generation can be made class methods.
+    Keeps all the histograms for a specific region.
+    This allows representing multiple regions in the datacard.
     """
-    def __init__(self, mt_min=180., mt_max=650., **kwargs):
-        self.asimov = kwargs.pop('asimov',False)
+    def __init__(self, region, ireg, mt_min, mt_max, asimov, **kwargs):
+        self.name = region
+        self.index = ireg
+        self.asimov = asimov
         for file in ['sigfile','bkgfile','datafile']:
             setattr(self, file, kwargs.pop(file))
             obj = file.replace('file','')
@@ -520,28 +574,64 @@ class InputData(object):
                     if obj=='sig':
                         c = d['central']
                         # drop mcstat histograms that have no difference from central
-                        d = {k:v for k,v in d.items() if not k.startswith('mcstat') or v!=c}
+                        # drop all mcstat for CRs
+                        d = {k:v for k,v in d.items() if not k.startswith('mcstat') or (self.index==0 and v!=c)}
                     setattr(self, obj, d)
 
         self.mt = self.sig['central'].binning
         self.metadata = self.sig['central'].metadata
 
+        # collapse CR histograms into a single bin
+        mtname = 'mt'
+        rebin = 1
+        if self.index>0:
+            mtname = f'mtCR{self.index}'
+            rebin = self.n_bins
+
         # further initializations
-        self.mtvar = get_mt(self.mt[0], self.mt[-1], self.n_bins, name='mt')
+        self.mtvar = get_mt(self.mt[0], self.mt[-1], int(self.n_bins/rebin), name=mtname)
 
         if self.asimov:
+            # todo: handle rebinning here
             self.data_datahist = self.bkg.binnedClone("data_obs")
             self.bkg_th1 = self.data_datahist.createHistogram("mt")
             # RooFit sets err = w when creating weighted histograms
             for i in range(self.bkg_th1.GetNbinsX()):
                 self.bkg_th1.SetBinError(i+1,PoissonErrorUp(self.bkg_th1.GetBinContent(i+1)))
         else:
-            self.bkg_th1 = self.bkg['bkg'].th1('bkg')
+            self.bkg_th1 = self.bkg['bkg'].th1('bkg', rebin)
             if self.data is not None:
-                data_th1 = self.data['data'].th1('data')
+                self.data_th1 = self.data['data'].th1('data', rebin)
             else:
-                data_th1 = self.bkg_th1
-            self.data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(self.mtvar), data_th1, 1.)
+                self.data_th1 = self.bkg_th1
+            self.data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(self.mtvar), self.data_th1, 1.)
+        self.bkg_datahist = ROOT.RooDataHist("bkg", "bkg", ROOT.RooArgList(self.mtvar), self.bkg_th1, 1.)
+
+        # setup signal histograms
+        mz = int(self.metadata['mz'])
+        mdark = int(self.metadata['mdark'])
+        rinv = float(self.metadata['rinv'])
+        self.systs = get_default_systs(mz,mdark,rinv)
+
+        sig_name = 'mz{:.0f}_rinv{:.1f}_mdark{:.0f}'.format(mz, rinv, mdark)
+        self.sig_th1 = self.sig['central'].th1(sig_name, rebin)
+        self.sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(self.mtvar), self.sig_th1, 1.)
+
+        self.syst_th1s = []
+        used_systs = set()
+        for key, hist in self.sig.items():
+            if '_up' in key:
+                direction = 'Up'
+            elif '_down' in key:
+                direction = 'Down'
+            else:
+                continue # Not a systematic
+            syst_name = key.replace('_up','').replace('_down','')
+            # Don't add the line twice
+            if syst_name not in used_systs:
+                self.systs.append([syst_name, 'shape', 1, '-'])
+                used_systs.add(syst_name)
+            self.syst_th1s.append(hist.th1(f'{sig_name}_{syst_name}{direction}', rebin))
 
     def copy(self):
         return copy.deepcopy(self)
@@ -554,12 +644,165 @@ class InputData(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None, brute=False, norm_type='theta'):
-        mz = int(self.metadata['mz'])
-        rinv = float(self.metadata['rinv'])
-        mdark = int(self.metadata['mdark'])
+    def create_workspace(self, outdir, bkg_pdf, norm_type, norm_name, suff):
+        self.wsfile = f'{outdir}/dc_{osp.basename(self.sigfile).replace(".json","")}{suff}.root'
+        w = ROOT.RooWorkspace("SVJ", "workspace")
 
-        pdfs_dict = {pdf : make_pdf(pdf, self.mtvar, self.bkg_th1) for pdf in known_pdfs()}
+        def commit(thing, *args, **kwargs):
+            name = thing.GetName() if hasattr(thing, 'GetName') else '?'
+            logger.info('Importing {} ({})'.format(name, thing))
+            getattr(w, 'import')(thing, *args, **kwargs)
+
+        # Bkg pdf: May be multiple
+        self.bkg_type = "hist"
+        if bkg_pdf is not None:
+            self.bkg_type = "pdf"
+            if hasattr(bkg_pdf, '__len__'):
+                self.bkg_type = "multipdf"
+        self.bkg_name = 'roomultipdf' if self.bkg_type=="multipdf" else 'bkg'
+
+        # normalization of bkg pdf
+        self.norm_name = self.bkg_name if norm_name is None else norm_name
+        self.norm_type = norm_type
+        self.norm = make_norm(norm_type, self.norm_name)
+        if self.bkg_type!="hist":
+            for n in self.norm: commit(n)
+
+        if self.bkg_type=="multipdf":
+            multipdf = make_multipdf(bkg_pdf, self.bkg_name)
+            commit(multipdf.cat)
+            commit(multipdf)
+            self.bkg_pdf = multipdf
+        elif self.bkg_type=="pdf":
+            commit(bkg_pdf, ROOT.RooFit.RenameVariable(bkg_pdf.GetName(), self.bkg_name))
+            self.bkg_pdf = bkg_pdf
+        else:
+            # commit MC histo
+            commit(self.bkg_datahist)
+            self.bkg_pdf = None
+
+        commit(self.data_datahist)
+        commit(self.sig_datahist, ROOT.RooFit.Rename('sig'))
+
+        for th1 in self.syst_th1s:
+            name = th1.GetName().replace(self.sig_datahist.GetName(), 'sig')
+            dh = ROOT.RooDataHist(name, name, ROOT.RooArgList(self.mtvar), th1)
+            commit(dh)
+
+        dump_ws_to_file(self.wsfile, w)
+
+    def fill_dc(self, dc):
+        self.bin_name = 'bsvj'
+        if self.index>0: self.bin_name += f'CR{self.index}'
+
+        dc.shapes.append([self.bkg_name, self.bin_name, self.wsfile, 'SVJ:$PROCESS'])
+        dc.shapes.append(['sig', self.bin_name, self.wsfile, 'SVJ:$PROCESS', 'SVJ:$PROCESS_$SYSTEMATIC'])
+        dc.shapes.append(['data_obs', self.bin_name, self.wsfile, 'SVJ:$PROCESS'])
+        dc.channels.append((self.bin_name, int(self.data_datahist.sumEntries())))
+        dc.rates[self.bin_name] = OrderedDict()
+        dc.rates[self.bin_name]['sig'] = self.sig_datahist.sumEntries()
+        dc.rates[self.bin_name][self.bkg_name] = self.data_datahist.sumEntries()
+
+        # some norm types change rate assignments
+        if self.norm_type=="gauss":
+            # transfer factor constants
+            if self.name=="cutbased":
+                # from cutbasedAnti
+                yield_bkg_CR = 315180.8203287178
+                yield_obs_CR = 395709.0
+            else:
+                raise ValueError(f"Gaussian constraint (transfer factor method) not implemented yet for {self.name}")
+
+            # compute prediction and uncertainty
+            yield_bkg_SR = self.bkg_datahist.sumEntries()
+            tf = yield_bkg_SR/yield_bkg_CR
+            yield_pred_SR = np.round(tf*yield_obs_CR)
+            unc_pred_SR = tf*np.sqrt(yield_obs_CR)/yield_obs_CR
+
+            dc.rates[self.bin_name][self.bkg_name] = yield_pred_SR
+        elif self.norm_type=="crtf":
+            # bkg rates taken from MC in TF mode
+            # shared rateParam implicitly computes/fits TF from SR/CR
+            dc.rates[self.bin_name][self.bkg_name] = self.bkg_datahist.sumEntries()
+
+        # Freely floating bkg parameters
+        def systs_for_pdf(pdf):
+            for par in pdf.parameters:
+                dc.systs.append([par.GetName(), 'flatParam'])
+        if self.bkg_type=="multipdf":
+            for p in self.bkg_pdf.pdfs:
+                systs_for_pdf(p)
+        elif self.bkg_type=="pdf":
+            systs_for_pdf(self.bkg_pdf)
+
+        # Other bkg systematics
+        if self.bkg_type=="multipdf":
+            dc.systs.append([self.bkg_pdf.cat.GetName(), 'discrete'])
+        for n in self.norm:
+            if n.InheritsFrom("RooRealVar"):
+                if self.norm_type=="gauss":
+                    dc.systs.append([n.GetName(), 'param', 0, unc_pred_SR/0.01])
+                elif self.norm_type=="crtf":
+                    dc.systs.append([n.GetName(), 'rateParam', self.bin_name, self.bkg_name, 1, "[0,2]"])
+                else:
+                    dc.systs.append([n.GetName(), 'flatParam'])
+
+        # Signal systematics
+        if self.index==0: dc.systs.extend(self.systs)
+        else:
+            # match up w/ existing systs
+            for syst in self.systs:
+                for isyst in range(len(dc.systs)):
+                    if dc.systs[isyst][0]==syst[0] and syst[1]!='extArg':
+                        # extend the columns
+                        dc.systs[isyst] += syst[2:]
+                        break
+
+
+class InputData(object):
+    """
+    9 Feb 2024: Reworked .json input format.
+    Now only one signal model per .json file, so one InputDataV2 instance represents
+    one signal model parameter variation.
+    That way, datacard generation can be made class methods.
+    """
+    def __init__(self, regions, mt_min=180., mt_max=650., **kwargs):
+        # the first region is taken to be the SR
+        files_types = ['sigfiles','bkgfiles','datafiles']
+        region_files = {region: {files[:-1]:None for files in files_types} for region in regions}
+        # sort files into regions
+        for files in files_types:
+            filelist = kwargs.pop(files)
+            if filelist is None: continue
+            for region in regions:
+                for ifn,fname in enumerate(filelist):
+                    match = f"sel-{region}"
+                    matches = [match+'.', match+'_']
+                    if any(m in fname for m in matches):
+                        region_files[region][files[:-1]] = fname
+                        break
+
+        # create regions
+        self.asimov = kwargs.pop('asimov',False)
+        self.regions = [InputRegion(region, ireg, mt_min, mt_max, self.asimov, **region_files[region]) for ireg,region in enumerate(regions)]
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+    @property
+    def mt_array(self):
+        return self.regions[0].mt_array
+
+    @property
+    def n_bins(self):
+        return self.regions[0].n_bins
+
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None, brute=False, norm_type='theta'):
+        # safety check to avoid unimplemented cases
+        if len(self.regions)>1 and norm_type!="crtf":
+            raise ValueError(f"Norm type {norm_type} not supported for multiple region input")
+
+        pdfs_dict = {pdf : make_pdf(pdf, self.regions[0].mtvar, self.regions[0].bkg_th1) for pdf in known_pdfs()}
 
         cache = None
         if use_cache:
@@ -571,58 +814,42 @@ class InputData(object):
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache, brute=brute) for pdf in pdfs ]
-            i_winner = do_fisher_test(self.mtvar, self.data_datahist, pdfs, gof_type=gof_type)
+            i_winner = do_fisher_test(self.regions[0].mtvar, self.regions[0].data_datahist, pdfs, gof_type=gof_type)
             # take i_winner if pdf not in manually specified dictionary of winner indices
             i_winner_final = winner_indices.get(pdf_type, i_winner)
             logger.info(f'gen_datacard: chose n_pars={pdfs[i_winner_final].n_pars} for {pdf_type}')
             winner_pdfs.append(pdfs[i_winner_final])
 
-        systs = [
-            ['lumi', 'lnN', 1.016, '-'],
-            ['trigger_cr', 'lnN', 1.02, '-'],
-            ['trigger_sim', 'lnN', 1.021, '-'],
-            ['mZprime','extArg', mz],
-            ['mDark',  'extArg', mdark],
-            ['rinv',   'extArg', rinv],
-            ['xsec',   'extArg', get_xs(mz)],
-            ]
-
-        sig_name = 'mz{:.0f}_rinv{:.1f}_mdark{:.0f}'.format(mz, rinv, mdark)
-        sig_th1 = self.sig['central'].th1(sig_name)
-        sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(self.mtvar), sig_th1, 1.)
-
-        syst_th1s = []
-        used_systs = set()
-        for key, hist in self.sig.items():
-            if '_up' in key:
-                direction = 'Up'
-            elif '_down' in key:
-                direction = 'Down'
-            else:
-                continue # Not a systematic
-            syst_name = key.replace('_up','').replace('_down','')
-            # Don't add the line twice
-            if syst_name not in used_systs:
-                systs.append([syst_name, 'shape', 1, '-'])
-                used_systs.add(syst_name)
-            syst_th1s.append(hist.th1(f'{sig_name}_{syst_name}{direction}'))
-
         nosystname = ""
         if nosyst:
-            systs = [s for s in systs if s[1]=='extArg']
+            for region in self.regions:
+                region.systs = [s for s in region.systs if s[1]=='extArg']
             nosystname = "_nosyst"
         if self.asimov:
             nosystname = nosystname + "_asimov"
 
-        outfile = strftime(f'dc_%Y%m%d_{self.metadata["selection"]}{nosystname}/dc_{osp.basename(self.sigfile).replace(".json","")}{nosystname}.txt')
-        compile_datacard_macro(
-            winner_pdfs, self.data_datahist, sig_datahist, self.bkg_th1.Integral(),
-            norm_type, self.metadata["selection"],
-            outfile,
-            systs=systs,
-            syst_th1s=syst_th1s,
-        )
+        outdir = strftime(f'dc_%Y%m%d_{self.regions[0].metadata["selection"]}{nosystname}')
+        for region in self.regions:
+            if region.index==0:
+                bkg_pdf = winner_pdfs
+                norm_name = None
+            else:
+                bkg_pdf = None
+                norm_name = self.regions[0].norm_name
+            region.create_workspace(outdir, bkg_pdf, norm_type, norm_name, nosystname)
 
+        # Write the dc
+        dc = Datacard()
+        for region in self.regions:
+            region.fill_dc(dc)
+
+        txt = parse_dc(dc)
+        outfile = self.regions[0].wsfile.replace(".root",".txt")
+        logger.info('txt datacard:\n%s', txt)
+        logger.info('Dumping txt to ' + outfile)
+        if not osp.isdir(osp.dirname(outfile)): os.makedirs(osp.dirname(outfile))
+        with open(outfile, 'w') as f:
+            f.write(txt)
 
 
 # _______________________________________________________________________
@@ -635,14 +862,6 @@ def dump_fits_to_file(filename, results):
     if not osp.isdir(dirname): os.makedirs(dirname)
     with open_root(filename, 'RECREATE') as tf:
         for result in results: result.Write()
-
-
-def dump_ws_to_file(filename, ws):
-    logger.info('Dumping ws {} to {}'.format(ws.GetName(), filename))
-    dirname = osp.dirname(osp.abspath(filename))
-    if not osp.isdir(dirname): os.makedirs(dirname)
-    wstatus = ws.writeToFile(filename, True)
-    return wstatus
 
 
 def eval_expression(expression, pars):
@@ -1576,119 +1795,6 @@ def tabelize(data):
         )
 
 
-def make_multipdf(pdfs, name):
-    cat = ROOT.RooCategory('pdf_index', "Index of Pdf which is active")
-    pdf_arglist = ROOT.RooArgList()
-    for pdf in pdfs: pdf_arglist.add(pdf.pdf)
-    multipdf = ROOT.RooMultiPdf(name, "All Pdfs", cat, pdf_arglist)
-    multipdf.cat = cat
-    multipdf.pdfs = pdfs
-    object_keeper.add_multiple([cat, multipdf])
-    return multipdf
-
-
-def make_norm(norm_type, name):
-    norm_objs = []
-    if norm_type=="free":
-        norm = ROOT.RooRealVar(name+'_norm', "Number of background events", 1.0, 0., 1.e6)
-        norm_objs.extend([norm])
-    elif norm_type=="theta" or norm_type=="gauss":
-        norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -100., 100.)
-        norm = ROOT.RooFormulaVar(name+'_norm', "1+0.01*@0", ROOT.RooArgList(norm_theta))
-        norm_objs.extend([norm_theta, norm])
-    else:
-        raise ValueError(f"Unknown norm type {norm_type}")
-    object_keeper.add_multiple(norm_objs)
-    return norm_objs
-
-
-def compile_datacard_macro(bkg_pdf, data_obs, sig, bkg_yield, norm_type, selection, outfile='dc_bsvj.txt', systs=None, syst_th1s=None):
-    do_syst = systs is not None
-    w = ROOT.RooWorkspace("SVJ", "workspace")
-
-    def commit(thing, *args, **kwargs):
-        name = thing.GetName() if hasattr(thing, 'GetName') else '?'
-        logger.info('Importing {} ({})'.format(name, thing))
-        getattr(w, 'import')(thing, *args, **kwargs)
-
-    # Bkg pdf: May be multiple
-    is_multipdf = hasattr(bkg_pdf, '__len__')
-    bkg_name = 'roomultipdf' if is_multipdf else 'bkg'
-
-    # normalization of bkg pdf
-    norm = make_norm(norm_type, bkg_name)
-    for n in norm: commit(n)
-
-    if is_multipdf:
-        mt = bkg_pdf[0].mt
-        multipdf = make_multipdf(bkg_pdf, bkg_name)
-        commit(multipdf.cat)
-        commit(multipdf)
-    else:
-        mt = bkg_pdf.mt
-        commit(bkg_pdf, ROOT.RooFit.RenameVariable(bkg_pdf.GetName(), bkg_name))
-
-    commit(data_obs)
-    commit(sig, ROOT.RooFit.Rename('sig'))
-
-    if syst_th1s is not None:
-        for th1 in syst_th1s:
-            # th1.SetName(th1.GetName().replace(sig.GetName(), 'sig'))
-            name = th1.GetName().replace(sig.GetName(), 'sig')
-            dh = ROOT.RooDataHist(name, name, ROOT.RooArgList(mt), th1)
-            commit(dh)
-
-    wsfile = outfile.replace('.txt', '.root')
-    dump_ws_to_file(wsfile, w)
-
-    # Write the dc
-    dc = Datacard()
-    dc.shapes.append([bkg_name, 'bsvj', wsfile, 'SVJ:$PROCESS'])
-    dc.shapes.append(['sig', 'bsvj', wsfile, 'SVJ:$PROCESS'] + (['SVJ:$PROCESS_$SYSTEMATIC'] if do_syst else []))
-    dc.shapes.append(['data_obs', 'bsvj', wsfile, 'SVJ:$PROCESS'])
-    dc.channels.append(('bsvj', int(data_obs.sumEntries())))
-    dc.rates['bsvj'] = OrderedDict()
-    dc.rates['bsvj']['sig'] = sig.sumEntries()
-    dc.rates['bsvj'][bkg_name] = data_obs.sumEntries()
-
-    if norm_type=="gauss":
-        # transfer factor constants
-        if selection=="cutbased":
-            yield_bkg_CRloose = 67239.91314785543
-            yield_obs_CRloose = 76340.0
-        else:
-            raise ValueError(f"Gaussian constraint (transfer factor method) not implemented yet for {selection}")
-
-        # compute prediction and uncertainty
-        yield_bkg_SR = bkg_yield
-        tf = yield_bkg_SR/yield_bkg_CRloose
-        yield_pred_SR = np.round(tf*yield_obs_CRloose)
-        unc_pred_SR = tf*np.sqrt(yield_obs_CRloose)/yield_obs_CRloose
-
-        dc.rates['bsvj'][bkg_name] = yield_pred_SR
-
-    # Freely floating bkg parameters
-    def systs_for_pdf(pdf):
-        for par in pdf.parameters:
-            dc.systs.append([par.GetName(), 'flatParam'])
-    [systs_for_pdf(p) for p in multipdf.pdfs] if is_multipdf else systs_for_pdf(bkg_pdf)
-    # Rest of the systematics
-    if is_multipdf:
-        dc.systs.append([multipdf.cat.GetName(), 'discrete'])
-        for n in norm:
-            if n.InheritsFrom("RooRealVar"):
-                if norm_type=="gauss":
-                    dc.systs.append([n.GetName(), 'param', 0, unc_pred_SR/0.01])
-                else:
-                    dc.systs.append([n.GetName(), 'flatParam'])
-    if do_syst: dc.systs.extend(systs)
-    txt = parse_dc(dc)
-
-    logger.info('txt datacard:\n%s', txt)
-    logger.info('Dumping txt to ' + outfile)
-    if not osp.isdir(osp.dirname(outfile)): os.makedirs(osp.dirname(outfile))
-    with open(outfile, 'w') as f:
-        f.write(txt)
 
 
 def camel_to_snake(name):
