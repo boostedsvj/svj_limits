@@ -15,6 +15,7 @@
 # Default values
 hists_dir="hists"
 hists_date="20241115"   # Date of the histograms used to make the data cards
+hists_date_anti=  # Date of the anti-tag CR histograms
 dc_date=$(date +%Y%m%d)     # Today's date for gentoys command
 toys_date=$(date +%Y%m%d)   # Today's date for fittoys command
 toyfits_date=$(date +%b%d)  # Date format for toyfits directory as "Oct29"
@@ -40,6 +41,7 @@ while [[ "$#" -gt 0 ]]; do
         --dc_date) dc_date="$2"; shift ;;
         --hists_dir) hists_dir="$2"; shift ;;
         --hists_date) hists_date="$2"; shift ;;
+        --hists_date_anti) hists_date_anti="$2"; shift ;;
         --siginj) siginj="$2"; shift ;;
         --rmax) rmax="$2"; shift ;;
         --mDark) mDark_value="$2"; shift ;;
@@ -50,8 +52,13 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
+if [ -z "$hists_date_anti" ]; then
+    hists_date_anti=hists_date
+fi
+
 get_signame(){
 sig_name=SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth
+sig_name_anti=SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-anti${sel}_smooth
 }
 
 # Set PDF option based on test_type
@@ -87,8 +94,10 @@ if [ "$run_only_fits" == false ] && [ "$skip_dc" == false ]; then
     get_signame
     # Generate datacards for the current mMed value with variable mDark and hists_date
     (set -x; python3 cli_boosted.py gen_datacards \
-      --bkg ${hists_dir}/merged_${hists_date}/bkg_sel-${sel}.json \
-      --sig ${hists_dir}/smooth_${hists_date}/${sig_name}.json)
+      --regions ${sel} anti${sel} \
+      --norm-type crtf \
+      --bkg ${hists_dir}/merged_${hists_date}/bkg_sel-${sel}.json ${hists_dir}/merged_${hists_date_anti}/bkg_sel-anti${sel}.json \
+      --sig ${hists_dir}/smooth_${hists_date}/${sig_name}.json ${hists_dir}/smooth_${hists_date_anti}/${sig_name_anti}.json)
   done
 fi
 
