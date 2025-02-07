@@ -91,7 +91,7 @@ if [ "$run_only_fits" == false ]; then
   if [ "$only_inj" = false ]; then
     (set -x; python3 cli_boosted.py likelihood_scan_mp \
       dc_${dc_date}_${sel}/dc*mDark-${mDark_value}_rinv-${rinv_value}*${sel}*smooth.txt \
-      --range 0.0 2.0 \
+      --range 0.0 1.0 \
       --seed ${toy_seed} \
       --asimov)
   fi
@@ -103,7 +103,7 @@ fi
 get_signame ${mInj}
 (set -x; python3 cli_boosted.py likelihood_scan_mp \
   dc_${dc_date}_${sel}/dc*mDark-${mDark_value}_rinv-${rinv_value}*${sel}*smooth.txt \
-  --range 0.0 2.0 \
+  --range 0.0 1.0 \
   --seed ${toy_seed} \
   --toysFile toys_${dc_date}/higgsCombineObserveddc_${sig_name}.GenerateOnly.mH120.${toy_seed}.root \
   -t -1)
