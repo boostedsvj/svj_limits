@@ -508,13 +508,14 @@ def make_multipdf(pdfs, name):
     return multipdf
 
 
-def make_norm(norm_type, name):
+def make_norm(norm_type, name, index):
     norm_objs = []
     if norm_type=="free":
         norm = ROOT.RooRealVar(name+'_norm', "Number of background events", 1.0, 0., 1.e6)
         norm_objs.extend([norm])
     elif norm_type=="crtf":
-        norm = ROOT.RooRealVar(name+'_norm', "Background rate", 1.0, 0.0, 2.0)
+        norm = ROOT.RooRealVar(name+'_norm', "Number of background events", 1.0, 1.0, 1.0)
+        norm.setConstant(True)
         norm_objs.extend([norm])
     elif norm_type=="theta" or norm_type=="gauss":
         norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -100., 100.)
@@ -644,7 +645,7 @@ class InputRegion(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def create_workspace(self, outdir, bkg_pdf, norm_type, norm_name, suff):
+    def create_workspace(self, outdir, bkg_pdf, norm_type, suff):
         self.wsfile = f'{outdir}/dc_{osp.basename(self.sigfile).replace(".json","")}{suff}.root'
         w = ROOT.RooWorkspace("SVJ", "workspace")
 
@@ -662,9 +663,8 @@ class InputRegion(object):
         self.bkg_name = 'roomultipdf' if self.bkg_type=="multipdf" else 'bkg'
 
         # normalization of bkg pdf
-        self.norm_name = self.bkg_name if norm_name is None else norm_name
         self.norm_type = norm_type
-        self.norm = make_norm(norm_type, self.norm_name)
+        self.norm = make_norm(norm_type, self.bkg_name, self.index)
         if self.bkg_type!="hist":
             for n in self.norm: commit(n)
 
@@ -743,7 +743,10 @@ class InputRegion(object):
                 if self.norm_type=="gauss":
                     dc.systs.append([n.GetName(), 'param', 0, unc_pred_SR/0.01])
                 elif self.norm_type=="crtf":
-                    dc.systs.append([n.GetName(), 'rateParam', self.bin_name, self.bkg_name, 1, "[0,2]"])
+                    if self.bkg_name in n.GetName():
+                        dc.systs.append([f'{self.bkg_name}_rate', 'rateParam', self.bin_name, self.bkg_name, "1+0.01*@0", "theta"])
+                    if self.index==0:
+                        dc.systs.append(['theta', 'extArg', 0, '[-100,100]'])
                 else:
                     dc.systs.append([n.GetName(), 'flatParam'])
 
@@ -832,11 +835,9 @@ class InputData(object):
         for region in self.regions:
             if region.index==0:
                 bkg_pdf = winner_pdfs
-                norm_name = None
             else:
                 bkg_pdf = None
-                norm_name = self.regions[0].norm_name
-            region.create_workspace(outdir, bkg_pdf, norm_type, norm_name, nosystname)
+            region.create_workspace(outdir, bkg_pdf, norm_type, nosystname)
 
         # Write the dc
         dc = Datacard()
@@ -1890,7 +1891,7 @@ class CombineCommand(object):
         logger.info('Using pdf %s', pdf)
         self.set_parameter('pdf_index', known_pdfs().index(pdf))
         pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
-        optional_pars = ['roomultipdf_theta']
+        optional_pars = ['roomultipdf_theta','theta']
         optional_pars = [opar for opar in optional_pars if opar in self.dc.syst_names]
         pdf_pars += optional_pars
         pars_to_track = ['r', 'n_exp_final_binbsvj_proc_roomultipdf', 'shapeBkg_roomultipdf_bsvj__norm']
