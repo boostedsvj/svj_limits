@@ -2028,6 +2028,7 @@ def bestfit(cmd, range=None):
     cmd.method = 'MultiDimFit'
     cmd.args.add('--saveWorkspace')
     cmd.args.add('--saveNLL')
+    cmd.args.add('--saveToys')
     cmd.redefine_signal_pois.add('r')
     cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
     if range is None: range = pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range

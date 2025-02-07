@@ -412,6 +412,7 @@ def get_toy(file):
     for key in toys.GetListOfKeys():
         obj = toys.Get(key.GetName())
         if isinstance(obj, ROOT.RooDataSet):
+            logger.info(f"Using toy {key.GetName()}")
             return obj
     return None
 
