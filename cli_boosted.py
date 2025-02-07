@@ -426,7 +426,7 @@ def impacts():
     initial_fit_outfile = cmd.outfile
 
     systs = []
-    for syst in dc.syst_names:
+    for syst in dc.syst_names_independent:
         if 'mcstat' in syst: continue
         if syst in base_cmd.freeze_parameters: continue
         systs.append(syst)

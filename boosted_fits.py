@@ -1632,6 +1632,13 @@ class Datacard:
     def syst_names(self):
         return [s[0] for s in self.systs]
 
+    @property
+    def syst_names_independent(self):
+        # exclude formula rateParam, include RooRealVar extArg
+        rateParamFormulas = [s for s in self.systs if s[1]=='rateParam' and '@' in s[4]]
+        rateParamDeps = list(set((','.join(s[5] for s in rateParamFormulas)).split(',')))
+        return [s[0] for s in self.systs if not s in rateParamFormulas] + [s[0] for s in self.extargs if s[0] in rateParamDeps]
+
     def syst_rgx(self, rgx):
         """
         Returns a list of all systematics that match a pattern
