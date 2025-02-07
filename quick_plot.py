@@ -462,14 +462,14 @@ def mtdist():
     else:
         # Datacard without systematics: Just get the datahist
         sig = ws.embeddedData('shapeSig_sig_bsvj')
-        y_sig = bsvj.roodataset_values(sig)[1]
+        y_sig = bsvj.roodataset_values(sig,channel='bsvj')[1]
     logger.info(f'Prefit signal norm = {y_sig.sum():.2f}, should match with datacard')
 
     # Get the data histogram
     data = ws.data('data_obs')
     # check for a toy
     if toy is not None: data = toy
-    y_data = bsvj.roodataset_values(data)[1]
+    y_data = bsvj.roodataset_values(data,channel='bsvj')[1]
     logger.warning('y_data: %s', y_data)
 
     # Get histogram from generated toy

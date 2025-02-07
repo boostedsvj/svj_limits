@@ -2319,13 +2319,15 @@ def binning_from_roorealvar(x):
     return np.array(binning)
 
 
-def roodataset_values(data, varname='mt'):
+def roodataset_values(data, varname='mt', channel=None):
     """
     Works on both RooDataHist and RooDataSet!
     """
     x = []
     y = []
     dy = []
+    if channel is not None:
+        data = data.reduce(f"CMS_channel==CMS_channel::{channel}")
     for i in range(data.numEntries()):
         s = data.get(i)
         x.append(s[varname].getVal())
