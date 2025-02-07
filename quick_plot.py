@@ -346,10 +346,10 @@ def trackedparams():
 
     scans = get_scans(rootfiles)
     scan = scans[next(iter(scans))]
-    pars_to_scan = [par for par in scan.df if 'error_'+par in scan.df and par!='r']
+    pars_to_scan = [par for par in scan.df if ('error_'+par in scan.df or 'theta' in par) and par!='r']
     for par in pars_to_scan:
         logger.info(f"Plotting {par}")
-        plot_trackedparam(scans, par, outfile.format(par), clean, error=True)
+        plot_trackedparam(scans, par, outfile.format(par), clean, error='error_'+par in scan.df)
 
 @scripter
 def debugparams():
