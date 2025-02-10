@@ -337,7 +337,7 @@ def get_jsons():
 # all_pdfs can have more values than in this list
 # this list controls what actually runs
 def known_pdfs():
-    pdf_list = ["main", "alt", "ua2", "ua2t1"]
+    pdf_list = ["main", "alt", "ua2"]
     return pdf_list
 
 def make_pdf(name, mt, bkg_th1):
@@ -429,20 +429,6 @@ all_pdfs = {
         },
         3: {
             "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0}))',
-        },
-        4: {
-            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2)))',
-        },
-        5: {
-            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2) + @5*pow(@0/{0},3)))',
-        },
-    }),
-    "ua2t1": PdfInfo("ua2t1", {
-        2: {
-            "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2))',
-        },
-        3: {
-            "expr": 'pow(@0/{0}, (0.00599*@3 + -0.0216*@1 + -0.0252*@2 + -2.25)) * exp(@0/{0}*((0.00188*@3 + 0.041*@2 + 0.146*@1 + 4.24) + (0.00128*@3 + 0.0577*@2 + -0.113*@1 + -11.3)*@0/{0}))',
         },
         4: {
             "expr": 'pow(@0/{0}, @1) * exp(@0/{0}*(@2+ @3*@0/{0} + @4*pow(@0/{0},2)))',
