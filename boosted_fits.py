@@ -325,6 +325,13 @@ class Decoder(json.JSONDecoder):
             return Histogram(d)
         return d
 
+def choices(val):
+    choices = {
+        'gof': ['chi2','rss'],
+        'norm': ['free','theta','gauss','crtf','rhalpha'],
+    }
+    return choices[val]
+
 # get set of json files from command line (used for datacard creation)
 def get_jsons():
     result = dict(
@@ -521,9 +528,11 @@ def make_norm(norm_type, name, index):
         norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -100., 100.)
         norm = ROOT.RooFormulaVar(name+'_norm', "1+0.01*@0", ROOT.RooArgList(norm_theta))
         norm_objs.extend([norm_theta, norm])
+    elif norm_type=="rhalpha":
+        pass
     else:
         raise ValueError(f"Unknown norm type {norm_type}")
-    object_keeper.add_multiple(norm_objs)
+    if len(norm_objs)>0: object_keeper.add_multiple(norm_objs)
     return norm_objs
 
 
@@ -551,10 +560,16 @@ class InputRegion(object):
     Keeps all the histograms for a specific region.
     This allows representing multiple regions in the datacard.
     """
-    def __init__(self, region, ireg, mt_min, mt_max, asimov, **kwargs):
+    def __init__(self, region, ireg, norm_type, mt_min, mt_max, asimov, **kwargs):
         self.name = region
         self.index = ireg
+        self.bin_name = 'bsvj'
+        self.bin_suff = ''
+        if self.index>0: self.bin_suff = f'CR{self.index}'
+        self.bin_name += self.bin_suff
+        self.norm_type = norm_type
         self.asimov = asimov
+
         for file in ['sigfile','bkgfile','datafile']:
             setattr(self, file, kwargs.pop(file))
             obj = file.replace('file','')
@@ -585,7 +600,7 @@ class InputRegion(object):
         # collapse CR histograms into a single bin
         mtname = 'mt'
         rebin = 1
-        if self.index>0:
+        if self.index>0 and self.norm_type=="crtf":
             mtname = f'mtCR{self.index}'
             rebin = self.n_bins
 
@@ -614,7 +629,7 @@ class InputRegion(object):
         rinv = float(self.metadata['rinv'])
         self.systs = get_default_systs(mz,mdark,rinv)
 
-        sig_name = 'mz{:.0f}_rinv{:.1f}_mdark{:.0f}'.format(mz, rinv, mdark)
+        sig_name = 'sig'
         self.sig_th1 = self.sig['central'].th1(sig_name, rebin)
         self.sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(self.mtvar), self.sig_th1, 1.)
 
@@ -645,14 +660,15 @@ class InputRegion(object):
     def n_bins(self):
         return len(self.mt)-1
 
-    def create_workspace(self, outdir, bkg_pdf, norm_type, suff):
-        self.wsfile = f'{outdir}/dc_{osp.basename(self.sigfile).replace(".json","")}{suff}.root'
-        w = ROOT.RooWorkspace("SVJ", "workspace")
-
+    def fill_ws(self, ws, bkg_pdf):
         def commit(thing, *args, **kwargs):
             name = thing.GetName() if hasattr(thing, 'GetName') else '?'
-            logger.info('Importing {} ({})'.format(name, thing))
-            getattr(w, 'import')(thing, *args, **kwargs)
+            final = name
+            if len(self.bin_suff)>0 and name!='?':
+                final = '_'.join([name,self.bin_suff])
+                args = args + (ROOT.RooFit.Rename(final),)
+            logger.info('Importing {} as {} ({})'.format(name, final, thing))
+            getattr(ws, 'import')(thing, *args, **kwargs)
 
         # Bkg pdf: May be multiple
         self.bkg_type = "hist"
@@ -663,8 +679,7 @@ class InputRegion(object):
         self.bkg_name = 'roomultipdf' if self.bkg_type=="multipdf" else 'bkg'
 
         # normalization of bkg pdf
-        self.norm_type = norm_type
-        self.norm = make_norm(norm_type, self.bkg_name, self.index)
+        self.norm = make_norm(self.norm_type, self.bkg_name, self.index)
         if self.bkg_type!="hist":
             for n in self.norm: commit(n)
 
@@ -682,22 +697,22 @@ class InputRegion(object):
             self.bkg_pdf = None
 
         commit(self.data_datahist)
-        commit(self.sig_datahist, ROOT.RooFit.Rename('sig'))
+        commit(self.sig_datahist)
 
         for th1 in self.syst_th1s:
             name = th1.GetName().replace(self.sig_datahist.GetName(), 'sig')
             dh = ROOT.RooDataHist(name, name, ROOT.RooArgList(self.mtvar), th1)
             commit(dh)
 
-        dump_ws_to_file(self.wsfile, w)
-
-    def fill_dc(self, dc):
-        self.bin_name = 'bsvj'
-        if self.index>0: self.bin_name += f'CR{self.index}'
-
-        dc.shapes.append([self.bkg_name, self.bin_name, self.wsfile, 'SVJ:$PROCESS'])
-        dc.shapes.append(['sig', self.bin_name, self.wsfile, 'SVJ:$PROCESS', 'SVJ:$PROCESS_$SYSTEMATIC'])
-        dc.shapes.append(['data_obs', self.bin_name, self.wsfile, 'SVJ:$PROCESS'])
+    def fill_dc(self, dc, wsfile):
+        shape_loc = 'SVJ:$PROCESS'
+        shape_loc_syst = shape_loc+'_$SYSTEMATIC'
+        if len(self.bin_suff)>0:
+            shape_loc = '_'.join([shape_loc,self.bin_suff])
+            shape_loc_syst = '_'.join([shape_loc_syst,self.bin_suff])
+        dc.shapes.append([self.bkg_name, self.bin_name, wsfile, shape_loc])
+        dc.shapes.append(['sig', self.bin_name, wsfile, shape_loc, shape_loc_syst])
+        dc.shapes.append(['data_obs', self.bin_name, wsfile, shape_loc])
         dc.channels.append((self.bin_name, int(self.data_datahist.sumEntries())))
         dc.rates[self.bin_name] = OrderedDict()
         dc.rates[self.bin_name]['sig'] = self.sig_datahist.sumEntries()
@@ -707,7 +722,7 @@ class InputRegion(object):
         if self.norm_type=="gauss":
             # transfer factor constants
             if self.name=="cutbased":
-                # from cutbasedAnti
+                # from anticutbased
                 yield_bkg_CR = 315180.8203287178
                 yield_obs_CR = 395709.0
             else:
@@ -769,7 +784,7 @@ class InputData(object):
     one signal model parameter variation.
     That way, datacard generation can be made class methods.
     """
-    def __init__(self, regions, mt_min=180., mt_max=650., **kwargs):
+    def __init__(self, regions, norm_type, mt_min=180., mt_max=650., **kwargs):
         # the first region is taken to be the SR
         files_types = ['sigfiles','bkgfiles','datafiles']
         region_files = {region: {files[:-1]:None for files in files_types} for region in regions}
@@ -786,8 +801,9 @@ class InputData(object):
                         break
 
         # create regions
+        self.norm_type = norm_type
         self.asimov = kwargs.pop('asimov',False)
-        self.regions = [InputRegion(region, ireg, mt_min, mt_max, self.asimov, **region_files[region]) for ireg,region in enumerate(regions)]
+        self.regions = [InputRegion(region, ireg, norm_type, mt_min, mt_max, self.asimov, **region_files[region]) for ireg,region in enumerate(regions)]
 
     def copy(self):
         return copy.deepcopy(self)
@@ -800,10 +816,10 @@ class InputData(object):
     def n_bins(self):
         return self.regions[0].n_bins
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None, brute=False, norm_type='theta'):
+    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None, brute=False):
         # safety check to avoid unimplemented cases
-        if len(self.regions)>1 and norm_type!="crtf":
-            raise ValueError(f"Norm type {norm_type} not supported for multiple region input")
+        if len(self.regions)>1 and self.norm_type!="crtf":
+            raise ValueError(f"Norm type {self.norm_type} not supported for multiple region input")
 
         pdfs_dict = {pdf : make_pdf(pdf, self.regions[0].mtvar, self.regions[0].bkg_th1) for pdf in known_pdfs()}
 
@@ -832,20 +848,23 @@ class InputData(object):
             nosystname = nosystname + "_asimov"
 
         outdir = strftime(f'dc_%Y%m%d_{self.regions[0].metadata["selection"]}{nosystname}')
+        wsfile = f'{outdir}/dc_{osp.basename(self.regions[0].sigfile).replace(".json","")}{nosystname}.root'
+        ws = ROOT.RooWorkspace("SVJ", "workspace")
         for region in self.regions:
             if region.index==0:
                 bkg_pdf = winner_pdfs
             else:
                 bkg_pdf = None
-            region.create_workspace(outdir, bkg_pdf, norm_type, nosystname)
+            region.fill_ws(ws, bkg_pdf)
+        dump_ws_to_file(wsfile, ws)
 
         # Write the dc
         dc = Datacard()
         for region in self.regions:
-            region.fill_dc(dc)
+            region.fill_dc(dc, wsfile)
 
         txt = parse_dc(dc)
-        outfile = self.regions[0].wsfile.replace(".root",".txt")
+        outfile = wsfile.replace(".root",".txt")
         logger.info('txt datacard:\n%s', txt)
         logger.info('Dumping txt to ' + outfile)
         if not osp.isdir(osp.dirname(outfile)): os.makedirs(osp.dirname(outfile))

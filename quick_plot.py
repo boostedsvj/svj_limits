@@ -877,14 +877,15 @@ def bkgfit():
     Bkg fit plots
     """
     jsons = bsvj.get_jsons()
+    regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
     pdftype = bsvj.pull_arg('pdftype', type=str, choices=bsvj.known_pdfs()).pdftype
     linscale = bsvj.pull_arg('--lin', action='store_true').lin
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
-    gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=['chi2','rss']).gof_type
+    gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=bsvj.choices('gof')).gof_type
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
 
-    input = bsvj.InputData(**jsons, asimov=asimov)
+    input = bsvj.InputData(regions, "theta", **jsons, asimov=asimov)
 
     bin_centers = .5*(input.mt_array[:-1]+input.mt_array[1:])
     bin_width = input.mt[1] - input.mt[0]
