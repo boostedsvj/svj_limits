@@ -19,6 +19,7 @@ git clone https://github.com/cms-analysis/CombineHarvester.git CombineHarvester 
 scram b -j 4
 pip3 install git+https://github.com/boostedsvj/seutils
 pip3 install git+https://github.com/boostedsvj/svj_ntuple_processing
+pip3 install git+https://github.com/boostedsvj/rhalphalib
 git clone git@github.com:boostedsvj/svj_limits.git boosted/svj_limits
 cd boosted/svj_limits
 ```
