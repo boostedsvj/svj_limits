@@ -29,6 +29,7 @@ if __name__=="__main__":
     p_hessian.add_argument("-w", "--workspace", metavar="ROOTFILE:WORKSPACE", help="Workspace to load", required=True)
     p_hessian.add_argument("-f", "--fit", metavar="ROOTFILE:FIT_NAME", help="Fit result to load", required=True)
     p_hessian.add_argument("-m", "--model", help="Model to load", default="ModelConfig")
+    p_hessian.add_argument("-p", "--prefix", help="Prefix for parameter names", default="bsvj")
     p_hessian.set_defaults(mode='hessian')
 
     p_cov = subparsers.add_parser('cov')
@@ -41,7 +42,7 @@ if __name__=="__main__":
     if args.mode=='hessian':
         w, fit = get_objs(args)
 
-        param_names = [p.GetName() for p in fit.floatParsFinal() if p.GetName().startswith("bsvj")]
+        param_names = [p.GetName() for p in fit.floatParsFinal() if p.GetName().startswith(args.prefix)]
         decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult("@", fit, param_names)
     elif args.mode=='cov':
         import uproot as up

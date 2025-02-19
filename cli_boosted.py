@@ -164,7 +164,8 @@ def gen_datacards():
     winner = bsvj.pull_arg('--winner', default=None, nargs=2, action="append").winner
     winners = {a:int(b) for a,b in winner} if winner is not None else None
     brute = bsvj.pull_arg('--brute', default=False, action="store_true").brute
-    bsvj.InputData(regions, norm_type, **jsons, asimov=asimov).gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute)
+    npar = bsvj.pull_arg('--npar', type=int, default=2).npar
+    bsvj.InputData(regions, norm_type, **jsons, asimov=asimov).gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute, npar=npar)
 
 @scripter
 def simple_test_fit():

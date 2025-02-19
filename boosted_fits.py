@@ -674,7 +674,8 @@ class InputRegion(object):
         self.bkg_type = "hist"
         if bkg_pdf is not None:
             self.bkg_type = "pdf"
-            if hasattr(bkg_pdf, '__len__'):
+            if hasattr(bkg_pdf, 'BACKGROUND'): self.bkg_type = "para"
+            elif hasattr(bkg_pdf, '__len__'):
                 self.bkg_type = "multipdf"
         self.bkg_name = 'roomultipdf' if self.bkg_type=="multipdf" else 'bkg'
 
@@ -691,6 +692,9 @@ class InputRegion(object):
         elif self.bkg_type=="pdf":
             commit(bkg_pdf, ROOT.RooFit.RenameVariable(bkg_pdf.GetName(), self.bkg_name))
             self.bkg_pdf = bkg_pdf
+        elif self.bkg_type=="para":
+            bkg_pdf.renderRoofit(ws)
+            self.bkg_pdf = bkg_pdf
         else:
             # commit MC histo
             commit(self.bkg_datahist)
@@ -704,7 +708,7 @@ class InputRegion(object):
             dh = ROOT.RooDataHist(name, name, ROOT.RooArgList(self.mtvar), th1)
             commit(dh)
 
-    def fill_dc(self, dc, wsfile):
+    def fill_dc(self, dc, wsfile, ws):
         shape_loc = 'SVJ:$PROCESS'
         shape_loc_syst = shape_loc+'_$SYSTEMATIC'
         if len(self.bin_suff)>0:
@@ -744,11 +748,16 @@ class InputRegion(object):
         def systs_for_pdf(pdf):
             for par in pdf.parameters:
                 dc.systs.append([par.GetName(), 'flatParam'])
+        def systs_for_para(pdf):
+            for par in pdf.parameters:
+                dc.systs.append([par.name, 'extArg', f'{wsfile}.root:{ws.GetName()}'])
         if self.bkg_type=="multipdf":
             for p in self.bkg_pdf.pdfs:
                 systs_for_pdf(p)
         elif self.bkg_type=="pdf":
             systs_for_pdf(self.bkg_pdf)
+        elif self.bkg_type=="para":
+            systs_for_para(self.bkg_pdf)
 
         # Other bkg systematics
         if self.bkg_type=="multipdf":
@@ -816,11 +825,44 @@ class InputData(object):
     def n_bins(self):
         return self.regions[0].n_bins
 
-    def gen_datacard(self, use_cache=True, fit_cache_lock=None, nosyst=False, gof_type='rss', winners=None, brute=False):
+    def gen_datacard(self, **kwargs):
         # safety check to avoid unimplemented cases
-        if len(self.regions)>1 and self.norm_type!="crtf":
+        if len(self.regions)>1 and self.norm_type not in ["crtf", "rhalpha"]:
             raise ValueError(f"Norm type {self.norm_type} not supported for multiple region input")
 
+        # common settings
+        nosystname = ""
+        nosyst = kwargs.pop('nosyst', False)
+        if nosyst:
+            for region in self.regions:
+                region.systs = [s for s in region.systs if s[1]=='extArg']
+            nosystname = "_nosyst"
+        if self.asimov:
+            nosystname = nosystname + "_asimov"
+
+        outdir = strftime(f'dc_%Y%m%d_{self.regions[0].metadata["selection"]}{nosystname}')
+        self.wsfile = f'{outdir}/dc_{osp.basename(self.regions[0].sigfile).replace(".json","")}{nosystname}.root'
+        self.ws = ROOT.RooWorkspace("SVJ", "workspace")
+
+        if self.norm_type=="rhalpha":
+            self.gen_datacard_rhalpha(**kwargs)
+        else:
+            self.gen_datacard_bkgfit(**kwargs)
+
+        # Write the dc
+        dc = Datacard()
+        for region in self.regions:
+            region.fill_dc(dc, self.wsfile, self.ws)
+
+        txt = parse_dc(dc)
+        outfile = self.wsfile.replace(".root",".txt")
+        logger.info('txt datacard:\n%s', txt)
+        logger.info('Dumping txt to ' + outfile)
+        if not osp.isdir(osp.dirname(outfile)): os.makedirs(osp.dirname(outfile))
+        with open(outfile, 'w') as f:
+            f.write(txt)
+
+    def gen_datacard_bkgfit(self, use_cache=True, fit_cache_lock=None, gof_type='rss', winners=None, brute=False, **kwargs):
         pdfs_dict = {pdf : make_pdf(pdf, self.regions[0].mtvar, self.regions[0].bkg_th1) for pdf in known_pdfs()}
 
         cache = None
@@ -839,38 +881,38 @@ class InputData(object):
             logger.info(f'gen_datacard: chose n_pars={pdfs[i_winner_final].n_pars} for {pdf_type}')
             winner_pdfs.append(pdfs[i_winner_final])
 
-        nosystname = ""
-        if nosyst:
-            for region in self.regions:
-                region.systs = [s for s in region.systs if s[1]=='extArg']
-            nosystname = "_nosyst"
-        if self.asimov:
-            nosystname = nosystname + "_asimov"
-
-        outdir = strftime(f'dc_%Y%m%d_{self.regions[0].metadata["selection"]}{nosystname}')
-        wsfile = f'{outdir}/dc_{osp.basename(self.regions[0].sigfile).replace(".json","")}{nosystname}.root'
-        ws = ROOT.RooWorkspace("SVJ", "workspace")
         for region in self.regions:
             if region.index==0:
                 bkg_pdf = winner_pdfs
             else:
                 bkg_pdf = None
-            region.fill_ws(ws, bkg_pdf)
-        dump_ws_to_file(wsfile, ws)
+            region.fill_ws(self.ws, bkg_pdf)
+        dump_ws_to_file(self.wsfile, self.ws)
 
-        # Write the dc
-        dc = Datacard()
-        for region in self.regions:
-            region.fill_dc(dc, wsfile)
+    def gen_datacard_rhalpha(self, npar=2, **kwargs):
+        import rhalphalib as rl
+        rl.util.install_roofit_helpers()
 
-        txt = parse_dc(dc)
-        outfile = wsfile.replace(".root",".txt")
-        logger.info('txt datacard:\n%s', txt)
-        logger.info('Dumping txt to ' + outfile)
-        if not osp.isdir(osp.dirname(outfile)): os.makedirs(osp.dirname(outfile))
-        with open(outfile, 'w') as f:
-            f.write(txt)
+        # bkg represented as linked parametric histograms
+        # one parameter per bin in CR
+        bkg_name = "bkg"
+        rl_mt = rl.Observable(self.regions[1].mtvar.GetName(), self.regions[1].mt_array)
+        initial_bkg = roodataset_values(self.regions[1].data_datahist)[1]
+        bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
+        scaledparams = initial_bkg ** bkgparams
+        fail_bkg = rl.ParametericSample('_'.join([bkg_name, self.regions[1].bin_suff]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
 
+        # transfer factor from polynomial fit, w/ overall norm from mc eff
+        bkg_eff = self.regions[0].bkg_datahist.sum(False) / self.regions[1].bkg_datahist.sum(False)
+        tf_fit = rl.BasisPoly("tf_data", (npar,), ["mt"])
+        mtpts = self.mt_array[:-1]
+        mtscaled = (mtpts - min(mtpts))/(max(mtpts) - min(mtpts))
+        tf_params = bkg_eff * tf_fit(mtscaled)
+        pass_bkg = rl.TransferFactorSample(bkg_name, rl.Sample.BACKGROUND, tf_params, fail_bkg)
+
+        self.regions[0].fill_ws(self.ws, pass_bkg)
+        self.regions[1].fill_ws(self.ws, fail_bkg)
+        dump_ws_to_file(self.wsfile, self.ws)
 
 # _______________________________________________________________________
 # Model building code: Bkg fits, fisher testing, etc.
@@ -1914,6 +1956,7 @@ class CombineCommand(object):
         Picks the background pdf. Freezes pdf_index, and freezes parameters of any other
         pdfs in the datacard.
         """
+        if pdf is None: return
         logger.info('Using pdf %s', pdf)
         self.set_parameter('pdf_index', known_pdfs().index(pdf))
         pdf_pars = self.dc.syst_rgx('bsvj_bkgfit%s_npars*' % pdf)
@@ -1958,8 +2001,8 @@ class CombineCommand(object):
             asimov = pull_arg('-a', '--asimov', action='store_true').asimov
             self.asimov(asimov)
 
-            logger.info('Taking pdf from command line (default is ua2)')
-            pdf = pull_arg('--pdf', type=str, choices=known_pdfs(), default='ua2').pdf
+            logger.info('Taking pdf from command line')
+            pdf = pull_arg('--pdf', type=str, choices=known_pdfs(), default=None).pdf
             self.pick_pdf(pdf)
 
             # allow setting parameter initial values from command line
