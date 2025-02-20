@@ -974,6 +974,31 @@ def bkgfit():
     plt.savefig(outfile, bbox_inches='tight')
     if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
 
+@scripter
+def bkgtf():
+    """
+    Bkg tf plots
+    """
+    jsons = bsvj.get_jsons()
+    regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.png').outfile
+    asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
+
+    input = bsvj.InputData(regions, "rhalpha", **jsons, asimov=asimov)
+    bin_centers = .5*(input.mt_array[:-1]+input.mt_array[1:])
+
+    # use ROOT to propagate errors when dividing
+    tfs_th1 = input.regions[0].bkg_th1
+    tfs_th1.Divide(input.regions[1].bkg_th1)
+    tfs = bsvj.th1_to_hist(tfs_th1)
+
+    with quick_ax(outfile=outfile) as ax:
+        ax.errorbar(bin_centers, tfs['vals'], yerr=tfs['errs'])
+        ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
+        ax.set_ylabel(f'TF ({regions[0]} / {regions[1]})')
+        apply_ranges(ax)
+
+    # todo: plot polynomial fit from workspace
 
 @scripter
 def hist():
