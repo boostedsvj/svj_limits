@@ -8,7 +8,7 @@ from array import array
 from math import sqrt
 import numpy as np
 import itertools, re, logging, os, os.path as osp, copy, subprocess, json
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from time import strftime
 
 PY3 = sys.version_info.major == 3
@@ -750,7 +750,8 @@ class InputRegion(object):
                 dc.systs.append([par.GetName(), 'flatParam'])
         def systs_for_para(pdf):
             for par in pdf.parameters:
-                dc.systs.append([par.name, 'extArg', f'{wsfile}.root:{ws.GetName()}'])
+                if any([par.name==syst[0] for syst in dc.systs]): continue
+                dc.systs.append([par.name, 'extArg', f'{wsfile}:{ws.GetName()}'])
         if self.bkg_type=="multipdf":
             for p in self.bkg_pdf.pdfs:
                 systs_for_pdf(p)
@@ -1829,8 +1830,14 @@ def parse_dc(dc):
             table.append([bin, proc, proc_nr(proc), int(dc.rates[bin][proc])])
     txt += '\n' + tabelize(transpose(table))
 
+    # split up systs by type to avoid tabelization issues
+    systs = defaultdict(list)
+    for syst in dc.systs:
+        systs[syst[1]].append(syst)
+
     txt += line
-    txt += '\n' + tabelize(dc.systs)
+    for syst_cat in sorted(systs.keys()):
+        txt += '\n' + tabelize(systs[syst_cat])
     txt += '\n'
     return txt
 
@@ -1859,7 +1866,7 @@ def tabelize(data):
     return '\n'.join(
         ' '.join(
             format(item, str(w)) for item, w in zip(row, col_widths)
-            )
+            ).rstrip()
         for row in data
         )
 
