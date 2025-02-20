@@ -900,7 +900,7 @@ class InputData(object):
         rl_mt = rl.Observable(self.regions[1].mtvar.GetName(), self.regions[1].mt_array)
         initial_bkg = roodataset_values(self.regions[1].data_datahist)[1]
         bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
-        scaledparams = initial_bkg ** bkgparams
+        scaledparams = initial_bkg * (1.0 + 1.0/np.sqrt(initial_bkg)) ** (bkgparams)
         fail_bkg = rl.ParametericSample('_'.join([bkg_name, self.regions[1].bin_suff]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
 
         # transfer factor from polynomial fit, w/ overall norm from mc eff
@@ -908,11 +908,12 @@ class InputData(object):
         tf_fit = rl.BasisPoly("tf_data", (npar,), ["mt"])
         mtpts = self.mt_array[:-1]
         mtscaled = (mtpts - min(mtpts))/(max(mtpts) - min(mtpts))
-        tf_params = bkg_eff * tf_fit(mtscaled)
-        pass_bkg = rl.TransferFactorSample(bkg_name, rl.Sample.BACKGROUND, tf_params, fail_bkg)
+        tf_params = tf_fit(mtscaled)
+        tf_params_final = bkg_eff * tf_params
+        pass_bkg = rl.TransferFactorSample(bkg_name, rl.Sample.BACKGROUND, tf_params_final, fail_bkg)
 
-        self.regions[0].fill_ws(self.ws, pass_bkg)
         self.regions[1].fill_ws(self.ws, fail_bkg)
+        self.regions[0].fill_ws(self.ws, pass_bkg)
         dump_ws_to_file(self.wsfile, self.ws)
 
 # _______________________________________________________________________
