@@ -23,6 +23,7 @@ def gaus_sample(norm, loc, scale, obs):
 
 def test_rhalphabet(tmpdir):
     throwPoisson = False
+    tfFromMC = True
 
     jec = rl.NuisanceParameter("CMS_jec", "lnN")
     massScale = rl.NuisanceParameter("CMS_massScale", "shape")
@@ -38,9 +39,6 @@ def test_rhalphabet(tmpdir):
     # here we derive these all at once with 2D array
     mtpts = mtbins[:-1] + 0.5 * np.diff(mtbins)
     mtscaled = (mtpts - mtmin) / (mtmax - mtmin)
-
-    # build actual fit model now
-    model = rl.Model("svjModel")
 
     msig = 350
     template_info = {
@@ -60,6 +58,62 @@ def test_rhalphabet(tmpdir):
             "bkg": {"pass": 93.8, "fail": 90.7},
         },
     }
+
+    if tfFromMC:
+        # Build bkg MC pass+fail model and fit to polynomial
+        bkgmodel = rl.Model("bkgmodel")
+        for region in ["pass", "fail"]:
+            ch = rl.Channel(region)
+            bkgmodel.addChannel(ch)
+            # mock template
+            templates = {
+                "bkg": expo_sample(
+                    norm=template_info["yields"]["bkg"][region],
+                    loc=template_info["locs"]["bkg"][region],
+                    scale=template_info["scales"]["bkg"][region],
+                    obs=mt,
+                ),
+            }
+            ch.setObservation(templates["bkg"])
+
+        bkgeff = template_info["yields"]["bkg"]["pass"] / template_info["yields"]["bkg"]["fail"]
+        tf_mc = rl.BernsteinPoly("tf_mc", (2,), ["mt"], limits=(0, 10))
+        tf_mc_params = bkgeff * tf_mc(mtscaled)
+        failCh = bkgmodel["fail"]
+        passCh = bkgmodel["pass"]
+        bkgparams = np.array([rl.IndependentParameter("bkgparam_mtbin%d" % (i), 0) for i in range(mt.nbins)])
+        initial_bkg = failCh.getObservation().astype(float)  # was integer, and numpy complained about subtracting float from it
+        scaledparams = initial_bkg * (1 + 1.0 / np.maximum(1.0, np.sqrt(initial_bkg))) ** (bkgparams)
+        fail_bkg = rl.ParametericSample("fail_bkg", rl.Sample.BACKGROUND, mt, scaledparams)
+        failCh.addSample(fail_bkg)
+        pass_bkg = rl.TransferFactorSample("pass_bkg", rl.Sample.BACKGROUND, tf_mc_params, fail_bkg)
+        passCh.addSample(pass_bkg)
+
+        bkgfit_ws = ROOT.RooWorkspace("bkgfit_ws")
+        simpdf, obs = bkgmodel.renderRoofit(bkgfit_ws)
+        bkgfit = simpdf.fitTo(
+            obs,
+            ROOT.RooFit.Extended(True),
+            ROOT.RooFit.SumW2Error(True),
+            ROOT.RooFit.Strategy(2),
+            ROOT.RooFit.Save(),
+            ROOT.RooFit.Minimizer("Minuit2", "migrad"),
+            ROOT.RooFit.PrintLevel(-1),
+        )
+        bkgfit_ws.add(bkgfit)
+        if "pytest" not in sys.modules:
+            bkgfit_ws.writeToFile(os.path.join(str(tmpdir), "svjModel_bkgfit.root"))
+        if bkgfit.status() != 0:
+            raise RuntimeError("Could not fit bkg")
+
+        param_names = [p.name for p in tf_mc.parameters.reshape(-1)]
+        decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names)
+        tf_mc.parameters = decoVector.correlated_params.reshape(tf_mc.parameters.shape)
+        tf_mc_params_final = tf_mc(mtscaled)
+
+    # build actual fit model now
+    model = rl.Model("svjModel")
+
     for region in ["pass", "fail"]:
         ch = rl.Channel(region)
         model.addChannel(ch)
@@ -105,10 +159,12 @@ def test_rhalphabet(tmpdir):
         data_obs = (yields, mt.binning, mt.name)
         ch.setObservation(data_obs)
 
-    bkgeff = template_info["yields"]["bkg"]["pass"] / template_info["yields"]["bkg"]["fail"]
     tf_data = rl.BernsteinPoly("tf_data", (2,), ["mt"], limits=(0, 10))
     tf_data_params = tf_data(mtscaled)
-    tf_params = bkgeff * tf_data_params
+    if tfFromMC:
+        tf_params = bkgeff * tf_mc_params_final * tf_data_params
+    else:
+        tf_params = bkgeff * tf_data_params
 
     failCh = model["fail"]
     passCh = model["pass"]
