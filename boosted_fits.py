@@ -720,7 +720,7 @@ class InputRegion(object):
         dc.channels.append((self.bin_name, int(self.data_datahist.sumEntries())))
         dc.rates[self.bin_name] = OrderedDict()
         dc.rates[self.bin_name]['sig'] = self.sig_datahist.sumEntries()
-        dc.rates[self.bin_name][self.bkg_name] = self.data_datahist.sumEntries()
+        dc.rates[self.bin_name][self.bkg_name] = 1 if self.bkg_type=="para" else self.data_datahist.sumEntries()
 
         # some norm types change rate assignments
         if self.norm_type=="gauss":
