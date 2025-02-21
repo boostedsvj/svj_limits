@@ -1,0 +1,133 @@
+from __future__ import print_function, division
+import sys
+import os
+import rhalphalib as rl
+import numpy as np
+import scipy.stats
+import pickle
+import ROOT
+
+rl.util.install_roofit_helpers()
+#rl.ParametericSample.PreferRooParametricHist = False
+
+
+def expo_sample(norm, scale, obs, loc=0):
+    cdf = scipy.stats.expon.cdf(scale=scale, x=obs.binning, loc=loc) * norm
+    return (np.diff(cdf), obs.binning, obs.name)
+
+
+def gaus_sample(norm, loc, scale, obs):
+    cdf = scipy.stats.norm.cdf(loc=loc, scale=scale, x=obs.binning) * norm
+    return (np.diff(cdf), obs.binning, obs.name)
+
+
+def test_rhalphabet(tmpdir):
+    throwPoisson = False
+
+    jec = rl.NuisanceParameter("CMS_jec", "lnN")
+    massScale = rl.NuisanceParameter("CMS_massScale", "shape")
+    lumi = rl.NuisanceParameter("CMS_lumi", "lnN")
+
+    mtmin = 180.
+    mtmax = 650.
+    mtstep = 10.
+    mtbins = np.arange(mtmin, mtmax+mtstep, mtstep)
+    nmt = len(mtbins) - 1
+    mt = rl.Observable("mt", mtbins)
+
+    # here we derive these all at once with 2D array
+    mtpts = mtbins[:-1] + 0.5 * np.diff(mtbins)
+    mtscaled = (mtpts - mtmin) / (mtmax - mtmin)
+
+    # build actual fit model now
+    model = rl.Model("svjModel")
+
+    msig = 350
+    template_info = {
+        "yields": {
+#           "svj": {"pass": 35100, "fail": 7760},
+#            "bkg": {"pass": 379780, "fail": 315180},
+            "svj": {"pass": 35100, "fail": 17680},
+            "bkg": {"pass": 379780, "fail": 2278568},
+        },
+        "locs": {
+            "svj": {"pass": msig, "fail": msig},
+            "bkg": {"pass": mtmin, "fail": mtmin},
+        },
+        "scales": {
+            "svj": {"pass": 0.25*msig, "fail": msig},
+#            "bkg": {"pass": 93.8, "fail": 95.9},
+            "bkg": {"pass": 93.8, "fail": 90.7},
+        },
+    }
+    for region in ["pass", "fail"]:
+        ch = rl.Channel(region)
+        model.addChannel(ch)
+
+        templates = {
+            "svj": gaus_sample(
+                norm=template_info["yields"]["svj"][region],
+                loc=template_info["locs"]["svj"][region],
+                scale=template_info["scales"]["svj"][region],
+                obs=mt,
+            ),
+        }
+        for sName in templates:
+            # some mock expectations
+            templ = templates[sName]
+            stype = rl.Sample.SIGNAL if sName == "svj" else rl.Sample.BACKGROUND
+            sample = rl.TemplateSample(ch.name + "_" + sName, stype, templ)
+
+            # mock systematics
+            jecup_ratio = np.random.normal(loc=1, scale=0.05, size=mt.nbins)
+            massUp = np.linspace(0.9, 1.1, mt.nbins)
+            massDn = np.linspace(1.2, 0.8, mt.nbins)
+
+            # for jec we set lnN prior, shape will automatically be converted to norm systematic
+            sample.setParamEffect(jec, jecup_ratio)
+            sample.setParamEffect(massScale, massUp, massDn)
+            sample.setParamEffect(lumi, 1.027)
+
+            ch.addSample(sample)
+
+        # make up a data_obs, with possibly different yield values, excluding signal
+        templates = {
+            "bkg": expo_sample(
+                norm=template_info["yields"]["bkg"][region],
+                loc=template_info["locs"]["bkg"][region],
+                scale=template_info["scales"]["bkg"][region],
+                obs=mt,
+            ),
+        }
+        yields = sum(tpl[0] for tpl in templates.values())
+        if throwPoisson:
+            yields = np.random.poisson(yields)
+        data_obs = (yields, mt.binning, mt.name)
+        ch.setObservation(data_obs)
+
+    bkgeff = template_info["yields"]["bkg"]["pass"] / template_info["yields"]["bkg"]["fail"]
+    tf_data = rl.BernsteinPoly("tf_data", (2,), ["mt"], limits=(0, 10))
+    tf_data_params = tf_data(mtscaled)
+    tf_params = bkgeff * tf_data_params
+
+    failCh = model["fail"]
+    passCh = model["pass"]
+
+    bkgparams = np.array([rl.IndependentParameter("bkgparam_mtbin%d" % (i), 0) for i in range(mt.nbins)])
+    initial_bkg = failCh.getObservation().astype(float)  # was integer, and numpy complained about subtracting float from it
+    scaledparams = initial_bkg * (1 + 1.0 / np.maximum(1.0, np.sqrt(initial_bkg))) ** (bkgparams)
+    fail_bkg = rl.ParametericSample("fail_bkg", rl.Sample.BACKGROUND, mt, scaledparams)
+    failCh.addSample(fail_bkg)
+    pass_bkg = rl.TransferFactorSample("pass_bkg", rl.Sample.BACKGROUND, tf_params, fail_bkg)
+    passCh.addSample(pass_bkg)
+
+    with open(os.path.join(str(tmpdir), "svjModel.pkl"), "wb") as fout:
+        pickle.dump(model, fout)
+
+    model.renderCombine(os.path.join(str(tmpdir), "svjModel"))
+
+
+if __name__ == "__main__":
+    if not os.path.exists("tmp"):
+        os.mkdir("tmp")
+    test_rhalphabet("tmp")
