@@ -982,23 +982,40 @@ def bkgtf():
     jsons = bsvj.get_jsons()
     regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.png').outfile
+    fit = bsvj.read_arg('--fit', type=str, default=None).fit
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
 
     input = bsvj.InputData(regions, "rhalpha", **jsons, asimov=asimov)
-    bin_centers = .5*(input.mt_array[:-1]+input.mt_array[1:])
+    bkg_eff = input.regions[0].bkg_datahist.sum(False) / input.regions[1].bkg_datahist.sum(False)
+    mtpts = input.mt_array[:-1] + 0.5*np.diff(input.mt_array)
+    mtscaled = (mtpts - min(mtpts))/(max(mtpts) - min(mtpts))
 
     # use ROOT to propagate errors when dividing
     tfs_th1 = input.regions[0].bkg_th1
     tfs_th1.Divide(input.regions[1].bkg_th1)
     tfs = bsvj.th1_to_hist(tfs_th1)
 
+    # plot polynomial fit from workspace
+    if fit is not None:
+        import rhalphalib as rl
+        ffit, fitname = fit.split(':')
+        fitresult = ROOT.TFile.Open(ffit).Get(fitname)
+        tf_name = "tf_mc"
+        npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])-1
+        tf_mc = rl.BasisPoly(tf_name, (npar,), ["mt"])
+        tf_mc.update_from_roofit(fitresult)
+        tf_mc_vals, tf_mc_band = tf_mc(mtscaled, nominal=True, errorband=True)
+        # todo: detect and handle data residual case
+
     with quick_ax(outfile=outfile) as ax:
-        ax.errorbar(bin_centers, tfs['vals'], yerr=tfs['errs'])
+        ax.errorbar(mtpts, tfs['vals'], yerr=tfs['errs'], label="MC")
+        if fit is not None:
+            ax.plot(mtpts, bkg_eff * tf_mc_vals, label="fit")
+            ax.fill_between(mtpts, bkg_eff * tf_mc_band[0], bkg_eff * tf_mc_band[1], alpha=0.2)
+            ax.legend(fontsize=18, framealpha=0.0)
         ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
         ax.set_ylabel(f'TF ({regions[0]} / {regions[1]})')
         apply_ranges(ax)
-
-    # todo: plot polynomial fit from workspace
 
 @scripter
 def hist():
