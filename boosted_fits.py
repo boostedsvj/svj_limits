@@ -209,7 +209,7 @@ class Histogram:
         """Returns a copy"""
         return copy.deepcopy(self)
 
-    def th1(self, name, rebin=1):
+    def th1(self, name, rebin=1, axname=None):
         """
         Converts histogram to a ROOT.TH1F
         """
@@ -223,6 +223,8 @@ class Histogram:
             th1.SetBinError(i+1, self.errs[i])
         if rebin>1:
             th1.Rebin(rebin)
+        if axname is not None:
+            th1.GetXaxis().SetTitle(axname)
         return th1
 
     @property
@@ -615,9 +617,9 @@ class InputRegion(object):
             for i in range(self.bkg_th1.GetNbinsX()):
                 self.bkg_th1.SetBinError(i+1,PoissonErrorUp(self.bkg_th1.GetBinContent(i+1)))
         else:
-            self.bkg_th1 = self.bkg['bkg'].th1('bkg', rebin)
+            self.bkg_th1 = self.bkg['bkg'].th1('bkg', rebin, mtname)
             if self.data is not None:
-                self.data_th1 = self.data['data'].th1('data', rebin)
+                self.data_th1 = self.data['data'].th1('data', rebin, mtname)
             else:
                 self.data_th1 = self.bkg_th1
             self.data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(self.mtvar), self.data_th1, 1.)
@@ -630,7 +632,7 @@ class InputRegion(object):
         self.systs = get_default_systs(mz,mdark,rinv)
 
         sig_name = 'sig'
-        self.sig_th1 = self.sig['central'].th1(sig_name, rebin)
+        self.sig_th1 = self.sig['central'].th1(sig_name, rebin, mtname)
         self.sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(self.mtvar), self.sig_th1, 1.)
 
         self.syst_th1s = []
@@ -890,26 +892,77 @@ class InputData(object):
             region.fill_ws(self.ws, bkg_pdf)
         dump_ws_to_file(self.wsfile, self.ws)
 
-    def gen_datacard_rhalpha(self, npar=2, **kwargs):
+    def gen_datacard_rhalpha(self, npar=2, tf_from_mc=False, **kwargs):
         import rhalphalib as rl
         rl.util.install_roofit_helpers()
 
+        # overall transfer factor norm from mc eff
+        bkg_name = "bkg"
+        bkg_eff = self.regions[0].bkg_datahist.sum(False) / self.regions[1].bkg_datahist.sum(False)
+        mtpts = self.mt_array[:-1] + 0.5*np.diff(self.mt_array)
+        mtscaled = (mtpts - min(mtpts))/(max(mtpts) - min(mtpts))
+        rl_mt = rl.Observable(self.regions[1].mtvar.GetName(), self.regions[1].mt_array)
+
+        # option to compute initial TF params from MC
+        if tf_from_mc:
+            # use rhalphalib model to create workspace
+            bkgmodel = rl.Model("bkgmodel")
+            failCh = rl.Channel("fail")
+            bkgmodel.addChannel(failCh)
+            failCh.setObservation(self.regions[1].bkg_th1)
+            passCh = rl.Channel("pass")
+            bkgmodel.addChannel(passCh)
+            passCh.setObservation(self.regions[0].bkg_th1)
+
+            # transfer factor from polynomial fit
+            tf_mc = rl.BasisPoly("tf_mc", (npar,), ["mt"])
+            tf_mc_params = bkg_eff * tf_mc(mtscaled)
+            bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
+            initial_bkg = failCh.getObservation().astype(float)
+            scaledparams = initial_bkg * (1.0 + 1.0/np.sqrt(initial_bkg)) ** (bkgparams)
+            fail_bkg = rl.ParametericSample('_'.join(["fail", bkg_name]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
+            failCh.addSample(fail_bkg)
+            pass_bkg = rl.TransferFactorSample('_'.join(["pass", bkg_name]), rl.Sample.BACKGROUND, tf_mc_params, fail_bkg)
+            passCh.addSample(pass_bkg)
+
+            # do the fit
+            bkgfit_ws = ROOT.RooWorkspace("bkgfit_ws")
+            simpdf, obs = bkgmodel.renderRoofit(bkgfit_ws)
+            bkgfit = simpdf.fitTo(
+                obs,
+                ROOT.RooFit.Extended(True),
+                ROOT.RooFit.SumW2Error(True),
+                ROOT.RooFit.Strategy(2),
+                ROOT.RooFit.Save(),
+                ROOT.RooFit.Minimizer("Minuit2", "migrad"),
+                ROOT.RooFit.PrintLevel(-1),
+            )
+            bkgfitfile = self.wsfile.replace("/dc_", "/bkgfit_")
+            bkgfitf = ROOT.TFile.Open(bkgfitfile, "RECREATE")
+            bkgfitf.cd()
+            bkgfit.Write("bkgfit")
+            bkgfit_ws.Write()
+            bkgfitf.Close()
+
+            param_names = [p.name for p in tf_mc.parameters.reshape(-1)]
+            decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names)
+            tf_mc.parameters = decoVector.correlated_params.reshape(tf_mc.parameters.shape)
+            tf_mc_params_final = tf_mc(mtscaled)
+
         # bkg represented as linked parametric histograms
         # one parameter per bin in CR
-        bkg_name = "bkg"
-        rl_mt = rl.Observable(self.regions[1].mtvar.GetName(), self.regions[1].mt_array)
         initial_bkg = roodataset_values(self.regions[1].data_datahist)[1]
         bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
         scaledparams = initial_bkg * (1.0 + 1.0/np.sqrt(initial_bkg)) ** (bkgparams)
         fail_bkg = rl.ParametericSample('_'.join([bkg_name, self.regions[1].bin_suff]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
 
-        # transfer factor from polynomial fit, w/ overall norm from mc eff
-        bkg_eff = self.regions[0].bkg_datahist.sum(False) / self.regions[1].bkg_datahist.sum(False)
+        # transfer factor from polynomial fit
         tf_fit = rl.BasisPoly("tf_data", (npar,), ["mt"])
-        mtpts = self.mt_array[:-1]
-        mtscaled = (mtpts - min(mtpts))/(max(mtpts) - min(mtpts))
         tf_params = tf_fit(mtscaled)
-        tf_params_final = bkg_eff * tf_params
+        if tf_from_mc:
+            tf_params_final = bkg_eff * tf_mc_params_final * tf_params
+        else:
+            tf_params_final = bkg_eff * tf_params
         pass_bkg = rl.TransferFactorSample(bkg_name, rl.Sample.BACKGROUND, tf_params_final, fail_bkg)
 
         self.regions[1].fill_ws(self.ws, fail_bkg)
