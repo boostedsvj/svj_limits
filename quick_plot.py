@@ -1008,10 +1008,14 @@ def bkgtf():
         # todo: detect and handle data residual case
 
     with quick_ax(outfile=outfile) as ax:
-        ax.errorbar(mtpts, tfs['vals'], yerr=tfs['errs'], label="MC")
+        from itertools import cycle
+        colors = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+        pcolor = next(colors)
+        ax.errorbar(mtpts, tfs['vals'], yerr=tfs['errs'], label="MC", color=pcolor)
         if fit is not None:
-            ax.plot(mtpts, bkg_eff * tf_mc_vals, label="fit")
-            ax.fill_between(mtpts, bkg_eff * tf_mc_band[0], bkg_eff * tf_mc_band[1], alpha=0.2)
+            pcolor = next(colors)
+            ax.plot(mtpts, bkg_eff * tf_mc_vals, label="fit", color=pcolor)
+            ax.fill_between(mtpts, bkg_eff * tf_mc_band[0], bkg_eff * tf_mc_band[1], alpha=0.2, color=pcolor)
             ax.legend(fontsize=18, framealpha=0.0)
         ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
         ax.set_ylabel(f'TF ({regions[0]} / {regions[1]})')

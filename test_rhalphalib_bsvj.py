@@ -21,6 +21,42 @@ def gaus_sample(norm, loc, scale, obs):
     return (np.diff(cdf), obs.binning, obs.name)
 
 
+def obs_to_TH1(channel):
+    sumw = channel.getObservation()
+    return rl.util._to_TH1((sumw,sumw), channel.observable.binning, channel.observable.name)
+
+
+def plot_tf(mtbins, fail_bkg, pass_bkg, fitresult):
+    mtpts = mtbins[:-1] + 0.5 * np.diff(mtbins)
+    mtscaled = (mtpts - min(mtbins)) / (max(mtbins) - min(mtbins))
+
+    bkg_eff = pass_bkg.Integral()/fail_bkg.Integral()
+    tfs_th1 = pass_bkg
+    tfs_th1.Divide(fail_bkg)
+    tfs = rl.util._to_numpy(tfs_th1, read_sumw2=True)
+
+    tf_name = "tf_mc"
+    npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])-1
+    tf_mc = rl.BasisPoly(tf_name, (npar,), ["mt"])
+    tf_mc.update_from_roofit(fitresult)
+    tf_mc_vals, tf_mc_band = tf_mc(mtscaled, nominal=True, errorband=True)
+
+    from quick_plot import quick_ax
+    outfile = "tf_test_bsvj.png"
+    with quick_ax(outfile=outfile) as ax:
+        import matplotlib.pyplot as plt
+        from itertools import cycle
+        colors = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+        pcolor = next(colors)
+        ax.errorbar(mtpts, tfs[0], yerr=tfs[-1], label="MC", color=pcolor)
+        pcolor = next(colors)
+        ax.plot(mtpts, bkg_eff * tf_mc_vals, label="fit", color=pcolor)
+        ax.fill_between(mtpts, bkg_eff * tf_mc_band[0], bkg_eff * tf_mc_band[1], alpha=0.2, color=pcolor)
+        ax.legend(fontsize=18, framealpha=0.0)
+        ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
+        ax.set_ylabel(f'TF')
+
+
 def test_rhalphabet(tmpdir):
     throwPoisson = False
     tfFromMC = True
@@ -36,7 +72,6 @@ def test_rhalphabet(tmpdir):
     nmt = len(mtbins) - 1
     mt = rl.Observable("mt", mtbins)
 
-    # here we derive these all at once with 2D array
     mtpts = mtbins[:-1] + 0.5 * np.diff(mtbins)
     mtscaled = (mtpts - mtmin) / (mtmax - mtmin)
 
@@ -110,6 +145,8 @@ def test_rhalphabet(tmpdir):
         decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names)
         tf_mc.parameters = decoVector.correlated_params.reshape(tf_mc.parameters.shape)
         tf_mc_params_final = tf_mc(mtscaled)
+
+        plot_tf(mtbins, obs_to_TH1(bkgmodel["fail"]), obs_to_TH1(bkgmodel["pass"]), bkgfit)
 
     # build actual fit model now
     model = rl.Model("svjModel")
