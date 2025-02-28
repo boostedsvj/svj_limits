@@ -34,6 +34,10 @@ set_mpl_fontsize()
 cms_yellow = '#fffc54'
 cms_green = '#74f94c'
 
+def get_color_cycle():
+    from itertools import cycle
+    colors = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+    return colors
 
 scripter = bsvj.Scripter()
 
@@ -398,9 +402,7 @@ def debugparams():
         scan = scan[abs(scan.df['mu']-r_debug)<eps_debug]
         # remove extreme outliers
         scan = scan[abs(scan.df['dnll']-np.mean(scan.df['dnll']))<sigma_debug*np.std(scan.df['dnll'])]
-        from itertools import cycle
-        prop_cycle = plt.rcParams['axes.prop_cycle']
-        colors = cycle(prop_cycle.by_key()['color'])
+        colors = get_color_cycle()
         with quick_ax(outfile=oname) as ax:
             for ipar,par in enumerate(pars_to_scan):
                 plot_with_y_axis(scan, ax, par, ipar, colors)
@@ -1008,8 +1010,7 @@ def bkgtf():
         # todo: detect and handle data residual case
 
     with quick_ax(outfile=outfile) as ax:
-        from itertools import cycle
-        colors = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+        colors = get_color_cycle()
         pcolor = next(colors)
         ax.errorbar(mtpts, tfs['vals'], yerr=tfs['errs'], label="MC", color=pcolor)
         if fit is not None:
@@ -1019,6 +1020,41 @@ def bkgtf():
             ax.legend(fontsize=18, framealpha=0.0)
         ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
         ax.set_ylabel(f'TF ({regions[0]} / {regions[1]})')
+        apply_ranges(ax)
+
+def plot_hist(th1, ax, **kwargs):
+    hist = bsvj.th1_to_hist(th1)
+    def get_kwargs(orig, keys):
+        return {k : orig.get(k, None) for k in keys}
+    step_keys = ['where','label','color']
+    ax.step(hist['binning'][:-1], hist['vals'], **get_kwargs(kwargs, step_keys))
+    fill_keys = ['where','alpha','color']
+    fill_dict = get_kwargs(kwargs, fill_keys)
+    fill_dict['step'] = fill_dict.pop('where')
+    ax.fill_between(hist['binning'][:-1], hist['vals']-hist['errs'], hist['vals']+hist['errs'], **fill_dict)
+
+@scripter
+def bkgsrcr():
+    """
+    Bkg SR vs. CR plots
+    """
+    jsons = bsvj.get_jsons()
+    regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.png').outfile
+    asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
+
+    input = bsvj.InputData(regions, "rhalpha", **jsons, asimov=asimov)
+
+    with quick_ax(outfile=outfile) as ax:
+        colors = get_color_cycle()
+        pcolor = next(colors)
+        plot_hist(input.regions[1].bkg_th1, ax, where='post', label=regions[1], alpha=0.2, color=pcolor)
+        pcolor = next(colors)
+        plot_hist(input.regions[0].bkg_th1, ax, where='post', label=regions[0], alpha=0.2, color=pcolor)
+        ax.legend(fontsize=18, framealpha=0.0)
+        ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
+        ax.set_ylabel(f'Number of events')
+        ax.set_yscale('log')
         apply_ranges(ax)
 
 @scripter

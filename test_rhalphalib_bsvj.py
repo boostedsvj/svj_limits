@@ -1,6 +1,7 @@
 from __future__ import print_function, division
 import sys
 import os
+from contextlib import contextmanager
 import rhalphalib as rl
 import numpy as np
 import scipy.stats
@@ -26,6 +27,36 @@ def obs_to_TH1(channel):
     return rl.util._to_TH1((sumw,sumw), channel.observable.binning, channel.observable.name)
 
 
+@contextmanager
+def quick_ax(outfile, figsize=(12,12)):
+    import matplotlib.pyplot as plt
+    try:
+        fig = plt.figure(figsize=figsize)
+        ax = fig.gca()
+        yield ax
+    finally:
+        plt.savefig(outfile, bbox_inches='tight')
+
+
+def set_mpl_fontsize(small=22, medium=28, large=32, legend=None):
+    import matplotlib.pyplot as plt
+    plt.rc('font', size=small)          # controls default text sizes
+    plt.rc('axes', titlesize=small)     # fontsize of the axes title
+    plt.rc('axes', labelsize=medium)    # fontsize of the x and y labels
+    plt.rc('xtick', labelsize=small)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=small)    # fontsize of the tick labels
+    plt.rc('legend', fontsize=medium if legend is None else legend)    # legend fontsize
+    plt.rc('figure', titlesize=large)  # fontsize of the figure title
+set_mpl_fontsize()
+
+
+def get_color_cycle():
+    import matplotlib.pyplot as plt
+    from itertools import cycle
+    colors = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+    return colors
+
+
 def plot_tf(mtbins, fail_bkg, pass_bkg, fitresult):
     mtpts = mtbins[:-1] + 0.5 * np.diff(mtbins)
     mtscaled = (mtpts - min(mtbins)) / (max(mtbins) - min(mtbins))
@@ -41,12 +72,9 @@ def plot_tf(mtbins, fail_bkg, pass_bkg, fitresult):
     tf_mc.update_from_roofit(fitresult)
     tf_mc_vals, tf_mc_band = tf_mc(mtscaled, nominal=True, errorband=True)
 
-    from quick_plot import quick_ax
     outfile = "tf_test_bsvj.png"
     with quick_ax(outfile=outfile) as ax:
-        import matplotlib.pyplot as plt
-        from itertools import cycle
-        colors = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+        colors = get_color_cycle()
         pcolor = next(colors)
         ax.errorbar(mtpts, tfs[0], yerr=tfs[-1], label="MC", color=pcolor)
         pcolor = next(colors)
@@ -55,6 +83,36 @@ def plot_tf(mtbins, fail_bkg, pass_bkg, fitresult):
         ax.legend(fontsize=18, framealpha=0.0)
         ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
         ax.set_ylabel(f'TF')
+
+
+def plot_hist(th1, ax, **kwargs):
+    arrs = rl.util._to_numpy(th1, read_sumw2=True)
+    def get_kwargs(orig, keys):
+        return {k : orig.get(k, None) for k in keys}
+    step_keys = ['where','label','color']
+    ax.step(arrs[1][:-1], arrs[0], **get_kwargs(kwargs, step_keys))
+    fill_keys = ['where','alpha','color']
+    fill_dict = get_kwargs(kwargs, fill_keys)
+    fill_dict['step'] = fill_dict.pop('where')
+    errs = np.sqrt(arrs[3])
+    arr_dn = arrs[0]-errs
+    arr_up = arrs[0]+errs
+    ax.fill_between(arrs[1][:-1], arr_dn, arr_up, **fill_dict)
+
+
+def plot_sr_cr(fail_bkg, pass_bkg):
+    outfile = "srcr_test_bsvj.png"
+    ranges = []
+    with quick_ax(outfile=outfile) as ax:
+        colors = get_color_cycle()
+        pcolor = next(colors)
+        plot_hist(fail_bkg, ax, where='post', label="fail", alpha=0.2, color=pcolor)
+        pcolor = next(colors)
+        plot_hist(pass_bkg, ax, where='post', label="pass", alpha=0.2, color=pcolor)
+        ax.legend(fontsize=18, framealpha=0.0)
+        ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
+        ax.set_ylabel(f'Number of events')
+        ax.set_yscale('log')
 
 
 def test_rhalphabet(tmpdir):
@@ -146,7 +204,10 @@ def test_rhalphabet(tmpdir):
         tf_mc.parameters = decoVector.correlated_params.reshape(tf_mc.parameters.shape)
         tf_mc_params_final = tf_mc(mtscaled)
 
-        plot_tf(mtbins, obs_to_TH1(bkgmodel["fail"]), obs_to_TH1(bkgmodel["pass"]), bkgfit)
+        fail_th1 = obs_to_TH1(bkgmodel["fail"])
+        pass_th1 = obs_to_TH1(bkgmodel["pass"])
+        plot_sr_cr(fail_th1, pass_th1)
+        plot_tf(mtbins, fail_th1, pass_th1, bkgfit)
 
     # build actual fit model now
     model = rl.Model("svjModel")
