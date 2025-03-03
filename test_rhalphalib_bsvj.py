@@ -65,6 +65,7 @@ def plot_tf(mtbins, fail_bkg, pass_bkg, fitresult):
     tfs_th1 = pass_bkg
     tfs_th1.Divide(fail_bkg)
     tfs = rl.util._to_numpy(tfs_th1, read_sumw2=True)
+    errs = np.sqrt(tfs[3])
 
     tf_name = "tf_mc"
     npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])-1
@@ -76,7 +77,7 @@ def plot_tf(mtbins, fail_bkg, pass_bkg, fitresult):
     with quick_ax(outfile=outfile) as ax:
         colors = get_color_cycle()
         pcolor = next(colors)
-        ax.errorbar(mtpts, tfs[0], yerr=tfs[-1], label="MC", color=pcolor)
+        ax.errorbar(mtpts, tfs[0], yerr=errs, label="MC", color=pcolor)
         pcolor = next(colors)
         ax.plot(mtpts, bkg_eff * tf_mc_vals, label="fit", color=pcolor)
         ax.fill_between(mtpts, bkg_eff * tf_mc_band[0], bkg_eff * tf_mc_band[1], alpha=0.2, color=pcolor)
