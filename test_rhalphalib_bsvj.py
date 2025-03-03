@@ -132,7 +132,7 @@ def test_rhalphabet(tmpdir):
     mt = rl.Observable("mt", mtbins)
 
     mtpts = mtbins[:-1] + 0.5 * np.diff(mtbins)
-    mtscaled = (mtpts - mtmin) / (mtmax - mtmin)
+    mtscaled = (mtpts - min(mtpts)) / (max(mtpts) - min(mtpts))
 
     msig = 350
     template_info = {
