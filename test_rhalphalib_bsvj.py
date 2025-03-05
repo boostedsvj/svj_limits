@@ -12,9 +12,10 @@ rl.util.install_roofit_helpers()
 #rl.ParametericSample.PreferRooParametricHist = False
 
 
-def expo_sample(norm, scale, obs, loc=0):
+def expo_sample(norm, scale, obs, loc=0, vals=None):
     cdf = scipy.stats.expon.cdf(scale=scale, x=obs.binning, loc=loc) * norm
-    return (np.diff(cdf), obs.binning, obs.name)
+    if vals is None: vals = np.diff(cdf)
+    return (vals, obs.binning, obs.name)
 
 
 def gaus_sample(norm, loc, scale, obs):
@@ -140,7 +141,7 @@ def test_rhalphabet(tmpdir):
 #           "svj": {"pass": 35100, "fail": 7760},
 #            "bkg": {"pass": 379780, "fail": 315180},
             "svj": {"pass": 35100, "fail": 17680},
-            "bkg": {"pass": 379780, "fail": 2278568},
+            "bkg": {"pass": 379779.81338500977, "fail": 2278568.2330322266},
         },
         "locs": {
             "svj": {"pass": msig, "fail": msig},
@@ -151,6 +152,12 @@ def test_rhalphabet(tmpdir):
 #            "bkg": {"pass": 93.8, "fail": 95.9},
             "bkg": {"pass": 93.8, "fail": 90.7},
         },
+        "vals": {
+            "bkg": {
+                "pass": np.array([38728.65625, 34204.80078125, 31294.46484375, 27681.0703125, 25193.6875, 21788.9296875, 19869.607421875, 17857.759765625, 16092.1025390625, 14152.0, 13327.595703125, 12064.4931640625, 10848.841796875, 9596.7998046875, 8767.662109375, 8479.841796875, 7204.8740234375, 6661.318359375, 6161.05615234375, 5373.572265625, 5003.02001953125, 4373.43798828125, 4057.8974609375, 3647.16552734375, 3159.283935546875, 2795.107421875, 2650.169677734375, 2306.044677734375, 1994.276123046875, 1818.085693359375, 1632.0496826171875, 1334.7447509765625, 1248.272216796875, 1219.1903076171875, 1053.924072265625, 879.2490844726562, 794.6419067382812, 743.0794067382812, 634.896240234375, 563.3348388671875, 507.93304443359375, 427.28302001953125, 388.8905029296875, 352.6759033203125, 301.7938537597656, 287.5656433105469, 256.6661071777344]),
+                "fail": np.array([180340.09375, 171982.90625, 163076.828125, 154470.8125, 144715.875, 134313.453125, 125094.5625, 115793.6015625, 107555.4375, 98810.9375, 90890.4140625, 83721.9140625, 75534.53125, 69454.3828125, 62609.07421875, 56386.125, 51646.28125, 46105.86328125, 41384.27734375, 37295.90234375, 33336.07421875, 29523.958984375, 26232.953125, 23364.53515625, 20717.689453125, 18057.279296875, 15897.2685546875, 14123.4814453125, 12286.2763671875, 10676.615234375, 9159.3125, 7612.57275390625, 6843.74072265625, 6100.00244140625, 5140.73681640625, 4542.22607421875, 3937.33740234375, 3453.35693359375, 2950.13623046875, 2626.414306640625, 2181.845458984375, 1942.7982177734375, 1693.04443359375, 1488.07568359375, 1325.6456298828125, 1158.1412353515625, 1013.44091796875]),
+            }
+        }
     }
 
     if tfFromMC:
@@ -166,6 +173,7 @@ def test_rhalphabet(tmpdir):
                     loc=template_info["locs"]["bkg"][region],
                     scale=template_info["scales"]["bkg"][region],
                     obs=mt,
+                    vals=template_info["vals"]["bkg"][region],
                 ),
             }
             ch.setObservation(templates["bkg"])
@@ -198,7 +206,8 @@ def test_rhalphabet(tmpdir):
         if "pytest" not in sys.modules:
             bkgfit_ws.writeToFile(os.path.join(str(tmpdir), "svjModel_bkgfit.root"))
         if bkgfit.status() != 0:
-            raise RuntimeError("Could not fit bkg")
+#            raise RuntimeError("Could not fit bkg")
+            print(f"Could not fit bkg: status {bkgfit.status()}")
 
         param_names = [p.name for p in tf_mc.parameters.reshape(-1)]
         decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names)

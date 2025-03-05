@@ -899,6 +899,7 @@ class InputData(object):
         # overall transfer factor norm from mc eff
         bkg_name = "bkg"
         bkg_eff = self.regions[0].bkg_datahist.sum(False) / self.regions[1].bkg_datahist.sum(False)
+        logger.info(f"Bkg eff: {self.regions[0].bkg_datahist.sum(False)} / {self.regions[1].bkg_datahist.sum(False)} = {bkg_eff}")
         mtpts = self.mt_array[:-1] + 0.5*np.diff(self.mt_array)
         mtscaled = (mtpts - min(mtpts))/(max(mtpts) - min(mtpts))
         rl_mt = rl.Observable(self.regions[1].mtvar.GetName(), self.regions[1].mt_array)
@@ -907,12 +908,12 @@ class InputData(object):
         if tf_from_mc:
             # use rhalphalib model to create workspace
             bkgmodel = rl.Model("bkgmodel")
-            failCh = rl.Channel("fail")
-            bkgmodel.addChannel(failCh)
-            failCh.setObservation(self.regions[1].bkg_th1)
             passCh = rl.Channel("pass")
             bkgmodel.addChannel(passCh)
             passCh.setObservation(self.regions[0].bkg_th1)
+            failCh = rl.Channel("fail")
+            bkgmodel.addChannel(failCh)
+            failCh.setObservation(self.regions[1].bkg_th1)
 
             # transfer factor from polynomial fit
             tf_mc = rl.BasisPoly("tf_mc", (npar,), ["mt"])
@@ -937,6 +938,8 @@ class InputData(object):
                 ROOT.RooFit.Minimizer("Minuit2", "migrad"),
                 ROOT.RooFit.PrintLevel(-1),
             )
+            bkgfit_ws.add(bkgfit)
+            logger.info(f'MC TF fit status: {bkgfit.status()}')
             bkgfitfile = self.wsfile.replace("/dc_", "/bkgfit_")
             bkgfitf = ROOT.TFile.Open(bkgfitfile, "RECREATE")
             bkgfitf.cd()
