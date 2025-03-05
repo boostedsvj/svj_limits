@@ -844,6 +844,7 @@ class InputData(object):
             nosystname = nosystname + "_asimov"
 
         outdir = strftime(f'dc_%Y%m%d_{self.regions[0].metadata["selection"]}{nosystname}')
+        if not osp.isdir(outdir): os.makedirs(outdir)
         self.wsfile = f'{outdir}/dc_{osp.basename(self.regions[0].sigfile).replace(".json","")}{nosystname}.root'
         self.ws = ROOT.RooWorkspace("SVJ", "workspace")
 
@@ -861,7 +862,6 @@ class InputData(object):
         outfile = self.wsfile.replace(".root",".txt")
         logger.info('txt datacard:\n%s', txt)
         logger.info('Dumping txt to ' + outfile)
-        if not osp.isdir(osp.dirname(outfile)): os.makedirs(osp.dirname(outfile))
         with open(outfile, 'w') as f:
             f.write(txt)
 
