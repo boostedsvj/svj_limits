@@ -58,5 +58,5 @@ if __name__=="__main__":
         decoVector = rl.DecorrelatedNuisanceVector("@", means, cov)
 
     # output
-    print(decoVector.correlated_str)
+    print(decoVector.correlated_str.replace("{","").replace("}",""))
 
