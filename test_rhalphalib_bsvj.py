@@ -197,7 +197,7 @@ def test_rhalphabet(tmpdir):
             obs,
             ROOT.RooFit.Extended(True),
             ROOT.RooFit.SumW2Error(True),
-            ROOT.RooFit.Strategy(2),
+            ROOT.RooFit.Strategy(0),
             ROOT.RooFit.Save(),
             ROOT.RooFit.Minimizer("Minuit2", "migrad"),
             ROOT.RooFit.PrintLevel(-1),
