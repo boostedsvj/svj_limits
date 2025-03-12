@@ -882,7 +882,7 @@ class InputData(object):
             i_winner = do_fisher_test(gofs, n_bins)
             # take i_winner if pdf not in manually specified dictionary of winner indices
             i_winner_final = winner_indices.get(pdf_type, i_winner)
-            logger.info(f'gen_datacard: chose n_pars={pdfs[i_winner_final].n_pars} for {pdf_type}')
+            logger.info(f'gen_datacard_bkgfit: chose n_pars={pdfs[i_winner_final].n_pars} for {pdf_type}')
             winner_pdfs.append(pdfs[i_winner_final])
 
         for region in self.regions:
@@ -893,7 +893,7 @@ class InputData(object):
             region.fill_ws(self.ws, bkg_pdf)
         dump_ws_to_file(self.wsfile, self.ws)
 
-    def gen_datacard_rhalpha(self, npar=2, tf_from_mc=False, **kwargs):
+    def gen_datacard_rhalpha(self, npar=2, tf_from_mc=False, winners=None, **kwargs):
         import rhalphalib as rl
         rl.util.install_roofit_helpers()
 
@@ -907,39 +907,66 @@ class InputData(object):
 
         # option to compute initial TF params from MC
         if tf_from_mc:
-            # use rhalphalib model to create workspace
-            bkgmodel = rl.Model("bkgmodel")
-            passCh = rl.Channel("pass")
-            bkgmodel.addChannel(passCh)
-            passCh.setObservation(self.regions[0].bkg_th1, read_sumw2=True)
-            failCh = rl.Channel("fail")
-            bkgmodel.addChannel(failCh)
-            failCh.setObservation(self.regions[1].bkg_th1, read_sumw2=True)
+            bkgmodels = defaultdict(lambda: {})
+            winner_indices = winners if winners else {}
+            npar_vals = winner_indices.get('tf_mc', None)
+            if not npar_vals: npar_vals = range(10)
+            for npar_mc in npar_vals:
+                # use rhalphalib model to create workspace
+                bkgmodel = rl.Model("bkgmodel")
+                passCh = rl.Channel("pass")
+                bkgmodel.addChannel(passCh)
+                passCh.setObservation(self.regions[0].bkg_th1, read_sumw2=True)
+                failCh = rl.Channel("fail")
+                bkgmodel.addChannel(failCh)
+                failCh.setObservation(self.regions[1].bkg_th1, read_sumw2=True)
 
-            # transfer factor from polynomial fit
-            tf_mc = rl.BasisPoly("tf_mc", (npar,), ["mt"])
-            tf_mc_params = bkg_eff * tf_mc(mtscaled)
-            bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
-            initial_bkg = failCh.getObservation()[0].astype(float)
-            scaledparams = initial_bkg * (1.0 + 1.0/np.sqrt(initial_bkg)) ** (bkgparams)
-            fail_bkg = rl.ParametericSample('_'.join(["fail", bkg_name]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
-            failCh.addSample(fail_bkg)
-            pass_bkg = rl.TransferFactorSample('_'.join(["pass", bkg_name]), rl.Sample.BACKGROUND, tf_mc_params, fail_bkg)
-            passCh.addSample(pass_bkg)
+                # transfer factor from polynomial fit
+                tf_mc = rl.BasisPoly("tf_mc", (npar_mc,), ["mt"])
+                tf_mc_params = bkg_eff * tf_mc(mtscaled)
+                bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
+                initial_bkg = failCh.getObservation()[0].astype(float)
+                scaledparams = initial_bkg * (1.0 + 1.0/np.sqrt(initial_bkg)) ** (bkgparams)
+                fail_bkg = rl.ParametericSample('_'.join(["fail", bkg_name]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
+                failCh.addSample(fail_bkg)
+                pass_bkg = rl.TransferFactorSample('_'.join(["pass", bkg_name]), rl.Sample.BACKGROUND, tf_mc_params, fail_bkg)
+                passCh.addSample(pass_bkg)
 
-            # do the fit
-            bkgfit_ws = ROOT.RooWorkspace("bkgfit_ws")
-            simpdf, obs = bkgmodel.renderRoofit(bkgfit_ws)
-            bkgfit = simpdf.fitTo(
-                obs,
-                ROOT.RooFit.Extended(True),
-                ROOT.RooFit.SumW2Error(True),
-                ROOT.RooFit.Strategy(0),
-                ROOT.RooFit.Save(),
-                ROOT.RooFit.Minimizer("Minuit2", "migrad"),
-                ROOT.RooFit.PrintLevel(-1),
-            )
-            bkgfit_ws.add(bkgfit)
+                # do the fit
+                bkgfit_ws = ROOT.RooWorkspace("bkgfit_ws")
+                simpdf, obs = bkgmodel.renderRoofit(bkgfit_ws)
+                bkgfit = simpdf.fitTo(
+                    obs,
+                    ROOT.RooFit.Extended(True),
+                    ROOT.RooFit.SumW2Error(True),
+                    ROOT.RooFit.Strategy(0),
+                    ROOT.RooFit.Save(),
+                    ROOT.RooFit.Minimizer("Minuit2", "migrad"),
+                    ROOT.RooFit.PrintLevel(-1),
+                )
+                bkgfit_ws.add(bkgfit)
+
+                # save for later
+                bkgmodels[npar_mc] = {
+                    "model": bkgmodel,
+                    "tf": tf_mc,
+                    "ws": bkgfit_ws,
+                    "fit": bkgfit,
+                    "results": (npar_mc, bkgfit.minNll()),
+                }
+
+            results = [bm["results"] for np,bm in bkgmodels.items()]
+            # take i_winner if pdf not in manually specified dictionary of winner indices
+            if len(npar_vals)>1:
+                i_winner = do_fisher_test(results, self.n_bins)
+            else:
+                i_winner = npar_vals[0]
+            logger.info(f'gen_datacard_rhalpha: chose n_pars={i_winner} for tf_mc')
+
+            # save winner
+            tf_mc = bkgmodels[i_winner]['tf']
+            bkgfit = bkgmodels[i_winner]['fit']
+            bkgfit_ws = bkgmodels[i_winner]['ws']
             logger.info(f'MC TF fit status: {bkgfit.status()}')
             bkgfitfile = self.wsfile.replace("/dc_", "/bkgfit_")
             bkgfitf = ROOT.TFile.Open(bkgfitfile, "RECREATE")
