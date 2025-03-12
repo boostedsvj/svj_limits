@@ -946,13 +946,28 @@ class InputData(object):
                 )
                 bkgfit_ws.add(bkgfit)
 
+                # actual goodness of fit: bkgfit.minNll()
+                # but this is not a saturated gof, so can't compare nll from different fits
+                # therefore, just use chi2 instead (approximation)
+
+                # use ROOT to propagate errors when dividing
+                tfs_th1 = self.regions[0].bkg_th1.Clone(f'tfs_th1_npar{npar_mc}')
+                tfs_th1.Divide(self.regions[1].bkg_th1)
+
+                # treat tf result as unweighted histo
+                tf_mc.update_from_roofit(bkgfit)
+                tf_mc_vals = tf_mc(mtscaled, nominal=True)
+                tf_mc_th1 = Histogram({'vals': tf_mc_vals, 'errs': [0]*len(tf_mc_vals), 'binning': self.mt_array, 'metadata': {}}).th1(f'tf_mc_npar{npar_mc}')
+                chi2 = ctypes.c_double(0.); ndf = ctypes.c_int(0); igood = ctypes.c_int(0)
+                pvalue = tf_mc_th1.Chi2TestX(tfs_th1, chi2, ndf, igood, "UW")
+
                 # save for later
                 bkgmodels[npar_mc] = {
                     "model": bkgmodel,
                     "tf": tf_mc,
                     "ws": bkgfit_ws,
                     "fit": bkgfit,
-                    "results": (npar_mc, bkgfit.minNll()),
+                    "results": (len(tf_mc.parameters), chi2.value),
                 }
 
             results = [bm["results"] for np,bm in bkgmodels.items()]
@@ -961,7 +976,7 @@ class InputData(object):
                 i_winner = do_fisher_test(results, self.n_bins)
             else:
                 i_winner = npar_vals[0]
-            logger.info(f'gen_datacard_rhalpha: chose n_pars={i_winner} for tf_mc')
+            logger.info(f'gen_datacard_rhalpha: chose n_pars={results[i_winner][0]} for tf_mc')
 
             # save winner
             tf_mc = bkgmodels[i_winner]['tf']
