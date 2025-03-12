@@ -878,7 +878,8 @@ class InputData(object):
         for pdf_type in pdfs_dict:
             pdfs = pdfs_dict[pdf_type]
             ress = [ fit(pdf, cache=cache, brute=brute) for pdf in pdfs ]
-            i_winner = do_fisher_test(self.regions[0].mtvar, self.regions[0].data_datahist, pdfs, gof_type=gof_type)
+            gofs, n_bins = gof_bkgfit(self.regions[0].mtvar, self.regions[0].data_datahist, pdfs, gof_type=gof_type)
+            i_winner = do_fisher_test(gofs, n_bins)
             # take i_winner if pdf not in manually specified dictionary of winner indices
             i_winner_final = winner_indices.get(pdf_type, i_winner)
             logger.info(f'gen_datacard: chose n_pars={pdfs[i_winner_final].n_pars} for {pdf_type}')
@@ -1647,26 +1648,31 @@ def get_rss_viaframe(mt, pdf, data):
     return {'rss': rss, 'n_bins': n_bins}
 
 
-def do_fisher_test(mt, data, pdfs, a_crit=.07, gof_type='rss'):
+def gof_bkgfit(mt, data, pdfs, gof_type='rss'):
+    gof_fns = {
+        'chi2': get_chi2_viaframe,
+        'rss': get_rss_viaframe,
+    }
+    gofs = [ gof_fns[gof_type](mt, pdf, data) for pdf in pdfs ]
+    result = [ (pdf.n_pars, gofs[ipdf][gof_type]) for ipdf,pdf in enumerate(pdfs) ]
+    return result, gofs[0]['n_bins']
+
+
+def do_fisher_test(results, n_bins, a_crit=.07):
     """
     Does a Fisher test. First computes the cl_vals for all combinations
     of pdfs, then picks the winner.
 
     Returns the pdf that won.
     """
-    gof_fns = {
-        'chi2': get_chi2_viaframe,
-        'rss': get_rss_viaframe,
-    }
-    gofs = [ gof_fns[gof_type](mt, pdf, data) for pdf in pdfs ]
     # Compute test values of all combinations beforehand
     cl_vals = {}
-    for i in range(len(pdfs)-1):
-        for j in range(i+1, len(pdfs)):
-            n1 = pdfs[i].n_pars
-            n2 = pdfs[j].n_pars
-            gof1         = gofs[i][gof_type]
-            gof2, n_bins = gofs[j][gof_type], gofs[j]['n_bins']
+    for i in range(len(results)-1):
+        for j in range(i+1, len(results)):
+            n1 = results[i][0]
+            n2 = results[j][0]
+            gof1 = results[i][1]
+            gof2 = results[j][1]
             f = ((gof1-gof2)/(n2-n1)) / (gof2/(n_bins-n2))
             cl = 1.-ROOT.TMath.FDistI(f, n2-n1, n_bins-n2)
             cl_vals[(i,j)] = cl
@@ -1674,8 +1680,8 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07, gof_type='rss'):
     def get_winner(i, j):
         if i >= j: raise Exception('i must be smaller than j')
         a_test = cl_vals[(i,j)]
-        n_pars_i = pdfs[i].n_pars
-        n_pars_j = pdfs[j].n_pars
+        n_pars_i = results[i][0]
+        n_pars_j = results[j][0]
         if a_test > a_crit:
             # Null hypothesis is that the higher n_par j is not significantly better.
             # Null hypothesis is not rejected
@@ -1698,15 +1704,15 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07, gof_type='rss'):
 
     logger.info('Running F-test')
     winner = get_winner(0,1)
-    for i in range(2,len(pdfs)):
+    for i in range(2,len(results)):
         winner = get_winner(winner, i)
-    logger.info(f'Winner is pdf {winner} with {pdfs[winner].n_pars} parameters')
+    logger.info(f'Winner is pdf {winner} with {results[winner][0]} parameters')
 
     # Print the table
-    table = [[''] + [f'{p.n_pars}' for p in pdfs[1:]]]
-    for i in range(len(pdfs)-1):
-        a_test_vals = [f'{pdfs[i].n_pars}'] + ['' for _ in range(len(pdfs)-1)]
-        for j in range(i+1, len(pdfs)):
+    table = [[''] + [f'{r[0]}' for r in results[1:]]]
+    for i in range(len(results)-1):
+        a_test_vals = [f'{results[i][0]}'] + ['' for _ in range(len(results)-1)]
+        for j in range(i+1, len(results)):
             a_test_vals[j] = f'{cl_vals[(i,j)]:9.7f}'
         table.append(a_test_vals)
     logger.info('alpha_test values of pdf i vs j:\n' + tabelize(table))
