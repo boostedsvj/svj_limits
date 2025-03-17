@@ -2,7 +2,7 @@
 Building blocks to create the boosted SVJ analysis datacards
 """
 
-import uuid, sys, time, argparse
+import uuid, sys, time, argparse, shutil
 from contextlib import contextmanager
 from array import array
 from math import sqrt
@@ -847,18 +847,21 @@ class InputData(object):
             raise ValueError(f"Norm type {self.norm_type} not supported for multiple region input")
 
         # common settings
-        nosystname = ""
+        sufftext = ""
         nosyst = kwargs.pop('nosyst', False)
         if nosyst:
             for region in self.regions:
                 region.systs = [s for s in region.systs if s[1]=='extArg']
-            nosystname = "_nosyst"
+            sufftext = "_nosyst"
         if self.asimov:
-            nosystname = nosystname + "_asimov"
+            sufftext = sufftext + "_asimov"
+        suff = kwargs.pop('suff','')
+        if suff:
+            sufftext = sufftext + "_" + suff
 
-        outdir = strftime(f'dc_%Y%m%d_{self.regions[0].metadata["selection"]}{nosystname}')
+        outdir = strftime(f'dc_%Y%m%d_{self.regions[0].metadata["selection"]}')
         if not osp.isdir(outdir): os.makedirs(outdir)
-        self.wsfile = f'{outdir}/dc_{osp.basename(self.regions[0].sigfile).replace(".json","")}{nosystname}.root'
+        self.wsfile = f'{outdir}/dc_{osp.basename(self.regions[0].sigfile).replace(".json","")}{sufftext}.root'
         self.ws = ROOT.RooWorkspace("SVJ", "workspace")
 
         if self.norm_type=="rhalpha":
@@ -877,6 +880,7 @@ class InputData(object):
         logger.info('Dumping txt to ' + outfile)
         with open(outfile, 'w') as f:
             f.write(txt)
+        return outfile
 
     def gen_datacard_bkgfit(self, use_cache=True, fit_cache_lock=None, gof_type='rss', winners=None, brute=False, **kwargs):
         pdfs_dict = {pdf : make_pdf(pdf, self.regions[0].mtvar, self.regions[0].bkg_th1) for pdf in known_pdfs()}
@@ -920,10 +924,11 @@ class InputData(object):
 
         # option to compute initial TF params from MC
         if tf_from_mc:
-            bkgmodels = defaultdict(lambda: {})
+            bkgmodels = []
             winner_indices = winners if winners else {}
             npar_vals = winner_indices.get('tf_mc', None)
             if not npar_vals: npar_vals = range(10)
+            else: npar_vals = [npar_vals]
             for npar_mc in npar_vals:
                 # use rhalphalib model to create workspace
                 bkgmodel = rl.Model("bkgmodel")
@@ -972,23 +977,24 @@ class InputData(object):
                 chi2 = get_tf_chi2(tf_th1, bkg_eff * tf_mc_vals)
 
                 # save for later
-                bkgmodels[npar_mc] = {
+                bkgmodels.append({
                     "model": bkgmodel,
                     "tf": tf_mc,
                     "ws": bkgfit_ws,
                     "fit": bkgfit,
                     "results": (len(tf_mc.parameters), chi2),
-                }
+                })
 
-            results = [bm["results"] for np,bm in bkgmodels.items()]
+            results = [bm["results"] for bm in bkgmodels]
             # take i_winner if pdf not in manually specified dictionary of winner indices
             if len(npar_vals)>1:
                 i_winner = do_fisher_test(results, self.n_bins)
             else:
-                i_winner = npar_vals[0]
+                i_winner = 0
             logger.info(f'gen_datacard_rhalpha: chose n_pars={results[i_winner][0]} for tf_mc')
 
             # save winner
+            winners['tf_mc'] = i_winner
             tf_mc = bkgmodels[i_winner]['tf']
             bkgfit = bkgmodels[i_winner]['fit']
             bkgfit_ws = bkgmodels[i_winner]['ws']
@@ -1710,7 +1716,41 @@ def gof_bkgfit(mt, data, pdfs, gof_type='rss'):
     return result, gofs[0]['n_bins']
 
 
-def do_fisher_test(results, n_bins, a_crit=.07):
+# compute fisher test confidence level
+def compute_fisher(gof1, gof2, n1, n2, n_bins):
+    f = ((gof1-gof2)/(n2-n1)) / (gof2/(n_bins-n2))
+    cl = 1.-ROOT.TMath.FDistI(f, n2-n1, n_bins-n2)
+    return cl
+
+
+# compute fisher test confidence level with toys
+def compute_fisher_toys(gof1, gof2, n1, n2, n_bins):
+    # follows https://github.com/andrzejnovak/higgstocharm/blob/master/new_plot_ftests.py
+    def collate(base_dict, alt_dict):
+        base_arr, alt_arr = [], []
+        for key in base_dict.keys():
+            base_arr.append(base_dict[key])
+            alt_arr.append(alt_dict[key])
+        return np.array(base_arr), np.array(alt_arr)
+
+    def fval(lambda1, lambda2, p1, p2, nbins):
+        with np.errstate(divide='ignore'):
+            numer = -2.0 * np.log(float(lambda1) / float(lambda2)) / float(p2 - p1)
+            denom = -2.0 * np.log(float(lambda2)) / float(nbins - p2)
+            return numer / denom
+
+    vfval = np.vectorize(fval)
+
+    col_data = collate(gof1["data"], gof2["data"])
+    col_toys = collate(gof1["toys"], gof2["toys"])
+    f_data = vfval(col_data[0], col_data[1], n1, n2, n_bins)
+    f_toys = vfval(col_toys[0], col_toys[1], n1, n2, n_bins)
+    f_toys = f_toys[f_toys > 0]
+    cl = 1.-float(len(f_toys[f_toys > f_data]))/len(f_toys)
+    return cl
+
+
+def do_fisher_test(results, n_bins, a_crit=.07, toys=False):
     """
     Does a Fisher test. First computes the cl_vals for all combinations
     of pdfs, then picks the winner.
@@ -1718,6 +1758,8 @@ def do_fisher_test(results, n_bins, a_crit=.07):
     Returns the pdf that won.
     """
     # Compute test values of all combinations beforehand
+    cl_func = compute_fisher
+    if toys: cl_func = compute_fisher_toys
     cl_vals = {}
     for i in range(len(results)-1):
         for j in range(i+1, len(results)):
@@ -1725,9 +1767,7 @@ def do_fisher_test(results, n_bins, a_crit=.07):
             n2 = results[j][0]
             gof1 = results[i][1]
             gof2 = results[j][1]
-            f = ((gof1-gof2)/(n2-n1)) / (gof2/(n_bins-n2))
-            cl = 1.-ROOT.TMath.FDistI(f, n2-n1, n_bins-n2)
-            cl_vals[(i,j)] = cl
+            cl_vals[(i,j)] = cl_func(gof1, gof2, n1, n2, n_bins)
 
     def get_winner(i, j):
         if i >= j: raise Exception('i must be smaller than j')
@@ -1779,6 +1819,7 @@ def do_fisher_test(results, n_bins, a_crit=.07):
     logger.info(f'Tex-formatted table:\n{tabelize(tex_table)}')
 
     return winner
+
 
 # _______________________________________________________________________
 # For combine
@@ -2015,6 +2056,7 @@ class CombineCommand(object):
         self.parameter_ranges = OrderedDict()
         self.pass_through = [] if pass_through is None else pass_through
         self.pdf_pars = []
+        self._outfile = None
 
     def get_name_key(self):
         """
@@ -2045,12 +2087,17 @@ class CombineCommand(object):
 
     @property
     def outfile(self):
+        if self._outfile:
+            return self._outfile
+
         out = 'higgsCombine{0}.{1}.mH120.root'.format(self.name, self.method)
         if self.seed is not None:
-            print(self.seed)
             out = out.replace('.root', '.{}.root'.format(self.seed))
-            print(out)
         return out
+
+    @outfile.setter
+    def outfile(self, val):
+        self._outfile = val
 
     @property
     def logfile(self):
@@ -2212,7 +2259,7 @@ def bestfit(cmd, range=None):
     cmd.method = 'MultiDimFit'
     cmd.args.add('--saveWorkspace')
     cmd.args.add('--saveNLL')
-    cmd.args.add('--saveToys')
+    if '-t' in cmd.kwargs: cmd.args.add('--saveToys')
     cmd.redefine_signal_pois.add('r')
     cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
     if range is None: range = pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
@@ -2247,6 +2294,8 @@ def gen_toys(cmd):
     # Possibly delete some settings too
     cmd.kwargs.pop('--algo', None)
     cmd.track_parameters = set()
+    assert '-t' in cmd.kwargs
+    assert '--expectSignal' in cmd.kwargs
     return cmd
 
 def fit_toys(cmd):
@@ -2376,7 +2425,7 @@ def run_command(cmd, chdir=None):
         return output
 
 
-def run_combine_command(cmd, chdir=None, logfile=None):
+def run_combine_command(cmd, chdir=None, logfile=None, outdir=None):
     if chdir:
         # Fix datacard to be an absolute path first
         cmd = cmd.copy()
@@ -2386,6 +2435,17 @@ def run_combine_command(cmd, chdir=None, logfile=None):
     if logfile is not None:
         with open(logfile, 'w') as f:
             f.write(''.join(out))
+    if outdir:
+        if not osp.isdir(outdir): os.makedirs(outdir)
+        outfile = osp.join(outdir, osp.basename(cmd.outfile))
+        logger.info(f'Moving {cmd.outfile} -> {outfile}')
+        shutil.move(cmd.outfile, outfile)
+        cmd.outfile = outfile
+        if logfile:
+            logfile = osp.join(outdir, osp.basename(cmd.logfile))
+            shutil.move(cmd.logfile, logfile)
+            cmd.logfile = logfile
+
     return out
 
 def run_generic_command(cmd, chdir=None, logfile=None):
