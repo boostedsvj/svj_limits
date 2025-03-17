@@ -1006,7 +1006,7 @@ def bkgtf():
         tf_mc = rl.BasisPoly(tf_name, (npar,), ["mt"])
         tf_mc.update_from_roofit(fitresult)
         tf_mc_vals, tf_mc_band = tf_mc(mtscaled, nominal=True, errorband=True)
-        chi2 = bsvj.get_tf_chi2(tf_th1, bkg_eff * tf_mc_vals, input.mt_array)
+        chi2 = bsvj.get_tf_chi2(tf_th1, bkg_eff * tf_mc_vals)
         ndf = len(tf_mc_vals) - npar - 1
         # todo: detect and handle data residual case
 

@@ -564,12 +564,10 @@ def get_tf_th1(regions):
     return tf_th1
 
 
-def get_tf_chi2(tf_th1, tf_vals, binning):
-    tf_mc_th1 = Histogram({'vals': tf_vals, 'errs': [0]*len(tf_vals), 'binning': binning, 'metadata': {}}).th1(f'tf_mc')
-    chi2 = ctypes.c_double(0.); ndf = ctypes.c_int(0); igood = ctypes.c_int(0)
-    pvalue = tf_mc_th1.Chi2TestX(tf_th1, chi2, ndf, igood, "UW")
-    print(chi2.value, ndf.value, pvalue)
-    return chi2.value
+def get_tf_chi2(tf_th1, tf_vals):
+    tf_np = th1_to_hist(tf_th1)
+    chi2 = np.sum((tf_np['vals']-tf_vals)**2/(tf_np['errs']**2))
+    return(chi2)
 
 
 class InputRegion(object):
@@ -971,7 +969,7 @@ class InputData(object):
                 # treat tf result as unweighted histo
                 tf_mc.update_from_roofit(bkgfit)
                 tf_mc_vals = tf_mc(mtscaled, nominal=True)
-                chi2 = get_tf_chi2(tf_th1, bkg_eff * tf_mc_vals, self.mt_array)
+                chi2 = get_tf_chi2(tf_th1, bkg_eff * tf_mc_vals)
 
                 # save for later
                 bkgmodels[npar_mc] = {
