@@ -557,6 +557,21 @@ def get_default_systs(mz,mdark,rinv):
     return systs
 
 
+def get_tf_th1(regions):
+    # use ROOT to propagate errors when dividing
+    tf_th1 = regions[0].bkg_th1.Clone()
+    tf_th1.Divide(regions[1].bkg_th1)
+    return tf_th1
+
+
+def get_tf_chi2(tf_th1, tf_vals, binning):
+    tf_mc_th1 = Histogram({'vals': tf_vals, 'errs': [0]*len(tf_vals), 'binning': binning, 'metadata': {}}).th1(f'tf_mc')
+    chi2 = ctypes.c_double(0.); ndf = ctypes.c_int(0); igood = ctypes.c_int(0)
+    pvalue = tf_mc_th1.Chi2TestX(tf_th1, chi2, ndf, igood, "UW")
+    print(chi2.value, ndf.value, pvalue)
+    return chi2.value
+
+
 class InputRegion(object):
     """
     Keeps all the histograms for a specific region.
@@ -951,15 +966,12 @@ class InputData(object):
                 # therefore, just use chi2 instead (approximation)
 
                 # use ROOT to propagate errors when dividing
-                tfs_th1 = self.regions[0].bkg_th1.Clone(f'tfs_th1_npar{npar_mc}')
-                tfs_th1.Divide(self.regions[1].bkg_th1)
+                tf_th1 = get_tf_th1(self.regions)
 
                 # treat tf result as unweighted histo
                 tf_mc.update_from_roofit(bkgfit)
                 tf_mc_vals = tf_mc(mtscaled, nominal=True)
-                tf_mc_th1 = Histogram({'vals': tf_mc_vals, 'errs': [0]*len(tf_mc_vals), 'binning': self.mt_array, 'metadata': {}}).th1(f'tf_mc_npar{npar_mc}')
-                chi2 = ctypes.c_double(0.); ndf = ctypes.c_int(0); igood = ctypes.c_int(0)
-                pvalue = tf_mc_th1.Chi2TestX(tfs_th1, chi2, ndf, igood, "UW")
+                chi2 = get_tf_chi2(tf_th1, bkg_eff * tf_mc_vals, self.mt_array)
 
                 # save for later
                 bkgmodels[npar_mc] = {
@@ -967,7 +979,7 @@ class InputData(object):
                     "tf": tf_mc,
                     "ws": bkgfit_ws,
                     "fit": bkgfit,
-                    "results": (len(tf_mc.parameters), chi2.value),
+                    "results": (len(tf_mc.parameters), chi2),
                 }
 
             results = [bm["results"] for np,bm in bkgmodels.items()]

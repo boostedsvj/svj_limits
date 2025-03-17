@@ -993,9 +993,8 @@ def bkgtf():
     mtscaled = (mtpts - min(mtpts))/(max(mtpts) - min(mtpts))
 
     # use ROOT to propagate errors when dividing
-    tfs_th1 = input.regions[0].bkg_th1
-    tfs_th1.Divide(input.regions[1].bkg_th1)
-    tfs = bsvj.th1_to_hist(tfs_th1)
+    tf_th1 = bsvj.get_tf_th1(input.regions)
+    tfs = bsvj.th1_to_hist(tf_th1)
 
     # plot polynomial fit from workspace
     if fit is not None:
@@ -1007,6 +1006,8 @@ def bkgtf():
         tf_mc = rl.BasisPoly(tf_name, (npar,), ["mt"])
         tf_mc.update_from_roofit(fitresult)
         tf_mc_vals, tf_mc_band = tf_mc(mtscaled, nominal=True, errorband=True)
+        chi2 = bsvj.get_tf_chi2(tf_th1, bkg_eff * tf_mc_vals, input.mt_array)
+        ndf = len(tf_mc_vals) - npar - 1
         # todo: detect and handle data residual case
 
     with quick_ax(outfile=outfile) as ax:
@@ -1015,7 +1016,7 @@ def bkgtf():
         ax.errorbar(mtpts, tfs['vals'], yerr=tfs['errs'], label="MC", color=pcolor)
         if fit is not None:
             pcolor = next(colors)
-            ax.plot(mtpts, bkg_eff * tf_mc_vals, label="fit", color=pcolor)
+            ax.plot(mtpts, bkg_eff * tf_mc_vals, label=f"fit ($\\chi^2/\\mathrm{{ndf}} = {chi2:.1f}/{ndf}$)", color=pcolor)
             ax.fill_between(mtpts, bkg_eff * tf_mc_band[0], bkg_eff * tf_mc_band[1], alpha=0.2, color=pcolor)
             ax.legend(fontsize=18, framealpha=0.0)
         ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
