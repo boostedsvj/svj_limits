@@ -174,6 +174,10 @@ class AttrDict(dict):
         self.__dict__ = self
 
 
+def joiner(coll, delim='_'):
+    return delim.join(filter(None,coll))
+
+
 # _______________________________________________________________________
 # JSON Input interface
 
@@ -680,7 +684,7 @@ class InputRegion(object):
             name = thing.GetName() if hasattr(thing, 'GetName') else '?'
             final = name
             if len(self.bin_suff)>0 and name!='?':
-                final = '_'.join([name,self.bin_suff])
+                final = joiner([name,self.bin_suff])
                 args = args + (ROOT.RooFit.Rename(final),)
             logger.info('Importing {} as {} ({})'.format(name, final, thing))
             getattr(ws, 'import')(thing, *args, **kwargs)
@@ -727,8 +731,8 @@ class InputRegion(object):
         shape_loc = 'SVJ:$PROCESS'
         shape_loc_syst = shape_loc+'_$SYSTEMATIC'
         if len(self.bin_suff)>0:
-            shape_loc = '_'.join([shape_loc,self.bin_suff])
-            shape_loc_syst = '_'.join([shape_loc_syst,self.bin_suff])
+            shape_loc = joiner([shape_loc,self.bin_suff])
+            shape_loc_syst = joiner([shape_loc_syst,self.bin_suff])
         dc.shapes.append([self.bkg_name, self.bin_name, wsfile, shape_loc])
         dc.shapes.append(['sig', self.bin_name, wsfile, shape_loc, shape_loc_syst])
         dc.shapes.append(['data_obs', self.bin_name, wsfile, shape_loc])
@@ -945,9 +949,9 @@ class InputData(object):
                 bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
                 initial_bkg = failCh.getObservation()[0].astype(float)
                 scaledparams = initial_bkg * (1.0 + 1.0/np.sqrt(initial_bkg)) ** (bkgparams)
-                fail_bkg = rl.ParametericSample('_'.join(["fail", bkg_name]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
+                fail_bkg = rl.ParametericSample(joiner(["fail", bkg_name]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
                 failCh.addSample(fail_bkg)
-                pass_bkg = rl.TransferFactorSample('_'.join(["pass", bkg_name]), rl.Sample.BACKGROUND, tf_mc_params, fail_bkg)
+                pass_bkg = rl.TransferFactorSample(joiner(["pass", bkg_name]), rl.Sample.BACKGROUND, tf_mc_params, fail_bkg)
                 passCh.addSample(pass_bkg)
 
                 # do the fit
@@ -1016,7 +1020,7 @@ class InputData(object):
         initial_bkg = roodataset_values(self.regions[1].data_datahist)[1]
         bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
         scaledparams = initial_bkg * (1.0 + 1.0/np.sqrt(initial_bkg)) ** (bkgparams)
-        fail_bkg = rl.ParametericSample('_'.join([bkg_name, self.regions[1].bin_suff]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
+        fail_bkg = rl.ParametericSample(joiner([bkg_name, self.regions[1].bin_suff]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
 
         # transfer factor from polynomial fit
         tf_fit = rl.BasisPoly("tf_data", (npar,), ["mt"])
