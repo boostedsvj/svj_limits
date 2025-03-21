@@ -426,6 +426,10 @@ def mtdist():
     rootfile = bsvj.pull_arg('rootfile', type=str).rootfile
     only_sig = bsvj.pull_arg('--onlysig', action='store_true').onlysig
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.png').outfile
+    bkg_names = bsvj.pull_arg('--bkg', type=str, default=['roomultipdf','bkg'], nargs='*').bkg
+    sig_name = bsvj.pull_arg('--sig', type=str, default='sig').sig
+    ch_name = bsvj.pull_arg('--channel', type=str, default='bsvj').channel
+    title = bsvj.pull_arg('--title', type=str, default=None).title
 
     from scipy.interpolate import make_interp_spline # type:ignore
 
@@ -442,8 +446,8 @@ def mtdist():
 
     # check the background name/type
     for bkg_name in ['roomultipdf','bkg']:
-        bkg_name_shape = f'shapeBkg_{bkg_name}_bsvj'
-        bkg_name_norm = f'n_exp_final_binbsvj_proc_{bkg_name}'
+        bkg_name_shape = f'shapeBkg_{bkg_name}_{ch_name}'
+        bkg_name_norm = f'n_exp_final_bin{ch_name}_proc_{bkg_name}'
         bkg_pdf = ws.pdf(bkg_name_shape)
         if bkg_pdf:
             break
@@ -454,8 +458,12 @@ def mtdist():
     y_bkg_init *= bkg_norm_init
     logger.info(f'Prefit bkg norm = {y_bkg_init.sum():.2f}, should match with datacard')
 
-    has_systematics = not(bool(ws.embeddedData('shapeSig_sig_bsvj')))
+    sig_name_shape = f'shapeSig_{ch_name}_{sig_name}'
+    sig_name_norm = f'n_exp_bin{ch_name}_proc_{sig_name}'
+    sig_name_norm_final = f'n_exp_final_bin{ch_name}_proc_{sig_name}'
+    has_systematics = not(bool(ws.embeddedData(sig_name_shape)))
     logger.info(f'Datacard {"has" if has_systematics else "does not have"} systematics')
+    if has_systematics: sig_name_shape = f'{sig_name_shape}_morph'
 
     # Get the pre-fit signal histogram
     if has_systematics:
@@ -465,22 +473,21 @@ def mtdist():
         # Get the PDF and normalization separately
         # Temporarily ensure mu=1
         ws.var('r').setVal(1.0)
-        sig = ws.pdf('shapeSig_bsvj_sig_morph')
-        norm_init = ws.function('n_exp_binbsvj_proc_sig').getVal()
+        sig = ws.pdf(sig_name_shape)
+        norm_init = ws.function(sig_name_norm).getVal()
         y_sig = norm_init * bsvj.pdf_values(sig, mt_bin_centers)
         ws.var('r').setVal(mu_prefit)
     else:
         # Datacard without systematics: Just get the datahist
-        sig = ws.embeddedData('shapeSig_sig_bsvj')
-        y_sig = bsvj.roodataset_values(sig,channel='bsvj')[1]
+        sig = ws.embeddedData(sig_name_shape)
+        y_sig = bsvj.roodataset_values(sig,channel=ch_name)[1]
     logger.info(f'Prefit signal norm = {y_sig.sum():.2f}, should match with datacard')
 
     # Get the data histogram
     data = ws.data('data_obs')
     # check for a toy
     if toy is not None: data = toy
-    y_data = bsvj.roodataset_values(data,channel='bsvj')[1]
-    logger.warning('y_data: %s', y_data)
+    y_data = bsvj.roodataset_values(data,channel=ch_name)[1]
 
     # Get histogram from generated toy
     errs_data = np.sqrt(y_data)
@@ -502,8 +509,8 @@ def mtdist():
     # Compute bkg + mu * sig
     if has_systematics:
         # Use the shape pdf
-        sig = ws.pdf('shapeSig_bsvj_sig_morph')
-        norm = ws.function('n_exp_final_binbsvj_proc_sig').getVal()
+        sig = ws.pdf(sig_name_shape)
+        norm = ws.function(sig_name_norm_final).getVal()
         logger.info(f'Initial signal norm: {norm_init:.2f}; Postfit signal norm: {norm:.2f}')
         # mu should be already included for post fit signal, right?
         y_sig_postfit = norm * bsvj.pdf_values(sig, mt_bin_centers)
@@ -574,7 +581,8 @@ def mtdist():
         ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
         # do not check range
 
-    leg = ax.legend(framealpha=0.0, fontsize=22, title=name_from_combine_rootfile(rootfile), ncol=1 if only_sig else 2)
+    if title is None: title = name_from_combine_rootfile(rootfile)
+    leg = ax.legend(framealpha=0.0, fontsize=22, title=title, ncol=1 if only_sig else 2)
     leg._legend_box.align = "left"
     ax.set_ylabel('$N_{\mathrm{events}}$')
     ax2.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
