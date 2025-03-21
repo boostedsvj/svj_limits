@@ -179,7 +179,7 @@ def test_rhalphabet(tmpdir):
             ch.setObservation(templates["bkg"])
 
         bkgeff = template_info["yields"]["bkg"]["pass"] / template_info["yields"]["bkg"]["fail"]
-        tf_mc = rl.BernsteinPoly("tf_mc", (2,), ["mt"], limits=(0, 10))
+        tf_mc = rl.BernsteinPoly("tf_mc", (6,), ["mt"], limits=(0, 10))
         tf_mc_params = bkgeff * tf_mc(mtscaled)
         failCh = bkgmodel["fail"]
         passCh = bkgmodel["pass"]
