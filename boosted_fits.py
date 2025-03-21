@@ -686,7 +686,7 @@ class InputRegion(object):
             if len(self.bin_suff)>0 and name!='?':
                 final = joiner([name,self.bin_suff])
                 args = args + (ROOT.RooFit.Rename(final),)
-            logger.info('Importing {} as {} ({})'.format(name, final, thing))
+#            logger.info('Importing {} as {} ({})'.format(name, final, thing))
             getattr(ws, 'import')(thing, *args, **kwargs)
 
         # Bkg pdf: May be multiple
