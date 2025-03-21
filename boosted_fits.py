@@ -2444,11 +2444,10 @@ def run_combine_command(cmd, chdir=None, logfile=None, outdir=None):
         outfile = osp.join(outdir, osp.basename(cmd.outfile))
         logger.info(f'Moving {cmd.outfile} -> {outfile}')
         shutil.move(cmd.outfile, outfile)
-        cmd.outfile = outfile
         if logfile:
             logfile = osp.join(outdir, osp.basename(cmd.logfile))
             shutil.move(cmd.logfile, logfile)
-            cmd.logfile = logfile
+        cmd.outfile = outfile
 
     return out
 
