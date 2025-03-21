@@ -440,10 +440,17 @@ def mtdist():
 
     mu_prefit = ws.var('r').getVal()
 
+    # check the background name/type
+    for bkg_name in ['roomultipdf','bkg']:
+        bkg_name_shape = f'shapeBkg_{bkg_name}_bsvj'
+        bkg_name_norm = f'n_exp_final_binbsvj_proc_{bkg_name}'
+        bkg_pdf = ws.pdf(bkg_name_shape)
+        if bkg_pdf:
+            break
+
     # Get the prefit background histogram
-    y_bkg_init = bsvj.pdf_values(ws.pdf('shapeBkg_roomultipdf_bsvj'), mt_bin_centers)
-    pdf_raw_norm_prefit = np.sum(y_bkg_init)
-    bkg_norm_init = ws.function('n_exp_final_binbsvj_proc_roomultipdf').getVal()
+    y_bkg_init = bsvj.pdf_values(bkg_pdf, mt_bin_centers)
+    bkg_norm_init = ws.function(bkg_name_norm).getVal()
     y_bkg_init *= bkg_norm_init
     logger.info(f'Prefit bkg norm = {y_bkg_init.sum():.2f}, should match with datacard')
 
@@ -487,11 +494,8 @@ def mtdist():
     mu = ws.var('r').getVal()
 
     # Final-fit bkg
-    bkg = ws.pdf('shapeBkg_roomultipdf_bsvj')
-    y_bkg = bsvj.pdf_values(bkg, mt_bin_centers)
-    logger.warning('y_bkg_postfit: %s', y_bkg)
-    pdf_raw_norm_postfit = np.sum(y_bkg)
-    bkg_norm = ws.function('n_exp_final_binbsvj_proc_roomultipdf').getVal()
+    y_bkg = bsvj.pdf_values(ws.pdf(bkg_name_shape), mt_bin_centers)
+    bkg_norm = ws.function(bkg_name_norm).getVal()
     y_bkg *= bkg_norm
     logger.info(f'Initial bkg norm: {bkg_norm_init:.2f}; Final bkg norm: {bkg_norm:.2f}')
 
