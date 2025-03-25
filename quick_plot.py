@@ -969,7 +969,7 @@ def bkgfit():
     bkg_vals = np.asarray([input.bkg_th1.GetBinContent(i+1) for i in range(input.bkg_th1.GetNbinsX())])
     bkg_errs = np.asarray([input.bkg_th1.GetBinError(i+1) for i in range(input.bkg_th1.GetNbinsX())])
 
-    figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16))
+    figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
 
     ax.plot([], [], ' ', label=f'{pdftype}, {input.metadata["selection"]}')
     ax.step(input.mt[:-1], bkg_vals, where='post', label=r'BKG', c='b')
@@ -1051,18 +1051,31 @@ def bkgtf():
         ndf = len(tf_mc_vals) - npar - 1
         # todo: detect and handle data residual case
 
-    with quick_ax(outfile=outfile) as ax:
-        colors = get_color_cycle()
+        figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
+    else:
+        figure = plt.figure(figsize=(12,12))
+        ax = fig.gca()
+
+    colors = get_color_cycle()
+    pcolor = next(colors)
+    ax.errorbar(mtpts, tfs['vals'], yerr=tfs['errs'], label="MC", color=pcolor)
+    ax.set_ylabel(f'TF ({regions[0]} / {regions[1]})')
+    xlabel = r'$m_{\mathrm{T}}$ [GeV]'
+    if fit is not None:
         pcolor = next(colors)
-        ax.errorbar(mtpts, tfs['vals'], yerr=tfs['errs'], label="MC", color=pcolor)
-        if fit is not None:
-            pcolor = next(colors)
-            ax.plot(mtpts, bkg_eff * tf_mc_vals, label=f"fit ($\\chi^2/\\mathrm{{ndf}} = {chi2:.1f}/{ndf}$)", color=pcolor)
-            ax.fill_between(mtpts, bkg_eff * tf_mc_band[0], bkg_eff * tf_mc_band[1], alpha=0.2, color=pcolor)
-            ax.legend(fontsize=18, framealpha=0.0)
-        ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
-        ax.set_ylabel(f'TF ({regions[0]} / {regions[1]})')
-        apply_ranges(ax)
+        ax.plot(mtpts, bkg_eff * tf_mc_vals, label=f"fit ($\\chi^2/\\mathrm{{ndf}} = {chi2:.1f}/{ndf}$)", color=pcolor)
+        ax.fill_between(mtpts, bkg_eff * tf_mc_band[0], bkg_eff * tf_mc_band[1], alpha=0.2, color=pcolor)
+        ax.legend(fontsize=18, framealpha=0.0)
+        # pulls in lower panel
+        pulls = (tfs['vals'] - bkg_eff * tf_mc_vals) / tfs['errs']
+        ax2.plot([input.mt_array[0], input.mt_array[-1]], [0.,0.], c='gray')
+        ax2.scatter(mtpts, pulls, color=pcolor)
+        ax2.set_ylabel(r'(TF - fit) / $\Delta$TF')
+        ax2.set_xlabel(xlabel)
+    else:
+        ax.set_xlabel(xlabel)
+    apply_ranges(ax)
+    plt.savefig(outfile, bbox_inches='tight')
 
 def plot_hist(th1, ax, **kwargs):
     hist = bsvj.th1_to_hist(th1)
