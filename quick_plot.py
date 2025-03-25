@@ -430,6 +430,7 @@ def mtdist():
     sig_name = bsvj.pull_arg('--sig', type=str, default='sig').sig
     ch_name = bsvj.pull_arg('--channel', type=str, default='bsvj').channel
     title = bsvj.pull_arg('--title', type=str, default=None).title
+    show_chi2 = bsvj.pull_arg('--chi2', action='store_true').chi2
 
     from scipy.interpolate import make_interp_spline # type:ignore
 
@@ -444,11 +445,28 @@ def mtdist():
 
     mu_prefit = ws.var('r').getVal()
 
+    # Get the data histogram
+    data = ws.data('data_obs')
+    # check for a toy
+    if toy is not None: data = toy
+    y_data = bsvj.roodataset_values(data,channel=ch_name)[1]
+
+    # Get histogram from generated toy
+    errs_data = np.sqrt(y_data)
+    logger.info(f'Prefit data # entries = {y_data.sum():.2f}, should match with datacard')
+
+    # helper to break out of RooMultiPdf
+    def get_pdf(ws, pdf_name):
+        pdf = ws.pdf(pdf_name)
+        if hasattr(pdf,'getCurrentPdf'):
+            pdf = pdf.getCurrentPdf()
+        return pdf
+
     # check the background name/type
     for bkg_name in ['roomultipdf','bkg']:
         bkg_name_shape = f'shapeBkg_{bkg_name}_{ch_name}'
         bkg_name_norm = f'n_exp_final_bin{ch_name}_proc_{bkg_name}'
-        bkg_pdf = ws.pdf(bkg_name_shape)
+        bkg_pdf = get_pdf(ws,bkg_name_shape)
         if bkg_pdf:
             break
 
@@ -458,6 +476,16 @@ def mtdist():
     y_bkg_init *= bkg_norm_init
     logger.info(f'Prefit bkg norm = {y_bkg_init.sum():.2f}, should match with datacard')
 
+    # calculate chi square for prefit bkg fit
+    _wrapped_prefit = bsvj.PDF()
+    _wrapped_prefit.pdf = bkg_pdf
+    _wrapped_prefit.n_pars = bkg_pdf.getParameters(data).getSize()
+    print(_wrapped_prefit.n_pars)
+    chi2_prefit_vf = bsvj.get_chi2_viaframe(mt, _wrapped_prefit, data)
+    chi2_prefit = chi2_prefit_vf['chi2']
+    ndf_prefit = chi2_prefit_vf['ndf']
+
+    # signal info
     sig_name_shape = f'shapeSig_{ch_name}_{sig_name}'
     sig_name_norm = f'n_exp_bin{ch_name}_proc_{sig_name}'
     sig_name_norm_final = f'n_exp_final_bin{ch_name}_proc_{sig_name}'
@@ -483,16 +511,6 @@ def mtdist():
         y_sig = bsvj.roodataset_values(sig,channel=ch_name)[1]
     logger.info(f'Prefit signal norm = {y_sig.sum():.2f}, should match with datacard')
 
-    # Get the data histogram
-    data = ws.data('data_obs')
-    # check for a toy
-    if toy is not None: data = toy
-    y_data = bsvj.roodataset_values(data,channel=ch_name)[1]
-
-    # Get histogram from generated toy
-    errs_data = np.sqrt(y_data)
-    logger.info(f'Prefit data # entries = {y_data.sum():.2f}, should match with datacard')
-
     # __________________________________
     # Load snapshot - everything is final fit values from this point onward
     ws.loadSnapshot('MultiDimFit')
@@ -501,7 +519,8 @@ def mtdist():
     mu = ws.var('r').getVal()
 
     # Final-fit bkg
-    y_bkg = bsvj.pdf_values(ws.pdf(bkg_name_shape), mt_bin_centers)
+    bkg_pdf_final = get_pdf(ws,bkg_name_shape)
+    y_bkg = bsvj.pdf_values(bkg_pdf_final, mt_bin_centers)
     bkg_norm = ws.function(bkg_name_norm).getVal()
     y_bkg *= bkg_norm
     logger.info(f'Initial bkg norm: {bkg_norm_init:.2f}; Final bkg norm: {bkg_norm:.2f}')
@@ -509,16 +528,26 @@ def mtdist():
     # Compute bkg + mu * sig
     if has_systematics:
         # Use the shape pdf
-        sig = ws.pdf(sig_name_shape)
+        sig_final = ws.pdf(sig_name_shape)
         norm = ws.function(sig_name_norm_final).getVal()
         logger.info(f'Initial signal norm: {norm_init:.2f}; Postfit signal norm: {norm:.2f}')
         # mu should be already included for post fit signal, right?
-        y_sig_postfit = norm * bsvj.pdf_values(sig, mt_bin_centers)
+        y_sig_postfit = norm * bsvj.pdf_values(sig_final, mt_bin_centers)
         y_sb = y_bkg + y_sig_postfit
     else:
         # No shape changes, just multiply signal by signal strength
+        sig_final = sig
         y_sig_postfit = mu*y_sig
         y_sb = y_bkg + y_sig_postfit
+
+    # calculate chi square for s+b
+    _wrapped_postfit = bsvj.PDF()
+    bkg_frac = ROOT.RooRealVar("bkg_frac", "bkg_frac", sum(y_bkg) / sum(y_sb))
+    _wrapped_postfit.pdf = ROOT.RooAddPdf("postfit", "postfit", bkg_pdf_final, sig_final, bkg_frac)
+    _wrapped_postfit.n_pars = bkg_pdf_final.getParameters(data).getSize() + 1
+    chi2_postfit_vf = bsvj.get_chi2_viaframe(mt, _wrapped_postfit, data)
+    chi2_sb = chi2_postfit_vf['chi2']
+    ndf_sb = chi2_postfit_vf['ndf']
 
     fig, (ax, ax2) = plt.subplots(
         2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True
@@ -569,11 +598,11 @@ def mtdist():
         _ = ax2.step(mt_binning[:-1], y_sig_postfit / np.sqrt(y_data), where='post', c=petroff["red"])
         checker(_)
 
-        ax.step(mt_binning[:-1], y_sb, where='post', c=petroff["mauve"], label=r'$B_{\mathrm{fit}}+S_{\mathrm{fit}}$')
+        ax.step(mt_binning[:-1], y_sb, where='post', c=petroff["mauve"], label=r'$B_{\mathrm{fit}}+S_{\mathrm{fit}}$'+(f' [{chi2_sb:.1f}/{ndf_sb}]' if show_chi2 else ''))
         _ = ax2.step(mt_binning[:-1], (y_data - y_sb) / np.sqrt(y_data), where='post', c=petroff["mauve"])
         checker(_)
 
-        ax.step(mt_binning[:-1], y_bkg_init, where='post', c=petroff["gray"], linestyle='--', label=r'$B_{\mathrm{prefit}}$')
+        ax.step(mt_binning[:-1], y_bkg_init, where='post', c=petroff["gray"], linestyle='--', label=r'$B_{\mathrm{prefit}}$'+(f' [{chi2_prefit:.1f}/{ndf_prefit}]' if show_chi2 else ''))
         _ = ax2.step(mt_binning[:-1], (y_data - y_bkg_init) / np.sqrt(y_data), where='post', c=petroff["gray"], linestyle='--')
         checker(_)
 
