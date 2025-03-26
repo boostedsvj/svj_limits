@@ -1017,6 +1017,18 @@ def bkgfit():
     plt.savefig(outfile, bbox_inches='tight')
     if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
 
+def get_tf(fit, tf_name, tf_th1, mtscaled, bkg_eff):
+    import rhalphalib as rl
+    ffit, fitname = fit.split(':')
+    fitresult = ROOT.TFile.Open(ffit).Get(fitname)
+    npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])-1
+    tf_fn = rl.BasisPoly(tf_name, (npar,), ["mt"])
+    tf_fn.update_from_roofit(fitresult)
+    tf_fn_vals, tf_fn_band = tf_fn(mtscaled, nominal=True, errorband=True)
+    chi2 = bsvj.get_tf_chi2(tf_th1, bkg_eff * tf_fn_vals)
+    ndf = len(tf_fn_vals) - npar - 1
+    return {'tf_fn': tf_fn, 'tf_fn_vals': tf_fn_vals, 'tf_fn_band': tf_fn_band, 'chi2': chi2, 'ndf': ndf, 'npar': npar}
+
 @scripter
 def bkgtf():
     """
@@ -1039,16 +1051,7 @@ def bkgtf():
 
     # plot polynomial fit from workspace
     if fit is not None:
-        import rhalphalib as rl
-        ffit, fitname = fit.split(':')
-        fitresult = ROOT.TFile.Open(ffit).Get(fitname)
-        tf_name = "tf_mc"
-        npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])-1
-        tf_mc = rl.BasisPoly(tf_name, (npar,), ["mt"])
-        tf_mc.update_from_roofit(fitresult)
-        tf_mc_vals, tf_mc_band = tf_mc(mtscaled, nominal=True, errorband=True)
-        chi2 = bsvj.get_tf_chi2(tf_th1, bkg_eff * tf_mc_vals)
-        ndf = len(tf_mc_vals) - npar - 1
+        results = get_tf(fit, 'tf_mc', tf_th1, mtscaled, bkg_eff)
         # todo: detect and handle data residual case
 
         figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
@@ -1063,11 +1066,11 @@ def bkgtf():
     xlabel = r'$m_{\mathrm{T}}$ [GeV]'
     if fit is not None:
         pcolor = next(colors)
-        ax.plot(mtpts, bkg_eff * tf_mc_vals, label=f"fit ($\\chi^2/\\mathrm{{ndf}} = {chi2:.1f}/{ndf}$)", color=pcolor)
-        ax.fill_between(mtpts, bkg_eff * tf_mc_band[0], bkg_eff * tf_mc_band[1], alpha=0.2, color=pcolor)
+        ax.plot(mtpts, bkg_eff * results['tf_fn_vals'], label=f"fit ($\\chi^2/\\mathrm{{ndf}} = {results['chi2']:.1f}/{results['ndf']}$)", color=pcolor)
+        ax.fill_between(mtpts, bkg_eff * results['tf_fn_band'][0], bkg_eff * results['tf_fn_band'][1], alpha=0.2, color=pcolor)
         ax.legend(fontsize=18, framealpha=0.0)
         # pulls in lower panel
-        pulls = (tfs['vals'] - bkg_eff * tf_mc_vals) / tfs['errs']
+        pulls = (tfs['vals'] - bkg_eff * results['tf_fn_vals']) / tfs['errs']
         ax2.plot([input.mt_array[0], input.mt_array[-1]], [0.,0.], c='gray')
         ax2.scatter(mtpts, pulls, color=pcolor)
         ax2.set_ylabel(r'(TF - fit) / $\Delta$TF')
