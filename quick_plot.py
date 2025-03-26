@@ -625,6 +625,7 @@ def mtdist():
     else:
         ax.set_ylim(np.power(10, np.floor(np.log10(np.min(y_data[y_data>0])))), None)
         ax2.set_ylim(1.1*checker.ymin, 1.1*checker.ymax)
+    apply_ranges(ax)
 
     plt.savefig(outfile, bbox_inches='tight')
     if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
@@ -1017,17 +1018,63 @@ def bkgfit():
     plt.savefig(outfile, bbox_inches='tight')
     if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
 
-def get_tf(fit, tf_name, tf_th1, mtscaled, bkg_eff):
+def get_objs(file_and_objs):
+    fsplit = file_and_objs.split(':')
+    fname = fsplit[0]
+    f = ROOT.TFile.Open(fname)
+    if len(fsplit[1:])==1: return f.Get(fsplit[1])
+    else: return [f.Get(oname) for oname in fsplit[1:]]
+
+# common operations to evaluate tf fit
+def get_tf_fit(fitresult, tf_name, tf_th1, mtscaled, bkg_eff=1.0):
     import rhalphalib as rl
-    ffit, fitname = fit.split(':')
-    fitresult = ROOT.TFile.Open(ffit).Get(fitname)
     npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])-1
     tf_fn = rl.BasisPoly(tf_name, (npar,), ["mt"])
     tf_fn.update_from_roofit(fitresult)
     tf_fn_vals, tf_fn_band = tf_fn(mtscaled, nominal=True, errorband=True)
-    chi2 = bsvj.get_tf_chi2(tf_th1, bkg_eff * tf_fn_vals)
+    # multiply bkg_eff into final values
+    tf_fn_vals = bkg_eff * tf_fn_vals
+    print('fit_'+tf_name, tf_fn_vals)
+    tf_fn_band = (bkg_eff * tf_fn_band[0], bkg_eff * tf_fn_band[1])
+    chi2 = bsvj.get_tf_chi2(tf_th1, tf_fn_vals)
     ndf = len(tf_fn_vals) - npar - 1
-    return {'tf_fn': tf_fn, 'tf_fn_vals': tf_fn_vals, 'tf_fn_band': tf_fn_band, 'chi2': chi2, 'ndf': ndf, 'npar': npar}
+    return {'tf_fn': tf_fn, 'tf_fn_vals': tf_fn_vals, 'tf_fn_band': tf_fn_band, 'chi2': chi2, 'ndf': ndf, 'npar': npar, 'fitresult': fitresult}
+
+# replace in string starting from last match
+def rreplace(s, old, new, count=1):
+    return (s[::-1].replace(old[::-1], new[::-1], count))[::-1]
+
+# plot a given tf and (optional) fit
+def plot_tf(outfile, mt, tf, fit=None, label="MC", ylabel="TF", suff=""):
+    if suff:
+        outfile = rreplace(outfile,'.',f'_{suff}.',1)
+
+    if fit is not None:
+        figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
+    else:
+        figure = plt.figure(figsize=(12,12))
+        ax = figure.gca()
+
+    colors = get_color_cycle()
+    pcolor = next(colors)
+    ax.errorbar(mt['pts'], tf['arr']['vals'], yerr=tf['arr']['errs'], label=label, color=pcolor)
+    ax.set_ylabel(ylabel)
+    xlabel = r'$m_{\mathrm{T}}$ [GeV]'
+    if fit is not None:
+        pcolor = next(colors)
+        ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"fit ($\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
+        ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
+        ax.legend(fontsize=18, framealpha=0.0)
+        # pulls in lower panel
+        pulls = (tf['arr']['vals'] - fit['tf_fn_vals']) / tf['arr']['errs']
+        ax2.plot(mt['range'], [0.,0.], c='gray')
+        ax2.scatter(mt['pts'], pulls, color=pcolor)
+        ax2.set_ylabel(r'(TF - fit) / $\Delta$TF')
+        ax2.set_xlabel(xlabel)
+    else:
+        ax.set_xlabel(xlabel)
+    apply_ranges(ax)
+    plt.savefig(outfile, bbox_inches='tight')
 
 @scripter
 def bkgtf():
@@ -1037,48 +1084,89 @@ def bkgtf():
     jsons = bsvj.get_jsons()
     regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.png').outfile
-    fit = bsvj.read_arg('--fit', type=str, default=None).fit
+    fit_mc_file = bsvj.read_arg('--fit-mc', type=str, default=None).fit_mc
+    # need both fitDiagnostics and MultiDimFit output
+    fit_data_files = bsvj.read_arg('--fits-data', type=str, default=None, nargs=2).fits_data
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
 
+    # input histograms always required: used to get x-axis
     input = bsvj.InputData(regions, "rhalpha", **jsons, asimov=asimov)
-    bkg_eff = input.regions[0].bkg_datahist.sum(False) / input.regions[1].bkg_datahist.sum(False)
-    mtpts = input.mt_array[:-1] + 0.5*np.diff(input.mt_array)
-    mtscaled = (mtpts - min(mtpts))/(max(mtpts) - min(mtpts))
+    mt = {}
+    mt['pts'] = input.mt_array[:-1] + 0.5*np.diff(input.mt_array)
+    mt['scaled'] = (mt['pts'] - min(mt['pts']))/(max(mt['pts']) - min(mt['pts']))
+    mt['range'] = [input.mt_array[0], input.mt_array[-1]]
 
+    # TF from MC
+    tf_mc = {}
+    tf_mc['bkg_eff'] = input.regions[0].bkg_datahist.sum(False) / input.regions[1].bkg_datahist.sum(False)
     # use ROOT to propagate errors when dividing
-    tf_th1 = bsvj.get_tf_th1(input.regions)
-    tfs = bsvj.th1_to_hist(tf_th1)
+    tf_mc['th1'] = bsvj.get_tf_th1(input.regions)
+    tf_mc['arr'] = bsvj.th1_to_hist(tf_mc['th1'])
 
-    # plot polynomial fit from workspace
-    if fit is not None:
-        results = get_tf(fit, 'tf_mc', tf_th1, mtscaled, bkg_eff)
-        # todo: detect and handle data residual case
+    # polynomial fit from workspace
+    fit_mc = None
+    if fit_mc_file is not None:
+        fitresult_mc = get_objs(fit_mc_file)
+        fit_mc = get_tf_fit(fitresult_mc, 'tf_mc', tf_mc['th1'], mt['scaled'], tf_mc['bkg_eff'])
 
-        figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
-    else:
-        figure = plt.figure(figsize=(12,12))
-        ax = fig.gca()
+    # plot TF from MC
+    plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{MC}}$ ({regions[0]} / {regions[1]})', suff='mc')
 
-    colors = get_color_cycle()
-    pcolor = next(colors)
-    ax.errorbar(mtpts, tfs['vals'], yerr=tfs['errs'], label="MC", color=pcolor)
-    ax.set_ylabel(f'TF ({regions[0]} / {regions[1]})')
-    xlabel = r'$m_{\mathrm{T}}$ [GeV]'
-    if fit is not None:
-        pcolor = next(colors)
-        ax.plot(mtpts, bkg_eff * results['tf_fn_vals'], label=f"fit ($\\chi^2/\\mathrm{{ndf}} = {results['chi2']:.1f}/{results['ndf']}$)", color=pcolor)
-        ax.fill_between(mtpts, bkg_eff * results['tf_fn_band'][0], bkg_eff * results['tf_fn_band'][1], alpha=0.2, color=pcolor)
-        ax.legend(fontsize=18, framealpha=0.0)
-        # pulls in lower panel
-        pulls = (tfs['vals'] - bkg_eff * results['tf_fn_vals']) / tfs['errs']
-        ax2.plot([input.mt_array[0], input.mt_array[-1]], [0.,0.], c='gray')
-        ax2.scatter(mtpts, pulls, color=pcolor)
-        ax2.set_ylabel(r'(TF - fit) / $\Delta$TF')
-        ax2.set_xlabel(xlabel)
-    else:
-        ax.set_xlabel(xlabel)
-    apply_ranges(ax)
-    plt.savefig(outfile, bbox_inches='tight')
+    # TF from data: everything comes from postfit file
+    fit_data = None
+    if fit_data_files is not None:
+        fitresult_data = get_objs(fit_data_files[0])
+        ws_data = get_objs(fit_data_files[1])
+        # postfit bkg shapes from workspace, based on mtdist()
+        ws_data.loadSnapshot('MultiDimFit')
+        postfit_regions = []
+        for channel in ['bsvj','bsvjCR1']:
+            bkg_name_shape = f'shapeBkg_bkg_{channel}'
+            bkg_name_norm = f'n_exp_final_bin{channel}_proc_bkg'
+            bkg_pdf = ws_data.pdf(bkg_name_shape)
+            bkg_norm = ws_data.function(bkg_name_norm).getVal()
+            bkg_hist = {
+                'vals': bkg_norm * bsvj.pdf_values(bkg_pdf, mt['pts']),
+                'errs': bkg_norm * bsvj.pdf_errors(bkg_pdf, fitresult_data, mt['pts']),
+                'binning': input.mt_array,
+                'metadata': {},
+            }
+            bkg_th1 = bsvj.Histogram(bkg_hist).th1(channel)
+            postfit_regions.append(bkg_th1)
+        tf_data = {}
+        tf_data['bkg_eff'] = postfit_regions[0].Integral() / postfit_regions[1].Integral()
+        tf_data['th1'] = bsvj.get_tf_th1(postfit_regions)
+
+        # if MC TF also used, divide it out first
+        fit_mc_nuis = [f.getVal() for f in fitresult_data.floatParsFinal() if 'tf_mc' in f.GetName()]
+        if fit_mc and len(fit_mc_nuis)>0:
+            # reconstruct MC TF fit from decorrelated parameters
+            paramfile = fit_mc_file.split(':')[0].replace("/bkgfit_","/mctf_").replace(".root",".npy")
+            fit_mc_nominal = np.load(paramfile)
+            decofile = paramfile.replace("/mctf_","/deco_")
+            decoVector = np.load(decofile)
+            fit_mc_parvalues = decoVector.dot(np.array(fit_mc_nuis)) + fit_mc_nominal
+            fit_mc['tf_fn'].set_parvalues(fit_mc_parvalues)
+            fit_mc_vals = tf_mc['bkg_eff'] * fit_mc['tf_fn'](mt['scaled'], nominal=True)
+            # divide out values
+            for i in range(tf_data['th1'].GetNbinsX()):
+                tf_data['th1'].SetBinContent(i+1, tf_data['th1'].GetBinContent(i+1)/fit_mc_vals[i])
+                tf_data['th1'].SetBinError(i+1, tf_data['th1'].GetBinError(i+1)/fit_mc_vals[i])
+            # bkg_eff already included in MC TF
+            tf_data['bkg_eff'] = 1.0
+            suff_data = 'data_res'
+        else:
+            tf_data['bkg_eff'] = tf_mc['bkg_eff']
+            suff_data = 'data'
+
+        tf_data['arr'] = bsvj.th1_to_hist(tf_data['th1'])
+        fit_data = get_tf_fit(fitresult_data, 'tf_data', tf_data['th1'], mt['scaled'], tf_data['bkg_eff'])
+
+        plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{suff_data}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label="Data")
+
+    # todo:
+    # "combined" TF without dividing out MC (with all uncertainties propagated...)
+    # postfit MC-only TF w/ uncertainties
 
 def plot_hist(th1, ax, **kwargs):
     hist = bsvj.th1_to_hist(th1)

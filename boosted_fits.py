@@ -562,9 +562,14 @@ def get_default_systs(mz,mdark,rinv):
 
 
 def get_tf_th1(regions):
+    # handle different types of region input
+    def get_th1(region):
+        if "TH1" in str(type(region)): return region
+        elif hasattr(region,'bkg_th1'): return region.bkg_th1
+        else: raise RuntimeError(f"Don't know how to extract TH1 from object of type {type(region)}")
     # use ROOT to propagate errors when dividing
-    tf_th1 = regions[0].bkg_th1.Clone()
-    tf_th1.Divide(regions[1].bkg_th1)
+    tf_th1 = get_th1(regions[0]).Clone()
+    tf_th1.Divide(get_th1(regions[1]))
     return tf_th1
 
 
@@ -1010,8 +1015,13 @@ class InputData(object):
             bkgfit_ws.Write()
             bkgfitf.Close()
 
+            # save MC TF details for later use in plotting
+            paramfile = self.wsfile.replace("/dc_","/mctf_").replace(".root","")
+            np.save(paramfile, [par.value for par in tf_mc.parameters.flatten()])
             param_names = [p.name for p in tf_mc.parameters.reshape(-1)]
             decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names)
+            decofile = self.wsfile.replace("/dc_","/deco_").replace(".root","")
+            np.save(decofile, decoVector._transform)
             tf_mc.parameters = decoVector.correlated_params.reshape(tf_mc.parameters.shape)
             tf_mc_params_final = tf_mc(mtscaled)
 
@@ -2597,3 +2607,13 @@ def pdf_values(pdf, x_vals, varname='mt'):
         y.append(pdf.getVal())
     y = np.array(y)
     return y / (y.sum() if y.sum()!=0. else 1.)
+
+
+def pdf_errors(pdf, fitresult, x_vals, varname='mt'):
+    variable = pdf.getVariables()[varname]
+    y = []
+    for x in x_vals:
+        variable.setVal(x)
+        y.append(pdf.getPropagatedError(fitresult,ROOT.RooArgSet(variable)))
+    y = np.array(y)
+    return y
