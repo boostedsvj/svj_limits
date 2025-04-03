@@ -1148,6 +1148,16 @@ def bkgtf():
             fit_mc_parvalues = decoVector.dot(np.array(fit_mc_nuis)) + fit_mc_nominal
             fit_mc['tf_fn'].set_parvalues(fit_mc_parvalues)
             fit_mc_vals = tf_mc['bkg_eff'] * fit_mc['tf_fn'](mt['scaled'], nominal=True)
+
+            # plot combined TF without dividing out MC
+            # todo: propagate all uncertainties (currently just data TF uncertainties)
+            tf_comb = {}
+            tf_comb['bkg_eff'] = fit_mc_vals # bkg_eff multiplies tf_fn_vals in get_tf_fit(), so include entire MC TF in this case
+            tf_comb['th1'] = tf_data['th1'].Clone()
+            tf_comb['arr'] = bsvj.th1_to_hist(tf_comb['th1'])
+            fit_comb = get_tf_fit(fitresult_data, 'tf_data', tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'])
+            plot_tf(outfile, mt, tf_comb, fit_comb, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{comb}}}}$ ({regions[0]} / {regions[1]})', suff='comb', label="Data")
+
             # divide out values
             for i in range(tf_data['th1'].GetNbinsX()):
                 tf_data['th1'].SetBinContent(i+1, tf_data['th1'].GetBinContent(i+1)/fit_mc_vals[i])
@@ -1165,7 +1175,6 @@ def bkgtf():
         plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{suff_data}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label="Data")
 
     # todo:
-    # "combined" TF without dividing out MC (with all uncertainties propagated...)
     # postfit MC-only TF w/ uncertainties
 
 def plot_hist(th1, ax, **kwargs):
