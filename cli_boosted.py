@@ -437,6 +437,7 @@ def fithessian():
         cmd.method = 'FitDiagnostics'
         cmd.kwargs.pop('--algo', None)
         cmd.args.add('--saveWorkspace')
+        cmd.args.add('--saveShapes')
         cmd.kwargs['--X-rtd'] = ['REMOVE_CONSTANT_ZERO_POINT=1']
         cmd.args.add('--bypassFrequentistFit')
         cmd.kwargs['--X-rtd'].append('MINIMIZER_MaxCalls=100000')
