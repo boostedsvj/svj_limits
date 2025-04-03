@@ -1020,6 +1020,10 @@ class InputData(object):
             np.save(paramfile, [par.value for par in tf_mc.parameters.flatten()])
             param_names = [p.name for p in tf_mc.parameters.reshape(-1)]
             decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names)
+            # modify nuisance ranges
+#            for param in decoVector.parameters:
+#                param.lo = -1
+#                param.hi = 1
             decofile = self.wsfile.replace("/dc_","/deco_").replace(".root","")
             np.save(decofile, decoVector._transform)
             tf_mc.parameters = decoVector.correlated_params.reshape(tf_mc.parameters.shape)
