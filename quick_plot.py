@@ -1034,7 +1034,6 @@ def get_tf_fit(fitresult, tf_name, tf_th1, mtscaled, bkg_eff=1.0):
     tf_fn_vals, tf_fn_band = tf_fn(mtscaled, nominal=True, errorband=True)
     # multiply bkg_eff into final values
     tf_fn_vals = bkg_eff * tf_fn_vals
-    print('fit_'+tf_name, tf_fn_vals)
     tf_fn_band = (bkg_eff * tf_fn_band[0], bkg_eff * tf_fn_band[1])
     chi2 = bsvj.get_tf_chi2(tf_th1, tf_fn_vals)
     ndf = len(tf_fn_vals) - npar - 1
@@ -1088,6 +1087,7 @@ def bkgtf():
     # need both fitDiagnostics and MultiDimFit output
     fit_data_files = bsvj.read_arg('--fits-data', type=str, default=None, nargs=2).fits_data
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
+    verbose = bsvj.pull_arg('-v','--verbose', default=False, action="store_true").verbose
 
     # input histograms always required: used to get x-axis
     input = bsvj.InputData(regions, "rhalpha", **jsons, asimov=asimov)
@@ -1099,15 +1099,19 @@ def bkgtf():
     # TF from MC
     tf_mc = {}
     tf_mc['bkg_eff'] = input.regions[0].bkg_datahist.sum(False) / input.regions[1].bkg_datahist.sum(False)
+    if verbose: print('mc_bkg_eff', tf_mc['bkg_eff'])
     # use ROOT to propagate errors when dividing
     tf_mc['th1'] = bsvj.get_tf_th1(input.regions)
     tf_mc['arr'] = bsvj.th1_to_hist(tf_mc['th1'])
+    if verbose: print('tf_mc_th1', tf_mc['arr']['vals'].tolist())
 
     # polynomial fit from workspace
     fit_mc = None
     if fit_mc_file is not None:
         fitresult_mc = get_objs(fit_mc_file)
         fit_mc = get_tf_fit(fitresult_mc, 'tf_mc', tf_mc['th1'], mt['scaled'], tf_mc['bkg_eff'])
+        if verbose: print('fit_mc', fit_mc['tf_fn_vals'].tolist())
+        if verbose: print('chi2_mc', fit_mc['chi2'], fit_mc['ndf'])
 
     # plot TF from MC
     plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{MC}}$ ({regions[0]} / {regions[1]})', suff='mc')
@@ -1135,19 +1139,25 @@ def bkgtf():
             postfit_regions.append(bkg_th1)
         tf_data = {}
         tf_data['bkg_eff'] = postfit_regions[0].Integral() / postfit_regions[1].Integral()
+        if verbose: print('data_bkg_eff', tf_data['bkg_eff'])
         tf_data['th1'] = bsvj.get_tf_th1(postfit_regions)
 
         # if MC TF also used, divide it out first
         fit_mc_nuis = [f.getVal() for f in fitresult_data.floatParsFinal() if 'tf_mc' in f.GetName()]
+        if verbose: print('fit_mc_nuis',fit_mc_nuis)
         if fit_mc and len(fit_mc_nuis)>0:
             # reconstruct MC TF fit from decorrelated parameters
             paramfile = fit_mc_file.split(':')[0].replace("/bkgfit_","/mctf_").replace(".root",".npy")
             fit_mc_nominal = np.load(paramfile)
+            if verbose: print('fit_mc_nominal',fit_mc_nominal.tolist())
             decofile = paramfile.replace("/mctf_","/deco_")
             decoVector = np.load(decofile)
+            if verbose: print('decoVector',decoVector.tolist())
             fit_mc_parvalues = decoVector.dot(np.array(fit_mc_nuis)) + fit_mc_nominal
+            if verbose: print('fit_mc_parvalues',fit_mc_parvalues.tolist())
             fit_mc['tf_fn'].set_parvalues(fit_mc_parvalues)
             fit_mc_vals = tf_mc['bkg_eff'] * fit_mc['tf_fn'](mt['scaled'], nominal=True)
+            if verbose: print('fit_mc_vals', fit_mc_vals.tolist())
 
             # plot combined TF without dividing out MC
             # todo: propagate all uncertainties (currently just data TF uncertainties)
@@ -1155,22 +1165,29 @@ def bkgtf():
             tf_comb['bkg_eff'] = fit_mc_vals # bkg_eff multiplies tf_fn_vals in get_tf_fit(), so include entire MC TF in this case
             tf_comb['th1'] = tf_data['th1'].Clone()
             tf_comb['arr'] = bsvj.th1_to_hist(tf_comb['th1'])
+            if verbose: print('tf_comb_th1', tf_comb['arr']['vals'].tolist())
             fit_comb = get_tf_fit(fitresult_data, 'tf_data', tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'])
+            if verbose: print('fit_comb', fit_comb['tf_fn_vals'].tolist())
+            if verbose: print('chi2_comb', fit_comb['chi2'], fit_comb['ndf'])
             plot_tf(outfile, mt, tf_comb, fit_comb, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{comb}}}}$ ({regions[0]} / {regions[1]})', suff='comb', label="Data")
 
             # divide out values
             for i in range(tf_data['th1'].GetNbinsX()):
                 tf_data['th1'].SetBinContent(i+1, tf_data['th1'].GetBinContent(i+1)/fit_mc_vals[i])
                 tf_data['th1'].SetBinError(i+1, tf_data['th1'].GetBinError(i+1)/fit_mc_vals[i])
+            if verbose: print('tf_data_res_th1', bsvj.th1_to_hist(tf_data['th1'])['vals'].tolist())
             # bkg_eff already included in MC TF
             tf_data['bkg_eff'] = 1.0
             suff_data = 'data_res'
         else:
+            if verbose: print('tf_data_th1', bsvj.th1_to_hist(tf_data['th1'])['vals'].tolist())
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
             suff_data = 'data'
 
         tf_data['arr'] = bsvj.th1_to_hist(tf_data['th1'])
         fit_data = get_tf_fit(fitresult_data, 'tf_data', tf_data['th1'], mt['scaled'], tf_data['bkg_eff'])
+        if verbose: print('fit_data', fit_data['tf_fn_vals'].tolist())
+        if verbose: print('chi2_data', fit_data['chi2'], fit_data['ndf'])
 
         plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{suff_data}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label="Data")
 
