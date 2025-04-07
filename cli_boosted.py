@@ -161,7 +161,7 @@ def gen_datacards():
     tf_from_mc = bsvj.pull_arg('--tf-from-mc', default=False, action="store_true").tf_from_mc
     suff = bsvj.pull_arg('--suff', type=str, default='').suff
     ftest = bsvj.pull_arg('--ftest', default=False, action="store_true").ftest
-    ntoys = bsvj.read_arg('-t', type=int).t
+    ntoys = bsvj.read_arg('-t', type=int, default=0).t
 
     # use npar arg as max value in saturated gof f-test
     if ftest:
@@ -180,20 +180,23 @@ def gen_datacards():
         input = bsvj.InputData(regions, norm_type, **jsons, asimov=asimov_bkg)
         dcfile = input.gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute, npar=npar, tf_from_mc=tf_from_mc, suff=npar_suff)
         if ftest:
+            result = {}
             # first use toys
-            gof_file = gof_datacard(dcfile, npar_name, ntoys)
-            res_toys = collect_gof(gof_file)
+            if ntoys>0:
+                gof_file = gof_datacard(dcfile, npar_name, ntoys)
+                result['toys'] = collect_gof(gof_file)
             # now use data
             with bsvj.reset_sys_argv():
                 bsvj.pull_arg('-t', type=int)
                 gof_data = gof_datacard(dcfile, npar_name)
-                res_data = collect_gof(gof_data)
-                results.append((npar+1, {"data": res_data, "toys": res_toys}))
+                result['data'] = collect_gof(gof_data)
+                if ntoys==0: result = result['data'][0]
+            results.append((npar+1, result))
 
     # conduct ftest
     # todo: allow reusing existing result (--cache arg? or --npar -1?)
     if ftest:
-        i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=True)
+        i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=ntoys>0)
         # assign i_winner as the "main" datacard
         outdir = osp.dirname(dcfile)
         npar_suff = f'_npar{i_winner}'
@@ -258,7 +261,8 @@ def collect_gof(gof_file):
         tree = file.Get("limit")
         for j in range(tree.GetEntries()):
             tree.GetEntry(j)
-            out[j] = tree.limit
+            # convert to nll
+            out[j] = -2.0 * np.log(tree.limit)
     except:
         bsvj.logger.warning(f"Skipping {gof_file}")
         pass

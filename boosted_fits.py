@@ -1734,9 +1734,14 @@ def gof_bkgfit(mt, data, pdfs, gof_type='rss'):
     return result, gofs[0]['n_bins']
 
 
+def fisher_metric(gof1, gof2, n1, n2, n_bins):
+    with np.errstate(divide='ignore'):
+	    return ((gof1-gof2) / float(n2-n1)) / (gof2 / float(n_bins-n2))
+
+
 # compute fisher test confidence level
 def compute_fisher(gof1, gof2, n1, n2, n_bins):
-    f = ((gof1-gof2)/(n2-n1)) / (gof2/(n_bins-n2))
+    f = fisher_metric(gof1, gof2, n1, n2, n_bins)
     cl = 1.-ROOT.TMath.FDistI(f, n2-n1, n_bins-n2)
     return cl
 
@@ -1751,13 +1756,7 @@ def compute_fisher_toys(gof1, gof2, n1, n2, n_bins):
             alt_arr.append(alt_dict[key])
         return np.array(base_arr), np.array(alt_arr)
 
-    def fval(lambda1, lambda2, p1, p2, nbins):
-        with np.errstate(divide='ignore'):
-            numer = -2.0 * np.log(float(lambda1) / float(lambda2)) / float(p2 - p1)
-            denom = -2.0 * np.log(float(lambda2)) / float(nbins - p2)
-            return numer / denom
-
-    vfval = np.vectorize(fval)
+    vfval = np.vectorize(fisher_metric)
 
     col_data = collate(gof1["data"], gof2["data"])
     col_toys = collate(gof1["toys"], gof2["toys"])
