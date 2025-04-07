@@ -179,7 +179,7 @@ def test_rhalphabet(tmpdir):
             ch.setObservation(templates["bkg"])
 
         bkgeff = template_info["yields"]["bkg"]["pass"] / template_info["yields"]["bkg"]["fail"]
-        tf_mc = rl.BernsteinPoly("tf_mc", (6,), ["mt"], limits=(0, 10))
+        tf_mc = rl.BernsteinPoly("tf_mc", (2,), ["mt"], limits=(0, 10))
         tf_mc_params = bkgeff * tf_mc(mtscaled)
         failCh = bkgmodel["fail"]
         passCh = bkgmodel["pass"]
@@ -209,8 +209,13 @@ def test_rhalphabet(tmpdir):
 #            raise RuntimeError("Could not fit bkg")
             print(f"Could not fit bkg: status {bkgfit.status()}")
 
+        # save MC TF details for later use in plotting
+        paramfile = os.path.join(str(tmpdir), "svjModel_mctf")
+        np.save(paramfile, [par.value for par in tf_mc.parameters.flatten()])
         param_names = [p.name for p in tf_mc.parameters.reshape(-1)]
         decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names)
+        decofile = os.path.join(str(tmpdir), "svjModel_deco")
+        np.save(decofile, decoVector._transform)
         tf_mc.parameters = decoVector.correlated_params.reshape(tf_mc.parameters.shape)
         tf_mc_params_final = tf_mc(mtscaled)
 
