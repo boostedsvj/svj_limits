@@ -264,6 +264,7 @@ def test_rhalphabet(tmpdir):
                 loc=template_info["locs"]["bkg"][region],
                 scale=template_info["scales"]["bkg"][region],
                 obs=mt,
+                vals=template_info["vals"]["bkg"][region],
             ),
         }
         yields = sum(tpl[0] for tpl in templates.values())
