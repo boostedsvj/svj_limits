@@ -9,6 +9,7 @@ import uproot as up
 from matplotlib.offsetbox import AnchoredText
 import rhalphalib as rl
 
+verbose = False
 
 def get_fit_val(fitDiag, val, fittype='fit_s', substitute=1.):
     if val in fitDiag.Get(fittype).floatParsFinal().contentsString().split(','):
@@ -27,6 +28,7 @@ def prepareTF(
     fmtscaled = (fmtpts - min(fmtpts)) / (max(fmtpts) - min(fmtpts))
 
     TF = rl_poly(fmtscaled, nominal=True)
+    if verbose: print(TF)
     return TF, fmtpts
 
 def base_plot(TF, fmtpts, ax=None):
@@ -126,7 +128,8 @@ if __name__ == '__main__':
 
     # Set to values from fit
     tf_res.update_from_roofit(rf.Get('fit_s'))
-    par_names = rf.Get('fit_s').floatParsFinal().contentsString().split(',')
+    pars_final = rf.Get('fit_s').floatParsFinal()
+    par_names = pars_final.contentsString().split(',')
 
     ax = singleTF(tf_res)
     ax.set_title("Residual (Data/MC) TF", x=0, ha='left', fontsize='small')
@@ -134,20 +137,23 @@ if __name__ == '__main__':
     ax.figure.savefig('{}/TF_data.png'.format(args.output_folder), dpi=300, bbox_inches="tight")
     ax.figure.savefig('{}/TF_data.pdf'.format(args.output_folder), transparent=True, bbox_inches="tight")
 
-    MC_nuis = [round(rf.Get('fit_s').floatParsFinal().find(p).getVal(), 3) for p in par_names if 'tf_mc' in p]
+    if verbose: print('MC_nuis','\n'.join([f'{p} = {pars_final.find(p).getVal()}' for p in par_names if 'tf_mc' in p]))
+    MC_nuis = [round(pars_final.find(p).getVal(), 3) for p in par_names if 'tf_mc' in p]
     _vect = np.load(os.path.join(os.path.dirname(args.dir), 'svjModel_deco.npy'))
+    if verbose: print('_vect',_vect)
     _MCTF_nominal = np.load(os.path.join(os.path.dirname(args.dir), 'svjModel_mctf.npy'))
-    print(MC_nuis)
-    print(_MCTF_nominal)
+    if verbose: print('_MCTF_nominal',_MCTF_nominal)
     _values = _vect.dot(np.array(MC_nuis)) + _MCTF_nominal
     tf_MC.set_parvalues(_values)
 
+    if verbose: print('singleTF MC')
     ax = singleTF(tf_MC)
     ax.set_title("Tagger Response TF", x=0, ha='left', fontsize='small')
     hep.cms.label(llabel=args.label, ax=ax, loc=2, data=not args.isMC)
     ax.figure.savefig('{}/TF_MC.png'.format(args.output_folder), dpi=300, bbox_inches="tight")
     ax.figure.savefig('{}/TF_MC.pdf'.format(args.output_folder), transparent=True, bbox_inches="tight")
 
+    if verbose: print('combinedTF')
     ax = combinedTF(tf_MC, tf_res)
     ax.set_title("Effective Transfer Factor", x=0, ha='left', fontsize='small')
     hep.cms.label(llabel=args.label, ax=ax, loc=2, data=not args.isMC)

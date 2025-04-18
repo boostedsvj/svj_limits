@@ -209,6 +209,8 @@ def test_rhalphabet(tmpdir):
 #            raise RuntimeError("Could not fit bkg")
             print(f"Could not fit bkg: status {bkgfit.status()}")
 
+        bkgmodel.readRooFitResult(bkgfit)
+
         # save MC TF details for later use in plotting
         paramfile = os.path.join(str(tmpdir), "svjModel_mctf")
         np.save(paramfile, [par.value for par in tf_mc.parameters.flatten()])
