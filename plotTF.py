@@ -138,12 +138,17 @@ if __name__ == '__main__':
     ax.figure.savefig('{}/TF_data.pdf'.format(args.output_folder), transparent=True, bbox_inches="tight")
 
     if verbose: print('MC_nuis','\n'.join([f'{p} = {pars_final.find(p).getVal()}' for p in par_names if 'tf_mc' in p]))
-    MC_nuis = [round(pars_final.find(p).getVal(), 3) for p in par_names if 'tf_mc' in p]
+    MC_nuis = np.array([round(pars_final.find(p).getVal(), 3) for p in par_names if 'tf_mc' in p])
     _vect = np.load(os.path.join(os.path.dirname(args.dir), 'svjModel_deco.npy'))
     if verbose: print('_vect',_vect)
     _MCTF_nominal = np.load(os.path.join(os.path.dirname(args.dir), 'svjModel_mctf.npy'))
     if verbose: print('_MCTF_nominal',_MCTF_nominal)
-    _values = _vect.dot(np.array(MC_nuis)) + _MCTF_nominal
+    _values = np.full(_MCTF_nominal.shape, None)
+    for i in range(_MCTF_nominal.size):
+        coef = _vect[:, i]
+        order = np.argsort(np.abs(coef))
+        _values[i] = np.sum(coef[order] * MC_nuis[order]) + _MCTF_nominal[i]
+    if verbose: print('parvalues',_values)
     tf_MC.set_parvalues(_values)
 
     if verbose: print('singleTF MC')
