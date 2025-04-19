@@ -1004,6 +1004,7 @@ class InputData(object):
 
             # save winner
             winners['tf_mc'] = i_winner
+            bkgmodel = bkgmodels[i_winner]['model']
             tf_mc = bkgmodels[i_winner]['tf']
             bkgfit = bkgmodels[i_winner]['fit']
             bkgfit_ws = bkgmodels[i_winner]['ws']
@@ -1016,6 +1017,7 @@ class InputData(object):
             bkgfitf.Close()
 
             # save MC TF details for later use in plotting
+            bkgmodel.readRooFitResult(bkgfit)
             paramfile = self.wsfile.replace("/dc_","/mctf_").replace(".root","")
             np.save(paramfile, [par.value for par in tf_mc.parameters.flatten()])
             param_names = [p.name for p in tf_mc.parameters.reshape(-1)]

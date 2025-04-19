@@ -1142,9 +1142,14 @@ def bkgtf():
         if verbose: print('data_bkg_eff', tf_data['bkg_eff'])
         tf_data['th1'] = bsvj.get_tf_th1(postfit_regions)
 
+        # comparison of FD and MDF
+        if verbose:
+            print("par fitresult(FD) workspace(MDF)")
+            print("\n".join([f"{f.GetName()} {f.getVal()} {ws_data.function(f.GetName()).getVal()}" for f in fitresult_data.floatParsFinal() if 'tf' in f.GetName()]))
+
         # if MC TF also used, divide it out first
-        fit_mc_nuis = [f.getVal() for f in fitresult_data.floatParsFinal() if 'tf_mc' in f.GetName()]
-        if verbose: print('fit_mc_nuis',fit_mc_nuis)
+        fit_mc_nuis = np.array([f.getVal() for f in fitresult_data.floatParsFinal() if 'tf_mc' in f.GetName()])
+        if verbose: print('fit_mc_nuis',fit_mc_nuis.tolist())
         if fit_mc and len(fit_mc_nuis)>0:
             # reconstruct MC TF fit from decorrelated parameters
             paramfile = fit_mc_file.split(':')[0].replace("/bkgfit_","/mctf_").replace(".root",".npy")
@@ -1153,7 +1158,11 @@ def bkgtf():
             decofile = paramfile.replace("/mctf_","/deco_")
             decoVector = np.load(decofile)
             if verbose: print('decoVector',decoVector.tolist())
-            fit_mc_parvalues = decoVector.dot(np.array(fit_mc_nuis)) + fit_mc_nominal
+            fit_mc_parvalues = np.full(fit_mc_nominal.shape, None)
+            for i in range(fit_mc_nominal.size):
+                coef = decoVector[:, i]
+                order = np.argsort(np.abs(coef))
+                fit_mc_parvalues[i] = np.sum(coef[order] * fit_mc_nuis[order]) + fit_mc_nominal[i]
             if verbose: print('fit_mc_parvalues',fit_mc_parvalues.tolist())
             fit_mc['tf_fn'].set_parvalues(fit_mc_parvalues)
             fit_mc_vals = tf_mc['bkg_eff'] * fit_mc['tf_fn'](mt['scaled'], nominal=True)
