@@ -423,9 +423,6 @@ def fittoys():
 
         bsvj.run_combine_command(cmd, outdir=outdir)
 
-        fit_diag_file = 'fitDiagnostics{}.root'.format(cmd.name)
-        os.rename(fit_diag_file, osp.join(outdir, fit_diag_file))
-
 @scripter
 def fithessian():
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
@@ -450,9 +447,6 @@ def fithessian():
         assert '--expectSignal' in cmd.kwargs
 
         bsvj.run_combine_command(cmd, outdir=outdir)
-
-        fit_diag_file = 'fitDiagnostics{}.root'.format(cmd.name)
-        os.rename(fit_diag_file, osp.join(outdir, fit_diag_file))
 
 @scripter
 def impacts():

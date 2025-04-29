@@ -1084,8 +1084,7 @@ def bkgtf():
     regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.png').outfile
     fit_mc_file = bsvj.read_arg('--fit-mc', type=str, default=None).fit_mc
-    # need both fitDiagnostics and MultiDimFit output
-    fit_data_files = bsvj.read_arg('--fits-data', type=str, default=None, nargs=2).fits_data
+    fit_data_file = bsvj.read_arg('--fit-data', type=str, default=None).fit_data
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
     verbose = bsvj.pull_arg('-v','--verbose', default=False, action="store_true").verbose
 
@@ -1118,9 +1117,8 @@ def bkgtf():
 
     # TF from data: everything comes from postfit file
     fit_data = None
-    if fit_data_files is not None:
-        fitresult_data = get_objs(fit_data_files[0])
-        ws_data = get_objs(fit_data_files[1])
+    if fit_data_file is not None:
+        fitresult_data, ws_data = get_objs(fit_data_file)
         # postfit bkg shapes from workspace, based on mtdist()
         ws_data.loadSnapshot('MultiDimFit')
         postfit_regions = []
@@ -1198,7 +1196,8 @@ def bkgtf():
         if verbose: print('fit_data', fit_data['tf_fn_vals'].tolist())
         if verbose: print('chi2_data', fit_data['chi2'], fit_data['ndf'])
 
-        plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{suff_data}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label="Data")
+        escape = lambda x: return x.replace('_','\\_')
+        plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{escape(suff_data)}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label="Data")
 
     # todo:
     # postfit MC-only TF w/ uncertainties
