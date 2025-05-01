@@ -447,8 +447,11 @@ def mtdist():
 
     # Get the data histogram
     data = ws.data('data_obs')
+    data_label = 'Data'
     # check for a toy
-    if toy is not None: data = toy
+    if toy is not None:
+        data = toy
+        data_label = 'Data (toy)'
     y_data = bsvj.roodataset_values(data,channel=ch_name)[1]
 
     # Get histogram from generated toy
@@ -513,7 +516,9 @@ def mtdist():
 
     # __________________________________
     # Load snapshot - everything is final fit values from this point onward
-    ws.loadSnapshot('MultiDimFit')
+    snapshot = 'MultiDimFit'
+    if 'FitDiagnostics' in rootfile: snapshot = 'fit_s'
+    ws.loadSnapshot(snapshot)
 
     # Best fit mu value
     mu = ws.var('r').getVal()
@@ -572,7 +577,7 @@ def mtdist():
         ax.errorbar(
             mt_bin_centers, y_data,
             xerr=.5*mt_bin_widths, yerr=errs_data,
-            fmt='o', c='black', label='Data'
+            fmt='o', c='black', label=data_label,
             )
 
         class RangeChecker():
@@ -1120,7 +1125,9 @@ def bkgtf():
     if fit_data_file is not None:
         fitresult_data, ws_data = get_objs(fit_data_file)
         # postfit bkg shapes from workspace, based on mtdist()
-        ws_data.loadSnapshot('MultiDimFit')
+        snapshot = 'MultiDimFit'
+        if 'FitDiagnostics' in fit_data_file: snapshot = 'fit_s'
+        ws_data.loadSnapshot(snapshot)
         postfit_regions = []
         for channel in ['bsvj','bsvjCR1']:
             bkg_name_shape = f'shapeBkg_bkg_{channel}'
@@ -1196,7 +1203,7 @@ def bkgtf():
         if verbose: print('fit_data', fit_data['tf_fn_vals'].tolist())
         if verbose: print('chi2_data', fit_data['chi2'], fit_data['ndf'])
 
-        escape = lambda x: return x.replace('_','\\_')
+        escape = lambda x: x.replace('_','\\_')
         plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{escape(suff_data)}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label="Data")
 
     # todo:
