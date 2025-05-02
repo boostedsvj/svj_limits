@@ -2330,7 +2330,6 @@ def fit_toys(cmd):
     #    --saveToys
     #    --expectSignal ${expSig}
     #    --savePredictionsPerToy
-    #    --bypassFrequentistFit
     #    --X-rtd MINIMIZER_MaxCalls=100000
     #    --setParameters $SetArgFitAll
     #    --freezeParameters $FrzArgFitAll
@@ -2344,7 +2343,6 @@ def fit_toys(cmd):
     cmd.args.add('--toysFrequentist')
     cmd.args.add('--saveToys')
     cmd.args.add('--savePredictionsPerToy')
-    cmd.args.add('--bypassFrequentistFit')
     cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
 
     toysFile = pull_arg('--toysFile', required=True, type=str).toysFile

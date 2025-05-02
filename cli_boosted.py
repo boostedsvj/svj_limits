@@ -246,6 +246,7 @@ def gof_datacard(dcfile, name, ntoys=0):
     cmd_gof.kwargs['--algo'] = 'saturated'
     cmd_gof.kwargs['--cminDefaultMinimizerStrategy'] = 0
     cmd_gof.kwargs['--snapshotName'] = 'MultiDimFit'
+    cmd_gof.args.add('--bypassFrequentistFit')
     cmd_gof.dc.filename = cmd_fit.outfile
     bsvj.run_combine_command(cmd_gof, outdir=outdir)
 
@@ -389,7 +390,6 @@ def fittoys():
     #    --rMin ${rMin}
     #    --rMax ${rMax}
     #    --savePredictionsPerToy
-    #    --bypassFrequentistFit
     #    --X-rtd MINIMIZER_MaxCalls=100000
     #    --setParameters $SetArgFitAll
     #    --freezeParameters $FrzArgFitAll
@@ -409,7 +409,6 @@ def fittoys():
         cmd.args.add('--toysFrequentist')
         cmd.args.add('--saveToys')
         cmd.args.add('--savePredictionsPerToy')
-        cmd.args.add('--bypassFrequentistFit')
         cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
 
         toysFile = bsvj.pull_arg('--toysFile', required=True, type=str).toysFile
@@ -441,7 +440,6 @@ def fithessian():
         cmd.args.add('--saveShapes')
         if '-t' in cmd.kwargs: cmd.args.add('--saveToys')
         cmd.kwargs['--X-rtd'] = ['REMOVE_CONSTANT_ZERO_POINT=1']
-        cmd.args.add('--bypassFrequentistFit')
         cmd.kwargs['--X-rtd'].append('MINIMIZER_MaxCalls=100000')
         if range: cmd.add_range('r', range[0], range[1])
 
