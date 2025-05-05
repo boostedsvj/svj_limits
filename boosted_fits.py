@@ -2343,6 +2343,7 @@ def fit_toys(cmd):
     cmd.args.add('--toysFrequentist')
     cmd.args.add('--saveToys')
     cmd.args.add('--savePredictionsPerToy')
+    cmd.args.add('--noPreFitValue')
     cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
 
     toysFile = pull_arg('--toysFile', required=True, type=str).toysFile

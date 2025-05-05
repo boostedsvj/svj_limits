@@ -409,6 +409,7 @@ def fittoys():
         cmd.args.add('--toysFrequentist')
         cmd.args.add('--saveToys')
         cmd.args.add('--savePredictionsPerToy')
+        cmd.args.add('--noPreFitValue')
         cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
 
         toysFile = bsvj.pull_arg('--toysFile', required=True, type=str).toysFile
@@ -438,6 +439,7 @@ def fithessian():
         cmd.kwargs.pop('--algo', None)
         cmd.args.add('--saveWorkspace')
         cmd.args.add('--saveShapes')
+        cmd.args.add('--noPreFitValue')
         if '-t' in cmd.kwargs: cmd.args.add('--saveToys')
         cmd.kwargs['--X-rtd'] = ['REMOVE_CONSTANT_ZERO_POINT=1']
         cmd.kwargs['--X-rtd'].append('MINIMIZER_MaxCalls=100000')
