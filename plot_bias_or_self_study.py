@@ -36,6 +36,8 @@ def main():
                         help="which signal injection type(s) to plot")
     parser.add_argument('--inj-value', type=float, default=None,
                         help="Set all injection values to a specific number for testing (e.g., 0.3)")
+    parser.add_argument('-s', '--seed', type=int, default=1001,
+                        help="toy seed")
     args = parser.parse_args()
 
     # Switch between bias and self test
@@ -66,7 +68,7 @@ def main():
     for inj_type in args.inj_types:
         inj_val = {mz: 0 for mz in args.mz} if inj_type==0 else inj
 
-        path = [f"{args.base_dir}/siginj{inj_type}{args.suff}/fitDiagnosticsObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.root" for mz in args.mz]
+        path = [f"{args.base_dir}/siginj{inj_type}{args.suff}/higgsCombineObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.FitDiagnostics.mH120.{args.seed}.root" for mz in args.mz]
 
         results[inj_type] = {"mean": [], "emean": [], "sigma": [], "esigma": []}
 
