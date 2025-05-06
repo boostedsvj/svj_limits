@@ -919,7 +919,7 @@ class InputData(object):
             region.fill_ws(self.ws, bkg_pdf)
         dump_ws_to_file(self.wsfile, self.ws)
 
-    def gen_datacard_rhalpha(self, npar=2, tf_from_mc=False, winners=None, **kwargs):
+    def gen_datacard_rhalpha(self, npar=2, tf_from_mc=False, basis='Bernstein', basis_mc='Bernstein', winners=None, **kwargs):
         import rhalphalib as rl
         rl.util.install_roofit_helpers()
 
@@ -949,7 +949,7 @@ class InputData(object):
                 failCh.setObservation(self.regions[1].bkg_th1, read_sumw2=True)
 
                 # transfer factor from polynomial fit
-                tf_mc = rl.BasisPoly("tf_mc", (npar_mc,), ["mt"])
+                tf_mc = rl.BasisPoly("tf_mc", (npar_mc,), ["mt"], basis=basis_mc)
                 tf_mc_params = bkg_eff * tf_mc(mtscaled)
                 bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
                 initial_bkg = failCh.getObservation()[0].astype(float)
@@ -1039,7 +1039,7 @@ class InputData(object):
         fail_bkg = rl.ParametericSample(joiner([bkg_name, self.regions[1].bin_suff]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
 
         # transfer factor from polynomial fit
-        tf_fit = rl.BasisPoly("tf_data", (npar,), ["mt"])
+        tf_fit = rl.BasisPoly("tf_data", (npar,), ["mt"], basis=basis)
         tf_params = tf_fit(mtscaled)
         if tf_from_mc:
             tf_params_final = bkg_eff * tf_mc_params_final * tf_params

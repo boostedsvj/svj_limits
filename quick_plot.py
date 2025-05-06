@@ -1031,10 +1031,10 @@ def get_objs(file_and_objs):
     else: return [f.Get(oname) for oname in fsplit[1:]]
 
 # common operations to evaluate tf fit
-def get_tf_fit(fitresult, tf_name, tf_th1, mtscaled, bkg_eff=1.0):
+def get_tf_fit(fitresult, tf_name, tf_th1, mtscaled, bkg_eff=1.0, basis='Bernstein'):
     import rhalphalib as rl
     npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])-1
-    tf_fn = rl.BasisPoly(tf_name, (npar,), ["mt"])
+    tf_fn = rl.BasisPoly(tf_name, (npar,), ["mt"], basis=basis)
     tf_fn.update_from_roofit(fitresult)
     tf_fn_vals, tf_fn_band = tf_fn(mtscaled, nominal=True, errorband=True)
     # multiply bkg_eff into final values
@@ -1090,6 +1090,8 @@ def bkgtf():
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.png').outfile
     fit_mc_file = bsvj.read_arg('--fit-mc', type=str, default=None).fit_mc
     fit_data_file = bsvj.read_arg('--fit-data', type=str, default=None).fit_data
+    basis = bsvj.pull_arg('--basis', default='Bernstein').basis
+    basis_mc = bsvj.pull_arg('--basis-mc', default='Bernstein').basis_mc
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
     verbose = bsvj.pull_arg('-v','--verbose', default=False, action="store_true").verbose
 
@@ -1113,7 +1115,7 @@ def bkgtf():
     fit_mc = None
     if fit_mc_file is not None:
         fitresult_mc = get_objs(fit_mc_file)
-        fit_mc = get_tf_fit(fitresult_mc, 'tf_mc', tf_mc['th1'], mt['scaled'], tf_mc['bkg_eff'])
+        fit_mc = get_tf_fit(fitresult_mc, 'tf_mc', tf_mc['th1'], mt['scaled'], tf_mc['bkg_eff'], basis=basis_mc)
         if verbose: print('fit_mc', fit_mc['tf_fn_vals'].tolist())
         if verbose: print('chi2_mc', fit_mc['chi2'], fit_mc['ndf'])
 
@@ -1180,7 +1182,7 @@ def bkgtf():
             tf_comb['th1'] = tf_data['th1'].Clone()
             tf_comb['arr'] = bsvj.th1_to_hist(tf_comb['th1'])
             if verbose: print('tf_comb_th1', tf_comb['arr']['vals'].tolist())
-            fit_comb = get_tf_fit(fitresult_data, 'tf_data', tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'])
+            fit_comb = get_tf_fit(fitresult_data, 'tf_data', tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'], basis=basis)
             if verbose: print('fit_comb', fit_comb['tf_fn_vals'].tolist())
             if verbose: print('chi2_comb', fit_comb['chi2'], fit_comb['ndf'])
             plot_tf(outfile, mt, tf_comb, fit_comb, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{comb}}}}$ ({regions[0]} / {regions[1]})', suff='comb', label="Data")
@@ -1199,7 +1201,7 @@ def bkgtf():
             suff_data = 'data'
 
         tf_data['arr'] = bsvj.th1_to_hist(tf_data['th1'])
-        fit_data = get_tf_fit(fitresult_data, 'tf_data', tf_data['th1'], mt['scaled'], tf_data['bkg_eff'])
+        fit_data = get_tf_fit(fitresult_data, 'tf_data', tf_data['th1'], mt['scaled'], tf_data['bkg_eff'], basis=basis)
         if verbose: print('fit_data', fit_data['tf_fn_vals'].tolist())
         if verbose: print('chi2_data', fit_data['chi2'], fit_data['ndf'])
 

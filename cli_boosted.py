@@ -159,6 +159,8 @@ def gen_datacards():
     brute = bsvj.pull_arg('--brute', default=False, action="store_true").brute
     npar = bsvj.pull_arg('--npar', type=int, default=2).npar
     tf_from_mc = bsvj.pull_arg('--tf-from-mc', default=False, action="store_true").tf_from_mc
+    basis = bsvj.pull_arg('--basis', default='Bernstein').basis
+    basis_mc = bsvj.pull_arg('--basis-mc', default='Bernstein').basis_mc
     suff = bsvj.pull_arg('--suff', type=str, default='').suff
     ftest = bsvj.pull_arg('--ftest', default=False, action="store_true").ftest
     ntoys = bsvj.read_arg('-t', type=int, default=0).t
@@ -178,7 +180,7 @@ def gen_datacards():
             npar_name = f'npar{npar}'
             npar_suff = bsvj.joiner([suff,npar_name])
         input = bsvj.InputData(regions, norm_type, **jsons, asimov=asimov_bkg)
-        dcfile = input.gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute, npar=npar, tf_from_mc=tf_from_mc, suff=npar_suff)
+        dcfile = input.gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute, npar=npar, tf_from_mc=tf_from_mc, basis=basis, basis_mc=basis_mc, suff=npar_suff)
         if ftest:
             result = {}
             # first use toys
