@@ -17,9 +17,10 @@ def obj_print(obj, parg):
             err = r.TMath.Sqrt(obj.weightSquared())
             fprint(f"  fSumw[{i}]={w}, error={err}")
 
-def main(filename, workspace, verbose):
+def main(filename, workspace, snapshot, verbose):
     file = r.TFile.Open(filename)
     ws = file.Get(workspace)
+    if snapshot: ws.loadSnapshot(snapshot)
     parg = "V" if verbose else ""
 
     ws.Print(parg)
@@ -35,7 +36,8 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", type=str, required=True, help="input filename")
     parser.add_argument("-w", "--workspace", type=str, required=True, help="input workspace name")
+    parser.add_argument("-s", "--snapshot", type=str, default=None, help="snapshot to load (if any)")
     parser.add_argument("-v", "--verbose", default=False, action="store_true", help="enable verbose printouts")
     args = parser.parse_args()
 
-    main(args.file, args.workspace, args.verbose)
+    main(args.file, args.workspace, args.snapshot, args.verbose)
