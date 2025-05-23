@@ -931,6 +931,16 @@ class InputData(object):
         mtscaled = (mtpts - min(mtpts))/(max(mtpts) - min(mtpts))
         rl_mt = rl.Observable(self.regions[1].mtvar.GetName(), self.regions[1].mt_array)
 
+        # different initializations
+        def make_init(npar, basis):
+            inits = None
+            if basis=='Bernstein':
+                inits = np.ones(npar+1)
+            elif basis=='Chebyshev':
+                inits = np.zeros(npar+1)
+                inits[0] = 1
+            return inits
+
         # option to compute initial TF params from MC
         if tf_from_mc:
             bkgmodels = []
@@ -949,7 +959,7 @@ class InputData(object):
                 failCh.setObservation(self.regions[1].bkg_th1, read_sumw2=True)
 
                 # transfer factor from polynomial fit
-                tf_mc = rl.BasisPoly("tf_mc", (npar_mc,), ["mt"], basis=basis_mc)
+                tf_mc = rl.BasisPoly("tf_mc", (npar_mc,), ["mt"], basis=basis_mc, init_params=make_init(npar_mc,basis_mc))
                 tf_mc_params = bkg_eff * tf_mc(mtscaled)
                 bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
                 initial_bkg = failCh.getObservation()[0].astype(float)
@@ -1039,7 +1049,7 @@ class InputData(object):
         fail_bkg = rl.ParametericSample(joiner([bkg_name, self.regions[1].bin_suff]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
 
         # transfer factor from polynomial fit
-        tf_fit = rl.BasisPoly("tf_data", (npar,), ["mt"], basis=basis)
+        tf_fit = rl.BasisPoly("tf_data", (npar,), ["mt"], basis=basis, init_params=make_init(npar,basis))
         tf_params = tf_fit(mtscaled)
         if tf_from_mc:
             tf_params_final = bkg_eff * tf_mc_params_final * tf_params
