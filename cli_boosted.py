@@ -206,6 +206,9 @@ def gen_datacards():
         for wfile in wfiles:
             # leave intermediate f-test files for backup folder
             if osp.basename(wfile).startswith('higgsCombine'): continue
+            # edit workspace location
+            if wfile.endswith('.txt'):
+                bsvj.pysed(wfile,wfile,[(npar_suff,'')])
             shutil.move(wfile, wfile.replace(npar_suff,''))
         # put others into a backup folder
         bakdir = osp.join(outdir,'ftest')

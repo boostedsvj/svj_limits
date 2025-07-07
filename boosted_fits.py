@@ -178,6 +178,18 @@ def joiner(coll, delim='_'):
     return delim.join(filter(None,coll))
 
 
+def pysed(fin,fout,patterns,regex=False):
+    import re
+    with open(fin,'r') as infile:
+        lines = infile.readlines()
+    with open(fout,'w') as outfile:
+        for line in lines:
+            linetmp = line
+            for pattern,replace in patterns:
+                linetmp = re.sub(pattern,replace,linetmp) if regex else linetmp.replace(str(pattern),str(replace))
+            outfile.write(linetmp)
+
+
 # _______________________________________________________________________
 # JSON Input interface
 
