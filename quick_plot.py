@@ -69,7 +69,7 @@ def quick_ax(figsize=(12,12), outfile='test.png'):
         if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
 
 
-def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):
+def name_from_combine_rootfile(rootfile, strip_obs_asimov=False, sel=True):
     param_tex = {
         'mz': r'm_{\mathrm{Z}^{\prime}}',
         'mdark': r'm_{\mathrm{dark}}',
@@ -87,6 +87,10 @@ def name_from_combine_rootfile(rootfile, strip_obs_asimov=False):
         if strip_obs_asimov:
             name = name.replace('Observed_','').replace('Asimov_','')
         name = name.replace('.MultiDimFit','')
+
+    if sel:
+        match = re.search(r'sel-([^_]*_ddt|[^_]*)', rootfile)
+        if match: name = name+'\n'+match.group(1)
     return name
 
 def namespace_to_attrdict(args):
@@ -615,7 +619,7 @@ def mtdist():
         ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
         # do not check range
 
-    if title is None: title = name_from_combine_rootfile(rootfile)
+    if title is None: title = name_from_combine_rootfile(rootfile, sel=True)
     leg = ax.legend(framealpha=0.0, fontsize=22, title=title, ncol=1 if only_sig else 2)
     leg._legend_box.align = "left"
     ax.set_ylabel('$N_{\mathrm{events}}$')
@@ -1049,7 +1053,7 @@ def rreplace(s, old, new, count=1):
     return (s[::-1].replace(old[::-1], new[::-1], count))[::-1]
 
 # plot a given tf and (optional) fit
-def plot_tf(outfile, mt, tf, fit=None, label="MC", ylabel="TF", suff=""):
+def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff=""):
     if suff:
         outfile = rreplace(outfile,'.',f'_{suff}.',1)
 
@@ -1068,7 +1072,9 @@ def plot_tf(outfile, mt, tf, fit=None, label="MC", ylabel="TF", suff=""):
         pcolor = next(colors)
         ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"fit ($\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
         ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
-        ax.legend(fontsize=18, framealpha=0.0)
+        leg_args = {'fontsize': 18, 'framealpha': 0.0}
+        if title: leg_args['title'] = title
+        ax.legend(**leg_args)
         # pulls in lower panel
         pulls = (tf['arr']['vals'] - fit['tf_fn_vals']) / tf['arr']['errs']
         ax2.plot(mt['range'], [0.,0.], c='gray')
@@ -1096,6 +1102,7 @@ def bkgtf():
     verbose = bsvj.pull_arg('-v','--verbose', default=False, action="store_true").verbose
 
     # input histograms always required: used to get x-axis
+    title = name_from_combine_rootfile(jsons['sigfiles'][0])
     input = bsvj.InputData(regions, "rhalpha", **jsons, asimov=asimov)
     mt = {}
     mt['pts'] = input.mt_array[:-1] + 0.5*np.diff(input.mt_array)
@@ -1120,7 +1127,7 @@ def bkgtf():
         if verbose: print('chi2_mc', fit_mc['chi2'], fit_mc['ndf'])
 
     # plot TF from MC
-    plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{MC}}$ ({regions[0]} / {regions[1]})', suff='mc')
+    plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mc', title=title)
 
     # TF from data: everything comes from postfit file
     fit_data = None
@@ -1185,7 +1192,7 @@ def bkgtf():
             fit_comb = get_tf_fit(fitresult_data, 'tf_data', tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'], basis=basis)
             if verbose: print('fit_comb', fit_comb['tf_fn_vals'].tolist())
             if verbose: print('chi2_comb', fit_comb['chi2'], fit_comb['ndf'])
-            plot_tf(outfile, mt, tf_comb, fit_comb, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{comb}}}}$ ({regions[0]} / {regions[1]})', suff='comb', label="Data")
+            plot_tf(outfile, mt, tf_comb, fit_comb, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{comb}}}}$ ({regions[0]} / {regions[1]})', suff='comb', label="Data", title=title)
 
             # divide out values
             for i in range(tf_data['th1'].GetNbinsX()):
@@ -1206,7 +1213,7 @@ def bkgtf():
         if verbose: print('chi2_data', fit_data['chi2'], fit_data['ndf'])
 
         escape = lambda x: x.replace('_','\\_')
-        plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{escape(suff_data)}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label="Data")
+        plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{escape(suff_data)}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label="Data", title=title)
 
     # todo:
     # postfit MC-only TF w/ uncertainties
