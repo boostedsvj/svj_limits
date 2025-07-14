@@ -1070,7 +1070,7 @@ def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff="
     xlabel = r'$m_{\mathrm{T}}$ [GeV]'
     if fit is not None:
         pcolor = next(colors)
-        ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"fit ($\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
+        ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"fit ($\\mathrm{{n}} = {fit['npar']+1}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
         ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
         leg_args = {'fontsize': 18, 'framealpha': 0.0}
         if title: leg_args['title'] = title
