@@ -1791,7 +1791,7 @@ def compute_fisher_toys(gof1, gof2, n1, n2, n_bins):
     return cl
 
 
-def do_fisher_test(results, n_bins, a_crit=.07, toys=False):
+def do_fisher_test(results, n_bins, a_crit=.05, toys=False):
     """
     Does a Fisher test. First computes the cl_vals for all combinations
     of pdfs, then picks the winner.
