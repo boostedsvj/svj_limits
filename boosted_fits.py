@@ -591,6 +591,10 @@ def get_tf_chi2(tf_th1, tf_vals):
     return(chi2)
 
 
+def datahist_from_toy(toy, bin, name):
+	return toy.reduce(f"CMS_channel==CMS_channel::{bin}").binnedClone(name)
+
+
 class InputRegion(object):
     """
     Keeps all the histograms for a specific region.
@@ -606,6 +610,13 @@ class InputRegion(object):
         self.norm_type = norm_type
         self.asimov = asimov
 
+        def get_toy(file, toyname, obj):
+            f = ROOT.TFile.Open(getattr(self,file))
+            toy = f.Get(f"toys/{toyname}")
+            setattr(self, obj, toy)
+            f.Close()
+
+        toy_data = False
         for file in ['sigfile','bkgfile','datafile']:
             setattr(self, file, kwargs.pop(file))
             obj = file.replace('file','')
@@ -613,10 +624,12 @@ class InputRegion(object):
                 setattr(self, obj, None)
             else:
                 if file=='bkgfile' and self.asimov:
-                    f = ROOT.TFile.Open(getattr(self,file))
-                    atoy = f.Get("toys/toy_asimov")
-                    setattr(self, obj, atoy)
-                    f.Close()
+                    get_toy(file, "toy_asimov", obj)
+                    continue
+                elif file=='datafile' and getattr(self,file).endswith('.root'):
+                    # ROOT file -> not json -> assume toy
+                    get_toy(file, "toy_1", obj)
+                    toy_data = True
                     continue
                 with open(getattr(self,file), 'r') as f:
                     d = json.load(f, cls=Decoder)
@@ -645,18 +658,21 @@ class InputRegion(object):
 
         if self.asimov:
             # todo: handle rebinning here
-            self.data_datahist = self.bkg.binnedClone("data_obs")
+            self.data_datahist = datahist_from_toy(self.bkg, self.bin_name, "data_obs")
             self.bkg_th1 = self.data_datahist.createHistogram("mt")
             # RooFit sets err = w when creating weighted histograms
             for i in range(self.bkg_th1.GetNbinsX()):
                 self.bkg_th1.SetBinError(i+1,PoissonErrorUp(self.bkg_th1.GetBinContent(i+1)))
         else:
             self.bkg_th1 = self.bkg['bkg'].th1('bkg', rebin, mtname)
-            if self.data is not None:
-                self.data_th1 = self.data['data'].th1('data', rebin, mtname)
+            if toy_data:
+                self.data_datahist = datahist_from_toy(self.data, self.bin_name, "data_obs")
             else:
-                self.data_th1 = self.bkg_th1
-            self.data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(self.mtvar), self.data_th1, 1.)
+                if self.data is not None:
+                    self.data_th1 = self.data['data'].th1('data', rebin, mtname)
+                else:
+                    self.data_th1 = self.bkg_th1
+                self.data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(self.mtvar), self.data_th1, 1.)
         self.bkg_datahist = ROOT.RooDataHist("bkg", "bkg", ROOT.RooArgList(self.mtvar), self.bkg_th1, 1.)
 
         # setup signal histograms
