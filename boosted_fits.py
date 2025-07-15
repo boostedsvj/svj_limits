@@ -346,7 +346,7 @@ class Decoder(json.JSONDecoder):
 def choices(val):
     choices = {
         'gof': ['chi2','rss'],
-        'norm': ['free','theta','gauss','crtf','rhalpha'],
+        'norm': ['free','theta','gauss','crtf','crsimple','rhalpha'],
     }
     return choices[val]
 
@@ -546,7 +546,7 @@ def make_norm(norm_type, name, index):
         norm_theta = ROOT.RooRealVar(name+'_theta', "Extra component", 0.01, -100., 100.)
         norm = ROOT.RooFormulaVar(name+'_norm', "1+0.01*@0", ROOT.RooArgList(norm_theta))
         norm_objs.extend([norm_theta, norm])
-    elif norm_type=="rhalpha":
+    elif norm_type=="crsimple" or norm_type=="rhalpha":
         pass
     else:
         raise ValueError(f"Unknown norm type {norm_type}")
@@ -775,7 +775,7 @@ class InputRegion(object):
             unc_pred_SR = tf*np.sqrt(yield_obs_CR)/yield_obs_CR
 
             dc.rates[self.bin_name][self.bkg_name] = yield_pred_SR
-        elif self.norm_type=="crtf":
+        elif self.norm_type=="crtf" or self.norm_type=="crsimple":
             # bkg rates taken from MC in TF mode
             # shared rateParam implicitly computes/fits TF from SR/CR
             dc.rates[self.bin_name][self.bkg_name] = self.bkg_datahist.sumEntries()
@@ -864,7 +864,7 @@ class InputData(object):
 
     def gen_datacard(self, **kwargs):
         # safety check to avoid unimplemented cases
-        if len(self.regions)>1 and self.norm_type not in ["crtf", "rhalpha"]:
+        if len(self.regions)>1 and self.norm_type not in ["crtf", "crsimple", "rhalpha"]:
             raise ValueError(f"Norm type {self.norm_type} not supported for multiple region input")
 
         # common settings
@@ -887,6 +887,8 @@ class InputData(object):
 
         if self.norm_type=="rhalpha":
             self.gen_datacard_rhalpha(**kwargs)
+        elif self.norm_type=="crsimple":
+            self.gen_datacard_simple(**kwargs)
         else:
             self.gen_datacard_bkgfit(**kwargs)
 
@@ -902,6 +904,11 @@ class InputData(object):
         with open(outfile, 'w') as f:
             f.write(txt)
         return outfile
+
+    def gen_datacard_simple(self, **kwargs):
+        for region in self.regions:
+            region.fill_ws(self.ws, None)
+        dump_ws_to_file(self.wsfile, self.ws)
 
     def gen_datacard_bkgfit(self, use_cache=True, fit_cache_lock=None, gof_type='rss', winners=None, brute=False, **kwargs):
         pdfs_dict = {pdf : make_pdf(pdf, self.regions[0].mtvar, self.regions[0].bkg_th1) for pdf in known_pdfs()}
