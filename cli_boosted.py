@@ -164,6 +164,7 @@ def gen_datacards():
     suff = bsvj.pull_arg('--suff', type=str, default='').suff
     ftest = bsvj.pull_arg('--ftest', default=False, action="store_true").ftest
     ntoys = bsvj.read_arg('-t', type=int, default=0).t
+    verbose = bsvj.pull_arg('--verbose', default=False, action="store_true").verbose
 
     # use npar arg as max value in saturated gof f-test
     if ftest:
@@ -180,7 +181,7 @@ def gen_datacards():
             npar_name = f'npar{npar}'
             npar_suff = bsvj.joiner([suff,npar_name])
         input = bsvj.InputData(regions, norm_type, **jsons, asimov=asimov_bkg)
-        dcfile = input.gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute, npar=npar, tf_from_mc=tf_from_mc, basis=basis, basis_mc=basis_mc, suff=npar_suff)
+        dcfile = input.gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute, npar=npar, tf_from_mc=tf_from_mc, basis=basis, basis_mc=basis_mc, suff=npar_suff, verbose=verbose)
         if ftest:
             result = {}
             # first use toys

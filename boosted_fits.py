@@ -884,6 +884,7 @@ class InputData(object):
             raise ValueError(f"Norm type {self.norm_type} not supported for multiple region input")
 
         # common settings
+        verbose = kwargs.pop('verbose', False)
         sufftext = ""
         nosyst = kwargs.pop('nosyst', False)
         if nosyst:
@@ -915,7 +916,7 @@ class InputData(object):
 
         txt = parse_dc(dc)
         outfile = self.wsfile.replace(".root",".txt")
-        logger.info('txt datacard:\n%s', txt)
+        if verbose: logger.info('txt datacard:\n%s', txt)
         logger.info('Dumping txt to ' + outfile)
         with open(outfile, 'w') as f:
             f.write(txt)
