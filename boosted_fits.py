@@ -591,8 +591,11 @@ def get_tf_chi2(tf_th1, tf_vals):
     return(chi2)
 
 
-def datahist_from_toy(toy, bin, name):
-	return toy.reduce(f"CMS_channel==CMS_channel::{bin}").binnedClone(name)
+def datahist_from_toy(toy, bin, name, vars=None):
+    reduced = toy.reduce(f"CMS_channel==CMS_channel::{bin}")
+    if vars:
+        reduced = reduced.reduce(ROOT.RooArgList(vars))
+    return reduced.binnedClone(name)
 
 
 class InputRegion(object):
@@ -666,7 +669,7 @@ class InputRegion(object):
         else:
             self.bkg_th1 = self.bkg['bkg'].th1('bkg', rebin, mtname)
             if toy_data:
-                self.data_datahist = datahist_from_toy(self.data, self.bin_name, "data_obs")
+                self.data_datahist = datahist_from_toy(self.data, self.bin_name, "data_obs", self.mtvar)
             else:
                 if self.data is not None:
                     self.data_th1 = self.data['data'].th1('data', rebin, mtname)
@@ -2628,7 +2631,7 @@ def binning_from_roorealvar(x):
     return np.array(binning)
 
 
-def roodataset_values(data, varname='mt', channel=None):
+def roodataset_values(data, varname='mt', channel=None, vars=None):
     """
     Works on both RooDataHist and RooDataSet!
     """
@@ -2637,6 +2640,8 @@ def roodataset_values(data, varname='mt', channel=None):
     dy = []
     if channel is not None:
         data = data.reduce(f"CMS_channel==CMS_channel::{channel}")
+    if vars is not None:
+        data = data.reduce(ROOT.RooArgList(vars))
     for i in range(data.numEntries()):
         s = data.get(i)
         x.append(s[varname].getVal())
