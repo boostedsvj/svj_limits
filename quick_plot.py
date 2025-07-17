@@ -1100,6 +1100,7 @@ def bkgtf():
     basis_mc = bsvj.pull_arg('--basis-mc', default='Bernstein').basis_mc
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
     verbose = bsvj.pull_arg('-v','--verbose', default=False, action="store_true").verbose
+    closure = bsvj.pull_arg('--closure', default=False, action="store_true").closure
 
     # input histograms always required: used to get x-axis
     title = name_from_combine_rootfile(jsons['sigfiles'][0])
@@ -1133,24 +1134,50 @@ def bkgtf():
     fit_data = None
     if fit_data_file is not None:
         fitresult_data, ws_data = get_objs(fit_data_file)
-        # postfit bkg shapes from workspace, based on mtdist()
+        # postfit shapes from workspace, based on mtdist()
         snapshot = 'MultiDimFit'
         if 'FitDiagnostics' in fit_data_file: snapshot = 'fit_s'
         ws_data.loadSnapshot(snapshot)
         postfit_regions = []
-        for channel in ['bsvj','bsvjCR1']:
-            bkg_name_shape = f'shapeBkg_bkg_{channel}'
-            bkg_name_norm = f'n_exp_final_bin{channel}_proc_bkg'
-            bkg_pdf = ws_data.pdf(bkg_name_shape)
-            bkg_norm = ws_data.function(bkg_name_norm).getVal()
-            bkg_hist = {
-                'vals': bkg_norm * bsvj.pdf_values(bkg_pdf, mt['pts']),
-                'errs': bkg_norm * bsvj.pdf_errors(bkg_pdf, fitresult_data, mt['pts']),
-                'binning': input.mt_array,
-                'metadata': {},
-            }
-            bkg_th1 = bsvj.Histogram(bkg_hist).th1(channel)
-            postfit_regions.append(bkg_th1)
+        for region in input.regions:
+            channel = region.bin_name
+            if closure:
+                # closure/sanity check: postfit bkg ratio should be exactly equal to TF by construction
+                bkg_name_shape = f'shapeBkg_bkg_{channel}'
+                bkg_name_norm = f'n_exp_final_bin{channel}_proc_bkg'
+                bkg_pdf = ws_data.pdf(bkg_name_shape)
+                bkg_norm = ws_data.function(bkg_name_norm).getVal()
+                bkg_hist = {
+                    'vals': bkg_norm * bsvj.pdf_values(bkg_pdf, mt['pts']),
+                    'errs': bkg_norm * bsvj.pdf_errors(bkg_pdf, fitresult_data, mt['pts']),
+                    'binning': input.mt_array,
+                    'metadata': {},
+                }
+                bkg_th1 = bsvj.Histogram(bkg_hist).th1(channel)
+                postfit_regions.append(bkg_th1)
+            else:
+                # data - r*sig
+                data_set = ws_data.data('data_obs')
+                data_values = bsvj.roodataset_values(data_set,channel=channel,vars=region.mtvar)
+                data_th1 = bsvj.Histogram({
+                    'vals': data_values[1],
+                    'errs': [bsvj.PoissonErrorUp(v) for v in data_values[1]], # not automatically populated in roodataset
+                    'binning': input.mt_array,
+                    'metadata': {}
+                }).th1(f'data_{channel}')
+                sig_name_shape = f'shapeSig_{channel}_sig_morph'
+                sig_name_norm_final = f'n_exp_final_bin{channel}_proc_sig'
+                mu = ws_data.var('r').getVal()
+                sig_pdf = ws_data.pdf(sig_name_shape)
+                sig_norm = ws_data.function(sig_name_norm_final).getVal()
+                sig_th1 = bsvj.Histogram({
+                    'vals': sig_norm * bsvj.pdf_values(sig_pdf, mt['pts']),
+                    'errs': sig_norm * bsvj.pdf_errors(sig_pdf, fitresult_data, mt['pts']), # returns 0, so errors not propagated
+                    'binning': input.mt_array,
+                    'metadata': {},
+                }).th1(f'sig_{channel}')
+                data_th1.Add(sig_th1,-1)
+                postfit_regions.append(data_th1)
         tf_data = {}
         tf_data['bkg_eff'] = postfit_regions[0].Integral() / postfit_regions[1].Integral()
         if verbose: print('data_bkg_eff', tf_data['bkg_eff'])
@@ -1207,13 +1234,14 @@ def bkgtf():
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
             suff_data = 'data'
 
+        label_data = r"$B_{\mathrm{fit}}" if closure else "$\mathrm{Data} - S_{\mathrm{fit}}$ "+"($\mu_{{\mathrm{{fit}}}}={0:.2f}$)".format(mu)
         tf_data['arr'] = bsvj.th1_to_hist(tf_data['th1'])
         fit_data = get_tf_fit(fitresult_data, 'tf_data', tf_data['th1'], mt['scaled'], tf_data['bkg_eff'], basis=basis)
         if verbose: print('fit_data', fit_data['tf_fn_vals'].tolist())
         if verbose: print('chi2_data', fit_data['chi2'], fit_data['ndf'])
 
         escape = lambda x: x.replace('_','\\_')
-        plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{escape(suff_data)}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label="Data", title=title)
+        plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{escape(suff_data)}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label=label_data, title=title)
 
     # todo:
     # postfit MC-only TF w/ uncertainties
