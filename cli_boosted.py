@@ -174,8 +174,13 @@ def gen_datacards():
     else:
         npar_vals = [npar]
 
-    results = []
-    for npar in npar_vals:
+    # per-npar-value results
+    results_npar = {}
+    # n-1 vs. n comparison results (toy case)
+    # format: results[(i,j)] = ((n1,gof1),(n2,gof2))
+    # non-toy case: gof result for each n
+    results = {} if ntoys>0 else []
+    for ipar,npar in enumerate(npar_vals):
         npar_suff = suff
         if ftest:
             npar_name = f'npar{npar}'
@@ -183,22 +188,48 @@ def gen_datacards():
         input = bsvj.InputData(regions, norm_type, **jsons, asimov=asimov_bkg)
         dcfile = input.gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute, npar=npar, tf_from_mc=tf_from_mc, basis=basis, basis_mc=basis_mc, suff=npar_suff, verbose=verbose)
         if ftest:
-            result = {}
-            # first use toys
-            if ntoys>0:
-                gof_file = gof_datacard(dcfile, npar_name, ntoys)
-                result['toys'] = collect_gof(gof_file)
-            # now use data
+            # following sequence based on https://github.com/andrzejnovak/higgstocharm/blob/master/custom.py
+
+            # per-npar-value operations
+            result_npar = {}
+            result_npar['dc'] = dcfile
+            # remove toy arg for fit to data
             with bsvj.reset_sys_argv():
                 bsvj.pull_arg('-t', type=int)
-                gof_data = gof_datacard(dcfile, npar_name)
-                result['data'] = collect_gof(gof_data)
-                if ntoys==0: result = result['data'][0]
-            results.append((npar+1, result))
+                cmd, outdir = cmd_datacard(dcfile)
+                result_npar['bf'] = bf_datacard(cmd,outdir)
+                goffile = gof_datacard(cmd,outdir,result_npar['bf'])
+                result_npar['gof'] = collect_gof(goffile)
+            results_npar[npar] = result_npar
+
+            # n-1 vs. n comparisons
+            if ntoys>0:
+                if ipar==0: continue
+                # generate toys from n-1
+                cmd1, outdir1 = cmd_datacard(results_npar[npar-1]['dc'])
+                # remake command including -t arg
+                cmd, outdir = cmd_datacard(dcfile)
+                toyfile = toy_datacard(cmd1,outdir1,ntoys)
+                # fit toys to n-1 and n
+                gof1file = gof_datacard(cmd1,outdir1,results_npar[npar-1]['bf'],toyfile)
+                gof1 = {
+                    'toys': collect_gof(gof1file),
+                    'data': results_npar[npar-1]['gof']
+                }
+                gof2file = gof_datacard(cmd,outdir,result_npar['bf'],toyfile)
+                gof2 = {
+                    'toys': collect_gof(gof2file),
+                    'data': result_npar['gof'],
+                }
+                results[(ipar-1,ipar)] = ((npar, gof1), (npar+1, gof2))
+            else:
+                results.append((npar+1, result_npar['gof'][0]))
 
     # conduct ftest
     # todo: allow reusing existing result (--cache arg? or --npar -1?)
     if ftest:
+        if ntoys==0:
+            bsvj.logger.warning("F-test w/o toys may not be accurate")
         i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=ntoys>0)
         # assign i_winner as the "main" datacard
         outdir = osp.dirname(dcfile)
@@ -223,8 +254,7 @@ def gen_datacards():
             resfile.write("results = "+repr(results)+"\n")
 
 
-# to compute GoF statistic on datacard
-def gof_datacard(dcfile, name, ntoys=0):
+def cmd_datacard(dcfile):
     # setup base command
     outdir = osp.dirname(dcfile)
     dc = bsvj.Datacard.from_txt(dcfile)
@@ -232,31 +262,43 @@ def gof_datacard(dcfile, name, ntoys=0):
     cmd.configure_from_command_line()
     cmd.name += osp.basename(dc.filename).replace('.txt','')
 
-    # following sequence based on https://github.com/andrzejnovak/higgstocharm/blob/master/custom.py
+    return cmd, outdir
 
-    if ntoys!=0:
-        # run GenerateOnly
-        cmd_gen = bsvj.gen_toys(cmd)
-        bsvj.run_combine_command(cmd_gen, outdir=outdir)
-        cmd.kwargs['--toysFile'] = cmd_gen.outfile
 
+def bf_datacard(cmd, outdir):
     # run bestfit
     cmd_fit = bsvj.bestfit(cmd)
     cmd_fit.kwargs['--cminDefaultMinimizerStrategy'] = 0
     cmd_fit.kwargs['--robustFit'] = 1
     bsvj.run_combine_command(cmd_fit, outdir=outdir)
 
+    return cmd_fit.outfile
+
+
+# to compute GoF statistic on datacard
+def gof_datacard(cmd, outdir, bffile, toyfile=None):
     # run saturated gof
     cmd_gof = cmd.copy()
+    # use toys if provided
+    if toyfile:
+        cmd_gof.kwargs['--toysFile'] = toyfile
     cmd_gof.method = 'GoodnessOfFit'
     cmd_gof.kwargs['--algo'] = 'saturated'
     cmd_gof.kwargs['--cminDefaultMinimizerStrategy'] = 0
     cmd_gof.kwargs['--snapshotName'] = 'MultiDimFit'
     cmd_gof.args.add('--bypassFrequentistFit')
-    cmd_gof.dc.filename = cmd_fit.outfile
+    cmd_gof.dc.filename = bffile
     bsvj.run_combine_command(cmd_gof, outdir=outdir)
 
     return cmd_gof.outfile
+
+
+def toy_datacard(cmd, outdir, ntoys):
+    # run GenerateOnly
+    cmd_gen = bsvj.gen_toys(cmd)
+    bsvj.run_combine_command(cmd_gen, outdir=outdir)
+
+    return cmd_gen.outfile
 
 
 # to process outputs from above for fisher test

@@ -1818,6 +1818,36 @@ def compute_fisher_toys(gof1, gof2, n1, n2, n_bins):
     return cl
 
 
+def extract_results(results,i,j):
+    return {"n1": results[i][0], "n2": results[j][0], "gof1": results[i][1], "gof2": results[j][1]}
+
+
+def extract_results_toys(results,i,j):
+    key = (i,j)
+    return {"n1": results[key][0][0], "n2": results[key][1][0], "gof1": results[key][0][1], "gof2": results[key][1][1]}
+
+
+def range_toys(results):
+    range_i = set()
+    range_j = set()
+    for key in results.keys():
+        range_i.add(key[0])
+        range_j.add(key[1])
+    range_max = max(range_i | range_j)+1
+    return list(sorted(range_i)), list(sorted(range_j)), range_max
+
+
+def get_npar(results,i):
+    return results[i][0]
+
+
+def get_npar_toys(results,i):
+    for key,val in results.items():
+        if key[0]==i: return val[0][0]
+        elif key[1]==i: return val[1][0]
+    raise ValueError(f"Instance {i} not found in results")
+
+
 def do_fisher_test(results, n_bins, a_crit=.05, toys=False):
     """
     Does a Fisher test. First computes the cl_vals for all combinations
@@ -1827,21 +1857,35 @@ def do_fisher_test(results, n_bins, a_crit=.05, toys=False):
     """
     # Compute test values of all combinations beforehand
     cl_func = compute_fisher
-    if toys: cl_func = compute_fisher_toys
+    extract_func = extract_results
+    npar_func = get_npar
+    range_max = len(results)
+    range_i = list(range(range_max-1))
+    range_j = lambda i: list(range(i+1, range_max))
+    if toys:
+        cl_func = compute_fisher_toys
+        extract_func = extract_results_toys
+        npar_func = get_npar_toys
+        range_i, range_j_actual, range_max = range_toys(results)
+        range_j = lambda i : range_j_actual
     cl_vals = {}
-    for i in range(len(results)-1):
-        for j in range(i+1, len(results)):
-            n1 = results[i][0]
-            n2 = results[j][0]
-            gof1 = results[i][1]
-            gof2 = results[j][1]
-            cl_vals[(i,j)] = cl_func(gof1, gof2, n1, n2, n_bins)
+    for i in range_i:
+        for j in range_j(i):
+            key = (i,j)
+            # toy-based version does not always compare all combinations
+            if toys and not key in results: continue
+            results_dict = extract_func(results,i,j)
+            cl_vals[key] = cl_func(results_dict["gof1"], results_dict["gof2"], results_dict["n1"], results_dict["n2"], n_bins)
 
     def get_winner(i, j):
         if i >= j: raise Exception('i must be smaller than j')
-        a_test = cl_vals[(i,j)]
-        n_pars_i = results[i][0]
-        n_pars_j = results[j][0]
+        key = (i,j)
+        # assume i is previous winner and was not compared to j
+        if toys and not key in cl_vals: return i
+        a_test = cl_vals[key]
+        results_dict = extract_func(results,i,j)
+        n_pars_i = results_dict["n1"]
+        n_pars_j = results_dict["n2"]
         if a_test > a_crit:
             # Null hypothesis is that the higher n_par j is not significantly better.
             # Null hypothesis is not rejected
@@ -1860,20 +1904,23 @@ def do_fisher_test(results, n_bins, a_crit=.05, toys=False):
                 )
             return j
 
-    # get_winner = lambda i, j: i if cl_vals[(i,j)] > a_crit else j
-
     logger.info('Running F-test')
-    winner = get_winner(0,1)
-    for i in range(2,len(results)):
-        winner = get_winner(winner, i)
-    logger.info(f'Winner is pdf {winner} with {results[winner][0]} parameters')
+    winner = range_i[0]
+    for j in range_j(winner):
+        winner = get_winner(winner, j)
+    logger.info(f'Winner is pdf {winner} with {npar_func(results,winner)} parameters')
 
     # Print the table
-    table = [[''] + [f'{r[0]}' for r in results[1:]]]
-    for i in range(len(results)-1):
-        a_test_vals = [f'{results[i][0]}'] + ['' for _ in range(len(results)-1)]
-        for j in range(i+1, len(results)):
-            a_test_vals[j] = f'{cl_vals[(i,j)]:9.7f}'
+    table = [[''] + [f'{npar_func(results,r)}' for r in range_j(range_i[0])]]
+    for i in range_i:
+        a_test_vals = None
+        for j in range_j(i):
+            key = (i,j)
+            if toys and not key in results: continue
+            if a_test_vals is None:
+                results_dict = extract_func(results,i,j)
+                a_test_vals = [f'{results_dict["n1"]}'] + ['' for _ in range(range_max-1)]
+            a_test_vals[j] = f'{cl_vals[key]:9.7f}'
         table.append(a_test_vals)
     logger.info('alpha_test values of pdf i vs j:\n' + tabelize(table))
 
