@@ -25,14 +25,14 @@ if __name__=="__main__":
     )
     subparsers = parser.add_subparsers()
 
-    p_hessian = subparsers.add_parser('hessian')
+    p_hessian = subparsers.add_parser('hessian', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p_hessian.add_argument("-w", "--workspace", metavar="ROOTFILE:WORKSPACE", help="Workspace to load", required=True)
     p_hessian.add_argument("-f", "--fit", metavar="ROOTFILE:FIT_NAME", help="Fit result to load", required=True)
     p_hessian.add_argument("-m", "--model", help="Model to load", default="ModelConfig")
     p_hessian.add_argument("-p", "--prefix", help="Prefix for parameter names", default="bsvj")
     p_hessian.set_defaults(mode='hessian')
 
-    p_cov = subparsers.add_parser('cov')
+    p_cov = subparsers.add_parser('cov', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p_cov.add_argument("-t", "--tree", metavar="ROOTFILE:TREE_NAME", help="Tree to load", required=True)
     p_cov.add_argument("-p", "--parameters", nargs='+', help="Parameters to use", required=True)
     p_cov.set_defaults(mode='cov')
