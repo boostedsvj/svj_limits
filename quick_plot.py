@@ -89,7 +89,7 @@ def name_from_combine_rootfile(rootfile, strip_obs_asimov=False, sel=True):
         name = name.replace('.MultiDimFit','')
 
     if sel:
-        match = re.search(r'sel-([^_]*_ddt|[^_]*)', rootfile)
+        match = re.search(r'sel-([^_]*_ddt[0-9=.]*|[^_]*)', rootfile)
         if match: name = name+'\n'+match.group(1)
     return name
 
@@ -433,6 +433,7 @@ def mtdist():
     bkg_names = bsvj.pull_arg('--bkg', type=str, default=['roomultipdf','bkg'], nargs='*').bkg
     sig_name = bsvj.pull_arg('--sig', type=str, default='sig').sig
     ch_name = bsvj.pull_arg('--channel', type=str, default='bsvj').channel
+    sel_name = bsvj.pull_arg('--sel', type=str, default=None).sel
     title = bsvj.pull_arg('--title', type=str, default=None).title
     show_chi2 = bsvj.pull_arg('--chi2', action='store_true').chi2
 
@@ -619,7 +620,9 @@ def mtdist():
         ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
         # do not check range
 
-    if title is None: title = name_from_combine_rootfile(rootfile, sel=True)
+    if title is None:
+        title = name_from_combine_rootfile(rootfile, sel=(sel_name is None))
+        if sel_name: title = '\n'.join([title,sel_name])
     leg = ax.legend(framealpha=0.0, fontsize=22, title=title, ncol=1 if only_sig else 2)
     leg._legend_box.align = "left"
     ax.set_ylabel('$N_{\mathrm{events}}$')

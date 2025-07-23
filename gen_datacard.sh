@@ -167,8 +167,11 @@ if [ "$skip_diagnostics" == false ]; then
     python3 quick_plot.py bkgtf ${region_args2} -o ${dc_dir}/tf_${signame_dc}.png --fit-data ${bf_file}:fit_mdf:w ${tf_mc:+--fit-mc ${dc_dir}/bkgfit_${signame_dc}.root:bkgfit}
 
     # postfit
-    for channel in bsvj bsvjCR1; do
-        python3 quick_plot.py mtdist ${bf_file} --channel ${channel} --outfile ${bf_dir}/bestfit_${channel}_${signame_dc}.png
+    declare -A channels
+    channels[${sel}]=bsvj
+    channels[${antisel}]=bsvjCR1
+    for the_sel in ${sel} ${antisel}; do
+        python3 quick_plot.py mtdist ${bf_file} --sel ${the_sel} --channel ${channels[${the_sel}]} --outfile ${bf_dir}/bestfit_${channel}_${signame_dc}.png
     done
 
     # todo: move all plots into one folder?
