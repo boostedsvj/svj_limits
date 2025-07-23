@@ -1183,6 +1183,7 @@ def bkgtf():
         tf_data['bkg_eff'] = postfit_regions[0].Integral() / postfit_regions[1].Integral()
         if verbose: print('data_bkg_eff', tf_data['bkg_eff'])
         tf_data['th1'] = bsvj.get_tf_th1(postfit_regions)
+        label_data = r"$B_{\mathrm{fit}}" if closure else "$\mathrm{Data} - S_{\mathrm{fit}}$ "+"($\mu_{{\mathrm{{fit}}}}={0:.2f}$)".format(mu)
 
         # comparison of FD and MDF
         if verbose:
@@ -1220,7 +1221,7 @@ def bkgtf():
             fit_comb = get_tf_fit(fitresult_data, 'tf_data', tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'], basis=basis)
             if verbose: print('fit_comb', fit_comb['tf_fn_vals'].tolist())
             if verbose: print('chi2_comb', fit_comb['chi2'], fit_comb['ndf'])
-            plot_tf(outfile, mt, tf_comb, fit_comb, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{comb}}}}$ ({regions[0]} / {regions[1]})', suff='comb', label="Data", title=title)
+            plot_tf(outfile, mt, tf_comb, fit_comb, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{comb}}}}$ ({regions[0]} / {regions[1]})', suff='comb', label=label_data, title=title)
 
             # divide out values
             for i in range(tf_data['th1'].GetNbinsX()):
@@ -1235,7 +1236,6 @@ def bkgtf():
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
             suff_data = 'data'
 
-        label_data = r"$B_{\mathrm{fit}}" if closure else "$\mathrm{Data} - S_{\mathrm{fit}}$ "+"($\mu_{{\mathrm{{fit}}}}={0:.2f}$)".format(mu)
         tf_data['arr'] = bsvj.th1_to_hist(tf_data['th1'])
         fit_data = get_tf_fit(fitresult_data, 'tf_data', tf_data['th1'], mt['scaled'], tf_data['bkg_eff'], basis=basis)
         if verbose: print('fit_data', fit_data['tf_fn_vals'].tolist())
