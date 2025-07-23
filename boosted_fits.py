@@ -958,7 +958,7 @@ class InputData(object):
             region.fill_ws(self.ws, bkg_pdf)
         dump_ws_to_file(self.wsfile, self.ws)
 
-    def gen_datacard_rhalpha(self, npar=2, tf_from_mc=False, basis='Bernstein', basis_mc='Bernstein', winners=None, **kwargs):
+    def gen_datacard_rhalpha(self, npar=2, npar_mc_max=6, tf_from_mc=False, basis='Bernstein', basis_mc='Bernstein', winners=None, **kwargs):
         import rhalphalib as rl
         rl.util.install_roofit_helpers()
 
@@ -985,7 +985,7 @@ class InputData(object):
             bkgmodels = []
             winner_indices = winners if winners else {}
             npar_vals = winner_indices.get('tf_mc', None)
-            if not npar_vals: npar_vals = range(10)
+            if not npar_vals: npar_vals = range(npar_mc_max)
             else: npar_vals = [npar_vals]
             for npar_mc in npar_vals:
                 # use rhalphalib model to create workspace
