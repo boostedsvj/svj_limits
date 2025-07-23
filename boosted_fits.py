@@ -2196,7 +2196,7 @@ class CombineCommand(object):
     def seed(self):
         if '-s' in self.kwargs:
             return self.kwargs['-s']
-        elif self.kwargs.get('-t', -1) >= 0:
+        elif '-t' in self.kwargs:
             return 123456
         return None
 

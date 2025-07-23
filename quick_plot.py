@@ -941,9 +941,9 @@ def bkgfit():
     input = bsvj.InputData(regions, "theta", **jsons, asimov=asimov)
 
     bin_centers = .5*(input.mt_array[:-1]+input.mt_array[1:])
-    bin_width = input.mt[1] - input.mt[0]
+    bin_width = input.regions[0].mt[1] - input.regions[0].mt[0]
 
-    pdfs = bsvj.pdfs_factory(pdftype, input.mtvar, input.bkg_th1, name=pdftype)
+    pdfs = bsvj.pdfs_factory(pdftype, input.regions[0].mtvar, input.regions[0].bkg_th1, name=pdftype)
 
     for pdf in pdfs:
         if scipyonly:
@@ -973,19 +973,20 @@ def bkgfit():
     np.testing.assert_almost_equal(y_pdf_eval, pdf.evaluate(bin_centers), decimal=2)
 
     # Do the fisher test and mark the winner pdf
-    winner = bsvj.do_fisher_test(input.mtvar, input.data_datahist, pdfs, gof_type=gof_type)
+    gofs, n_bins = bsvj.gof_bkgfit(input.regions[0].mtvar, input.regions[0].data_datahist, pdfs, gof_type=gof_type)
+    winner = bsvj.do_fisher_test(gofs, n_bins)
     pdfs[winner].is_winner = True
 
-    bkg_vals = np.asarray([input.bkg_th1.GetBinContent(i+1) for i in range(input.bkg_th1.GetNbinsX())])
-    bkg_errs = np.asarray([input.bkg_th1.GetBinError(i+1) for i in range(input.bkg_th1.GetNbinsX())])
+    bkg_vals = np.asarray([input.regions[0].bkg_th1.GetBinContent(i+1) for i in range(input.regions[0].bkg_th1.GetNbinsX())])
+    bkg_errs = np.asarray([input.regions[0].bkg_th1.GetBinError(i+1) for i in range(input.regions[0].bkg_th1.GetNbinsX())])
 
     figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
 
-    ax.plot([], [], ' ', label=f'{pdftype}, {input.metadata["selection"]}')
-    ax.step(input.mt[:-1], bkg_vals, where='post', label=r'BKG', c='b')
-    ax2.plot([input.mt[0], input.mt[-1]], [0.,0.], c='gray')
+    ax.plot([], [], ' ', label=f'{pdftype}, {input.regions[0].metadata["selection"]}')
+    ax.step(input.regions[0].mt[:-1], bkg_vals, where='post', label=r'BKG', c='b')
+    ax2.plot([input.regions[0].mt[0], input.regions[0].mt[-1]], [0.,0.], c='gray')
 
-    fine_mt_axis = np.linspace(input.mt[0], input.mt[-1], 100)
+    fine_mt_axis = np.linspace(input.regions[0].mt[0], input.regions[0].mt[-1], 100)
     for pdf in pdfs:
         par_vals = [p.getVal() for p in pdf.parameters]
 
@@ -1001,7 +1002,7 @@ def bkgfit():
         if getattr(pdf, 'is_winner', False):
             logger.warning('y_pdf post norm: %s (norm=%s)', y_pdf, y_pdf.sum())
 
-        chi2_vf = bsvj.get_chi2_viaframe(input.mtvar, pdf, input.data_datahist)
+        chi2_vf = bsvj.get_chi2_viaframe(input.regions[0].mtvar, pdf, input.regions[0].data_datahist)
         chi2 = chi2_vf['chi2']
 
         label = (

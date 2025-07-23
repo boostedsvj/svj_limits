@@ -26,8 +26,8 @@ def main():
                               " it expects two subdirectories: siginj0 and siginj1"))
     parser.add_argument('--suff', type=str, default="",
                         help="Suffix for siginj0 and siginj1 dir names")
-    parser.add_argument('--sel', type=str, required=True, choices=['cutbased', 'bdt=0.65', 'bdt=0.67'],
-                        help="Selection type: 'cutbased' or 'bdt=0.67' or add additional bdt values as needed")
+    parser.add_argument('--sel', type=str, required=True,
+                        help="Selection type")
     parser.add_argument('--test', type=str, required=True, choices=['bias', 'self'],
                         help="Test type: 'bias' or 'self'")
     parser.add_argument('--mz', nargs='+', type=int, default=[200, 250, 300, 350, 400, 450, 500, 550],
@@ -68,11 +68,12 @@ def main():
     for inj_type in args.inj_types:
         inj_val = {mz: 0 for mz in args.mz} if inj_type==0 else inj
 
-        path = [f"{args.base_dir}/siginj{inj_type}{args.suff}/higgsCombineObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_smooth.FitDiagnostics.mH120.{args.seed}.root" for mz in args.mz]
+        path = [f"{args.base_dir}/siginj{inj_type}{args.suff}/higgsCombineObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_mt_smooth.FitDiagnostics.mH120.{args.seed}.root" for mz in args.mz]
 
         results[inj_type] = {"mean": [], "emean": [], "sigma": [], "esigma": []}
 
         for i, (mz, f_inj) in enumerate(zip(args.mz, path)):
+            print(f_inj)
             afile = ROOT.TFile(f_inj)
             atree = afile.Get("tree_fit_sb")
 
