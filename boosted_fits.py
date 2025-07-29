@@ -29,25 +29,31 @@ ROOT.gStyle.SetPadColor(0)
 ROOT.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
 
 
+def check_tty():
+    return sys.stdout.isatty() or os.getenv('PARENT_IS_A_TTY',"false").lower()=="true"
+
+
 DEFAULT_LOGGING_LEVEL = logging.INFO
-def setup_logger(name='boosted'):
+def setup_logger(name, fmt='{color}%(levelname)s:%(module)s:%(lineno)s{black} %(message)s', color='\033[33m'):
     if name in logging.Logger.manager.loggerDict:
         logger = logging.getLogger(name)
         logger.info('Logger %s is already defined', name)
     else:
-        fmt = logging.Formatter(
-            fmt = '\033[33m%(levelname)s:%(asctime)s:%(module)s:%(lineno)s\033[0m %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-            )
+        datefmt = '%Y-%m-%d %H:%M:%S'
+        if check_tty():
+            fmtr = logging.Formatter(fmt=fmt.format(color=color, black='\033[0m'), datefmt=datefmt)
+        else:
+            fmtr = logging.Formatter(fmt=fmt.format(color='', black=''), datefmt=datefmt)
         handler = logging.StreamHandler()
-        handler.setFormatter(fmt)
+        handler.setFormatter(fmtr)
         logger = logging.getLogger(name)
         logger.setLevel(DEFAULT_LOGGING_LEVEL)
         logger.addHandler(handler)
     return logger
-logger = setup_logger()
-subprocess_logger = setup_logger('subp')
-subprocess_logger.handlers[0].formatter._fmt = '\033[34m[%(asctime)s]\033[0m %(message)s'
+logger = setup_logger('boosted')
+logger.subprocess_logger = setup_logger('subp', '{color}[%(asctime)s]{black} %(message)s', '\033[34m')
+blank_logger = setup_logger('blank', '', '')
+blank_logger.subprocess_logger = setup_logger('subp_blank', '', '')
 
 
 def debug(flag=True):
@@ -722,7 +728,6 @@ class InputRegion(object):
             if len(self.bin_suff)>0 and name!='?':
                 final = joiner([name,self.bin_suff])
                 args = args + (ROOT.RooFit.Rename(final),)
-#            logger.info('Importing {} as {} ({})'.format(name, final, thing))
             getattr(ws, 'import')(thing, *args, **kwargs)
 
         # Bkg pdf: May be multiple
@@ -2285,7 +2290,6 @@ class CombineCommand(object):
             asimov = pull_arg('-a', '--asimov', action='store_true').asimov
             self.asimov(asimov)
 
-            logger.info('Taking pdf from command line')
             pdf = pull_arg('--pdf', type=str, choices=known_pdfs(), default=None).pdf
             self.pick_pdf(pdf)
 
@@ -2510,50 +2514,53 @@ def switchdir(other_dir):
             pass
 
 
-def run_command(cmd, chdir=None):
+def run_command(cmd, chdir=None, cmd_logger=None):
+    if cmd_logger is None: cmd_logger = logger
+
     if DRYMODE:
-        logger.warning('DRYMODE: ' + cmd)
+        cmd_logger.warning('DRYMODE: ' + cmd)
         return '<drymode - no stdout>'
 
     with switchdir(chdir):
-        logger.warning('Issuing command: ' + cmd)
+        cmd_logger.info('Running: ' + cmd)
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
             shell=True,
+            env=dict(os.environ, PARENT_IS_A_TTY=str(check_tty())),
             )
         output = []
         for stdout_line in iter(process.stdout.readline, ""):
-            subprocess_logger.info(stdout_line.rstrip("\n"))
+            cmd_logger.subprocess_logger.info(stdout_line.rstrip("\n"))
             output.append(stdout_line)
         process.stdout.close()
         process.wait()
         returncode = process.returncode
 
         if returncode == 0:
-            logger.info("Command exited with status 0 - all good")
+            cmd_logger.info("Command exited with status 0 - all good")
         else:
-            logger.error("Exit status {0} for command: {1}".format(returncode, cmd))
+            cmd_logger.error("Exit status {0} for command: {1}".format(returncode, cmd))
             raise subprocess.CalledProcessError(cmd, returncode)
         return output
 
 
-def run_combine_command(cmd, chdir=None, logfile=None, outdir=None):
+def run_combine_command(cmd, chdir=None, logfile=None, outdir=None, cmd_logger=None):
+    if cmd_logger is None: cmd_logger = logger
     if chdir:
         # Fix datacard to be an absolute path first
         cmd = cmd.copy()
         cmd.dc = osp.abspath(cmd.dc)
-    logger.info('Running {0}'.format(cmd))
-    out = run_command(cmd.str, chdir)
+    out = run_command(cmd.str, chdir, cmd_logger)
     if logfile is not None:
         with open(logfile, 'w') as f:
             f.write(''.join(out))
     if outdir:
         if not osp.isdir(outdir): os.makedirs(outdir)
         outfile = osp.join(outdir, osp.basename(cmd.outfile))
-        logger.info(f'Moving {cmd.outfile} -> {outfile}')
+        cmd_logger.info(f'Moving {cmd.outfile} -> {outfile}')
         shutil.move(cmd.outfile, outfile)
         if logfile:
             logfile = osp.join(outdir, osp.basename(cmd.logfile))
@@ -2562,9 +2569,9 @@ def run_combine_command(cmd, chdir=None, logfile=None, outdir=None):
 
     return out
 
-def run_generic_command(cmd, chdir=None, logfile=None):
-    logger.info('Running {0}'.format(cmd))
-    out = run_command(cmd, chdir)
+def run_generic_command(cmd, chdir=None, logfile=None, cmd_logger=None):
+    if cmd_logger is None: cmd_logger = logger
+    out = run_command(cmd, chdir, cmd_logger)
     if logfile is not None:
         with open(logfile, 'w') as f:
             f.write(''.join(out))

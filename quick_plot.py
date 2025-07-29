@@ -439,6 +439,7 @@ def mtdist():
 
     from scipy.interpolate import make_interp_spline # type:ignore
 
+    print(rootfile)
     with bsvj.open_root(rootfile) as f:
         ws = bsvj.get_ws(f)
         toy = get_toy(f)
