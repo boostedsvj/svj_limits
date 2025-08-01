@@ -1052,12 +1052,13 @@ class InputData(object):
             # take i_winner if pdf not in manually specified dictionary of winner indices
             if len(npar_vals)>1:
                 i_winner = do_fisher_test(results, self.n_bins)
+                winners['tf_mc'] = i_winner
             else:
+                # keep already-saved value, don't overwrite w/ 0
                 i_winner = 0
             logger.info(f'gen_datacard_rhalpha: chose n_pars={results[i_winner][0]} for tf_mc')
 
             # save winner
-            winners['tf_mc'] = i_winner
             bkgmodel = bkgmodels[i_winner]['model']
             tf_mc = bkgmodels[i_winner]['tf']
             bkgfit = bkgmodels[i_winner]['fit']
