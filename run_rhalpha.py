@@ -111,7 +111,7 @@ steps['2'] = StepRunner('diagnostics', [
     # SR vs. CR distributions
     Command("python3 quick_plot.py", "bkgsrcr", "{region_args2} --sig {regions_sig} -o {dc_dir}/srcr_{sel}.png"),
     # TF fit(s)
-    Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.png --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
+    Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.png --basis {tf_basis} --basis-mc {tf_basis} --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
     ] + [
     # postfit
     Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.png".format(sel, channel))
@@ -177,9 +177,9 @@ def derive_args(args_orig, alt=False):
         f"--basis-mc {args.tf_basis}",
         f"--tf-from-mc" if args.tf_mc else "",
         f"--npar-mc-max {args.npar_mc_max}",
-        f"--winner tf_mc {args.npar_mc}" if args.npar_mc else "",
+        f"--winner tf_mc {args.npar_mc-1}" if args.npar_mc else "",
         f"--basis {args.tf_basis}",
-        f"--npar {args.npar_data}",
+        f"--npar {args.npar_data-1}",
         f"--ftest" if args.ftest else "",
         args.toy_args,
         f"-t {args.toys}" if args.toys else "",
@@ -234,7 +234,7 @@ if __name__=="__main__":
         description="\n".join(desc),
     )
     group_co = parser.add_argument_group("common")
-    group_cx = parser.add_mutually_exclusive_group()
+    group_cx = group_co.add_mutually_exclusive_group()
     group_cx.add_argument("--steps", type=str, nargs='+', help="step(s) to run")
     group_cx.add_argument("--predef", type=str, default="", choices=list(predefs.keys()), help="predefined sequence to run")
     group_co.add_argument("--sel", type=str, required=True, help="selection name")
