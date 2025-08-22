@@ -23,7 +23,7 @@ scripter = bsvj.Scripter()
 def plot_scipy_fits():
     parser = argparse.ArgumentParser(inspect.stack()[0][3])
     parser.add_argument('rootfile', type=str)
-    parser.add_argument('-o', '--plotdir', type=str, default='plots_bkgfits_%b%d')
+    parser.add_argument('-o', '--plotdir', type=str, default='plots_bkgfits_%Y%m%d')
     parser.add_argument('-b', '--bdtcut', type=float, default=None)
     parser.add_argument('-n', '--npars', type=int, nargs='*')
     parser.add_argument('-p', '--pdftype', type=str, default=None, choices=bsvj.known_pdfs())
@@ -85,7 +85,7 @@ def plot_scipy_fits():
 def plot_roofit_fits():
     parser = argparse.ArgumentParser(inspect.stack()[0][3])
     parser.add_argument('rootfile', type=str)
-    parser.add_argument('-o', '--plotdir', type=str, default='plots_bkgfits_%b%d')
+    parser.add_argument('-o', '--plotdir', type=str, default='plots_bkgfits_%Y%m%d')
     parser.add_argument('-b', '--bdtcut', type=float, default=None)
     parser.add_argument('-n', '--npars', type=int, nargs='*')
     parser.add_argument('-p', '--pdftype', type=str, default=None, choices=bsvj.known_pdfs())
@@ -442,7 +442,7 @@ def fittoys():
     #    --trackParameters $TrkArgFitAll"
 
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
-    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('toyfits_%b%d')).outdir
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('toyfits_%Y%m%d')).outdir
 
     for dc_file in datacards:
         dc = bsvj.Datacard.from_txt(dc_file)
@@ -472,7 +472,7 @@ def fittoys():
 @scripter
 def fithessian():
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
-    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('hessianfits_%b%d')).outdir
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('hessianfits_%Y%m%d')).outdir
 
     for dc_file in datacards:
         dc = bsvj.Datacard.from_txt(dc_file)
