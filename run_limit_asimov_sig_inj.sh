@@ -19,7 +19,7 @@ dc_date=$(date +%Y%m%d)    # Dynamically set today's date
 scan_date=$(date +%Y%m%d)
 toy_seed=1001
 sel="bdt=0.67"
-siginj=0.2
+rinj=0.2
 mInj=350
 mDark_value="10"
 rinv_value="0p3"
@@ -40,7 +40,7 @@ while [[ "$#" -gt 0 ]]; do
         --hists_date) hists_date="$2"; shift ;;
         --hists_date_anti) hists_date_anti="$2"; shift ;;
         --dc_date) dc_date="$2"; shift ;;
-        --siginj) siginj="$2"; shift ;;
+        --rinj) rinj="$2"; shift ;;
         --mInj) mInj="$2"; shift ;;
         --mDark) mDark_value="$2"; shift ;;
         --rinv) rinv_value="$2"; shift ;; 
@@ -83,7 +83,7 @@ if [ "$run_only_fits" == false ]; then
   (set -x; python3 cli_boosted.py gentoys \
     dc_${dc_date}_${sel}/dc_${sig_name}.txt \
     -t -1 \
-    --expectSignal ${siginj} \
+    --expectSignal ${rinj} \
     -s ${toy_seed})
 
   # Likelihood scan for expected limits

@@ -23,9 +23,9 @@ def main():
     parser = argparse.ArgumentParser(description="Configure base directory and parameters for bias test")
     parser.add_argument('--base-dir', type=str, required=True,
                         help=("Directory path containing the test subdirectories, e.g. '/path/to/test/',"
-                              " it expects two subdirectories: siginj0 and siginj1"))
+                              " it expects two subdirectories: rinj0 and rinj1"))
     parser.add_argument('--suff', type=str, default="",
-                        help="Suffix for siginj0 and siginj1 dir names")
+                        help="Suffix for rinj0 and rinj1 dir names")
     parser.add_argument('--sel', type=str, required=True,
                         help="Selection type")
     parser.add_argument('--test', type=str, required=True, choices=['bias', 'self'],
@@ -68,7 +68,7 @@ def main():
     for inj_type in args.inj_types:
         inj_val = {mz: 0 for mz in args.mz} if inj_type==0 else inj
 
-        path = [f"{args.base_dir}/siginj{inj_type}{args.suff}/higgsCombineObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_mt_smooth.FitDiagnostics.mH120.{args.seed}.root" for mz in args.mz]
+        path = [f"{args.base_dir}/rinj{inj_type}{args.suff}/higgsCombineObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_mt_smooth.FitDiagnostics.mH120.{args.seed}.root" for mz in args.mz]
 
         results[inj_type] = {"mean": [], "emean": [], "sigma": [], "esigma": []}
 
@@ -96,7 +96,7 @@ def main():
             canvas = ROOT.TCanvas("canvas", "canvas", 800, 600)
             histo.Draw()
             for img in imgs:
-                canvas.SaveAs(f"{test}_siginj_rinj{inj_type}_MZ_{mz}_GeV.{img}")
+                canvas.SaveAs(f"{test}_rinj{inj_type}_MZ_{mz}_GeV.{img}")
 
     # keep consistent colors
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']

@@ -151,7 +151,7 @@ but these options can easily configured in the command line without needing to a
 ./run_bias_or_self_study.sh
 
 # Run the bias test for the cut based search with a r_inj at expected limit strength for mZ 200
-./run_bias_or_self_study.sh --sel cutbased --test_type bias --siginj --mMed_values "200"
+./run_bias_or_self_study.sh --sel cutbased --test_type bias --rinj exp --mMed_values "200"
 ```
 
 Then to plot the results
@@ -166,17 +166,17 @@ Example from the BDT based search:
 ```bash
 # Self test
 # no signal injected
-./run_bias_or_self_test.sh --siginj 0
+./run_bias_or_self_test.sh --rinj 0
 # signal injected at expected limit
-./run_bias_or_self_test.sh --siginj exp
+./run_bias_or_self_test.sh --rinj exp
 # plot
 python3 plot_bias_or_self_study.py --base-dir ./self_test --sel bdt=0.67 --test self
 
 # Bias test
 # no signal injected
-./run_bias_or_self_study.sh --test_type bias --siginj 0
+./run_bias_or_self_study.sh --test_type bias --rinj 0
 # signal injected at expected limit
-./run_bias_or_self_study.sh --test_type bias --siginj exp
+./run_bias_or_self_study.sh --test_type bias --rinj exp
 # plot
 python3 plot_bias_or_self_study.py --base-dir ./bias_test --sel bdt=0.67 --test bias
 ```
@@ -189,7 +189,7 @@ and mass can be configured.
 
 ```bash
 # Running with signal injected at mZ' 200 with a strength of 0.271
-./run_limit_asimov_sig_inj.sh --mInj 200 --siginj 0.271
+./run_limit_asimov_sig_inj.sh --mInj 200 --rinj 0.271
 # Or to run all signal masses (at expected limit strength)
 ./all_sig_inj_asimov_limits.sh
 ```
