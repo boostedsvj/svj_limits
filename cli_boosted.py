@@ -321,17 +321,15 @@ def collect_gof(gof_file):
 
 
 def make_bestfit_and_scan_commands(txtfile, args=None):
-    # this is shared between both commands, so pull it out first
-    range = bsvj.pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
     if args is None: args = sys.argv[1:]
     with bsvj.set_args(sys.argv[:1] + args):
         dc = bsvj.Datacard.from_txt(txtfile)
         cmd = bsvj.CombineCommand(dc)
         cmd.name += osp.basename(dc.filename).replace('.txt','')
-        scan = bsvj.scan(cmd, range)
+        scan = bsvj.scan(cmd)
         scan.name += 'Scan'
         scan.configure_from_command_line(scan=True)
-        bestfit = bsvj.bestfit(cmd, range)
+        bestfit = bsvj.bestfit(cmd)
         bestfit.name += 'Bestfit'
         bestfit.configure_from_command_line()
     return bestfit, scan
@@ -339,7 +337,6 @@ def make_bestfit_and_scan_commands(txtfile, args=None):
 
 @scripter
 def bestfit(txtfile=None):
-    range = bsvj.pull_arg('-r', '--range', type=float, default=None, nargs=2).range
     if txtfile is None:
         # Allow multiprocessing if multiple datacards are passed on the command line
         txtfiles = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
@@ -360,7 +357,7 @@ def bestfit(txtfile=None):
     dc = bsvj.Datacard.from_txt(txtfile)
     cmd = bsvj.CombineCommand(dc)
     cmd.configure_from_command_line()
-    cmd = bsvj.bestfit(cmd, range)
+    cmd = bsvj.bestfit(cmd)
     cmd.raw = ' '.join(sys.argv[1:])
     cmd.name += 'Bestfit_' + osp.basename(txtfile).replace('.txt','')
     bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
@@ -476,7 +473,6 @@ def fittoys():
 def fithessian():
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('hessianfits_%b%d')).outdir
-    range = bsvj.pull_arg('-r', '--range', type=float, default=None, nargs=2).range
 
     for dc_file in datacards:
         dc = bsvj.Datacard.from_txt(dc_file)
@@ -492,7 +488,6 @@ def fithessian():
         if '-t' in cmd.kwargs: cmd.args.add('--saveToys')
         cmd.kwargs['--X-rtd'] = ['REMOVE_CONSTANT_ZERO_POINT=1']
         cmd.kwargs['--X-rtd'].append('MINIMIZER_MaxCalls=100000')
-        if range: cmd.add_range('r', range[0], range[1])
 
         assert '--expectSignal' in cmd.kwargs
 

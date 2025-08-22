@@ -2302,6 +2302,10 @@ class CombineCommand(object):
                     k,v = setParam.split('=')
                     self.set_parameter(k,v)
 
+            # r range
+            range = pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
+            self.add_range('r', range[0], range[1])
+
             # special settings to seed fits for likelihood scan
             # rand > 0 performs random fits; rand = 0 just seeds fit w/ prev values; rand < 0 disables this behavior
             rand = pull_arg('--rand', type=int, default=-1).rand
@@ -2370,7 +2374,7 @@ class CombineCommand(object):
         return command
 
 
-def bestfit(cmd, range=None):
+def bestfit(cmd):
     """
     Takes a CombineComand, and applies options on it to turn it into
     MultiDimFit best-fit command
@@ -2383,19 +2387,17 @@ def bestfit(cmd, range=None):
     if '-t' in cmd.kwargs: cmd.args.add('--saveToys')
     cmd.redefine_signal_pois.add('r')
     cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
-    if range is None: range = pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
-    cmd.add_range('r', range[0], range[1])
     # Possibly delete some settings too
     cmd.kwargs.pop('--algo', None)
     return cmd
 
 
-def scan(cmd, range=None):
+def scan(cmd):
     """
     Takes a CombineComand, and applies options on it to turn it into
     scan over r
     """
-    cmd = bestfit(cmd, range)
+    cmd = bestfit(cmd)
     cmd.kwargs['--algo'] = 'grid'
     cmd.kwargs['--alignEdges'] = 1
     cmd.track_parameters.add('r')
