@@ -1,4 +1,4 @@
-import os,sys
+import os,sys,re
 import argparse
 from time import strftime
 from copy import deepcopy
@@ -34,11 +34,15 @@ pass
 def join_none(sep, arr):
     return sep.join(filter(None,arr))
 
+def nat_sort(val):
+    return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', val)]
+
 @dataclass
 class Signal:
     mMed: str
     mDark: str
     rinv: str
+#    exp: str
 
     def mMed_val(self) -> int:
         return int(self.mMed)
@@ -46,6 +50,8 @@ class Signal:
         return int(self.mDark)
     def rinv_val(self) -> float:
         return float(self.rinv.replace('p','.'))
+    def exp_val(self) -> float:
+        return float(self.exp)
 
 # run a command over potentially multiple signal arguments; variants:
 # 1. "single": runs once even when multiple signals specified
@@ -59,29 +65,34 @@ class Command:
         self.flags = flags
         self.single = single
 
-    def run(self, args, signals):
+    def run(self, args, signals, dryrun):
         # "single"
         if self.single:
             args_signal = fill_signal_args(args, signals[0])
-            self.run_single(args_signal, self.function)
+            self.run_single(args_signal, self.function, dryrun)
         # "loop"
         elif args.npool==0 or self.function_mp is None:
             for signal in signals:
                 args_signal = fill_signal_args(args, signal)
-                self.run_single(args_signal, self.function)
+                self.run_single(args_signal, self.function, dryrun)
         # "mp"
         else:
+            # todo: modify this approach: write out args to txt file, then call general run_mp function
             args_signal = None
             for signal in signals:
                 args_tmp = fill_signal_args(args, signal)
                 if args_signal is None: args_signal = args_tmp
                 else:
                     for key in vars(args_signal).keys(): setattr(args_signal, key, join_none(" ",[getattr(args_signal, key), getattr(args_tmp, key)]))
-            self.run_single(args_signal, self.function_mp)
+            self.run_single(args_signal, self.function_mp, dryrun)
 
-    def run_single(self, args, fn):
+    def run_single(self, args, fn, dryrun):
         cmd_template = join_none(" ",[self.pre,fn,self.flags])
-        run_cmd(cmd_template.format(**vars(args)), cmd_logger=logger)
+        cmd = cmd_template.format(**vars(args))
+        if dryrun:
+            logger.info(cmd)
+        else:
+            run_cmd(cmd, cmd_logger=logger)
 
 # runs a list of commands
 class StepRunner:
@@ -89,22 +100,22 @@ class StepRunner:
         self.name = name
         self.commands = commands
 
-    def run(self, args, signals):
+    def run(self, args, signals, dryrun):
         for command in self.commands:
-            command.run(args, signals)
+            command.run(args, signals, dryrun)
 
 steps = {}
 steps['0'] = StepRunner('pseudodata', [
     Command("python3 cli_boosted.py", "gen_datacards", "--norm-type crsimple --suff {data_toy_suff} {region_args1} --sig {regions_sig}", single=True),
     Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_toy_name} {data_toy_args}", single=True),
-    Command("mv", "", "{data_toy_file_old} {data_toy_file}", single=True)
+    Command("mv", "", "{data_toy_file_old} {data_toy_file}", single=True),
 ])
 steps['1'] = StepRunner('datacard generation', [
     Command("python3 cli_boosted.py", "gen_datacards", "--norm-type rhalpha {region_args2} --sig {regions_sig} {dc_args}"),
 ])
 steps['2'] = StepRunner('diagnostics', [
     # run bestfit
-    Command("python3 cli_boosted.py", "bestfit", "--range -1 1 {dc_dir}/{dc_name}"),
+    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range -1 1"),
     # hessian analysis
     Command("python3", "hessian.py", "-w {bf_file}:w -f {bf_file}:fit_mdf -s 0.1"),
     # make plots
@@ -117,16 +128,59 @@ steps['2'] = StepRunner('diagnostics', [
     Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.png".format(sel, channel))
         for sel, channel in [("{sel}", "bsvj"), ("{antisel}", "bsvjCR1")]
     ]
+    # todo: plot toy-based f-test distribution
+    # todo: plot f-test results vs. signal parameter(s)
+    # todo: move all plots into one folder?
 )
-# todo: move all plots into one folder?
+steps['3'] = StepRunner('bias toys', [
+    Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_name} {bias_toy_args} {rinj_arg}"),
+    Command("mv", "", "{bias_toy_file_old} {bias_toy_file}"),
+])
+steps['3a'] = StepRunner('Asimov toy', [
+    Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{scan_dc_name} {scan_toy_args} {rinj_arg}", single=True),
+    Command("mv", "", "{scan_toy_file_old} {scan_toy_file}", single=True),
+])
+steps['4'] = StepRunner('likelihood scan', [
+    Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_args}"),
+    # todo: command to dump expected limit signal strengths into a file
+])
+steps['5'] = StepRunner('likelihood plots', [
+    Command("python3 quick_plot.py", "muscan", "{scan_files} -o {scan_dir}/muscan_{signame_dc}.png"),
+    Command("python3 quick_plot.py", "cls", "{scan_files} -o {scan_dir}/cls_{signame_dc}.png"),
+    Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.png"),
+])
+steps['6'] = StepRunner('Asimov injection test', [
+    Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}"),
+])
+steps['7'] = StepRunner('Asimov injection plots', [
+    Command("python3 quick_plot.py", "brazil", "{scan_dir}/higgsCombine*{sel}*.root -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", single=True),
+])
+steps['8'] = StepRunner('bias fits', [
+    Command("python3 cli_boosted.py", "fittoys", "{dc_dir}/{dc_name} {bias_fit_args} {bias_sig_args} --cminDefaultMinimizerStrategy=0"),
+    Command("mkdir", "", "-p {bias_results_dir}", single=True),
+    Command("mv", "", "{bias_fit_file} {bias_results_dir}/"),
+])
+steps['9'] = StepRunner('bias plots', [
+    Command("python3", "plot_bias_or_self_study.py", "--base_dir {bias_results_basedir} --sel {sel} --test {bias_test_type}", single=True),
+])
+# todo: nuisance impacts
 
 # special groups of steps
 predefs = {
     'gen_datacard': ['0','1','2'],
     'gen_datacard_alt': ['0','1b','2b'],
-    'closure': ['1'],
-    'bias': ['1','1b'],
+    'asimov': ['1','4','5'],
+    'asimov_inj': ['1','3a','6','7'],
+    'closure': ['1','3','8','9'],
+    'bias': ['1','1b','3b','8','9'],
 }
+
+def get_rinj(rinj, signal):
+    if rinj<0:
+        exp_val = signal.exp_val()
+        return exp_val*rinj
+    else:
+        return rinj
 
 def fill_signal_args(args, signal):
     signal_args = deepcopy(args)
@@ -134,22 +188,36 @@ def fill_signal_args(args, signal):
     # directories and names
     signame_base = f"SVJ_s-channel_mMed-{signal.mMed}_mDark-{signal.mDark}_rinv-{signal.rinv}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8"
 
-    signame = f"{signame_base}_sel-{args.sel}{args.hists_name}_smooth"
-    signal_args.sig = f"{args.smoothdir}/{signame}.json"
+    signal_args.signame = f"{signame_base}_sel-{args.sel}{args.hists_name}_smooth"
+    signal_args.sig = f"{args.smoothdir}/{signal_args.signame}.json"
 
     antisigname = f"{signame_base}_sel-{args.antisel}{args.hists_name_anti}_smooth"
     signal_args.antisig = f"{args.antismoothdir}/{antisigname}.json"
 
     signal_args.regions_sig = f"{signal_args.sig} {signal_args.antisig}"
-    signal_args.signame_dc = join_none("_",[signame, args.suff])
+    signal_args.signame_dc = join_none("_",[signal_args.signame, args.suff])
     signal_args.dc_name = f"dc_{signal_args.signame_dc}.txt"
 
-    signal_args.signame_toy = f"{signame}_{args.data_toy_suff}"
-    signal_args.data_toy_file_old = f"toys_{args.toy_date}/higgsCombineObserveddc_{signal_args.signame_toy}.GenerateOnly.mH120.{args.toy_seed}.root"
-    signal_args.dc_toy_name = f"dc_{signal_args.signame_toy}.txt"
+    signal_args.signame_dtoy = f"{signal_args.signame}_{args.data_toy_suff}"
+    signal_args.data_toy_file_old = args.data_toy_file.replace("_bkg.",f"_{signal_args.signame_dtoy}.")
+    signal_args.dc_toy_name = f"dc_{signal_args.signame_dtoy}.txt"
 
     signal_args.bf_file = f"{args.bf_dir}/higgsCombineObservedBestfit_dc_{signal_args.signame_dc}.MultiDimFit.mH120.root"
     signal_args.fit_mc_arg = f"--fit-mc {args.dc_dir}/bkgfit_{signal_args.signame_dc}.root:bkgfit" if args.tf_mc else ""
+
+    signal_args.rinj_arg = f"--expectSignal {get_rinj(args.rinj,signal)}"
+    signal_args.signame_btoy = join_none("_", [signal_args.signame, args.suff])
+    signal_args.bias_toy_file_old = f"toys_{args.btoy_date}/higgsCombineObserveddc_{signal_args.signame_btoy}.GenerateOnly.mH120.{args.btoy_seed}.root"
+    rinjname = "Exp" if args.rinj<0 else args.rinj
+    signal_args.bias_toy_file = signal_args.bias_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
+
+    signal_args.bias_sig_args = f"--toysFile {signal_args.bias_toy_file} --expectSignal 0"
+    signal_args.bias_fit_file = f"toyfits_{args.bfit_date}/higgsCombineObserveddc_{signal_args.signame_btoy}.FitDiagnostics.mH120.{args.btoy_seed}.root"
+
+    signal_args.scan_toy_file_old = f"toys_{args.stoy_date}/higgsCombineAsimovdc_{signal_args.signame}.GenerateOnly.mH120.{args.stoy_seed}.root"
+    signal_args.scan_toy_file = signal_args.scan_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
+    signal_args.scan_files = f"{args.scan_dir}/higgsCombinedc_{signal_args.signame}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
+    signal_args.scan_files += f" {signal_args.scan_files.replace('Observed','Asimov')}"
 
     return signal_args
 
@@ -172,7 +240,7 @@ def derive_args(args_orig, alt=False):
     args.npar_data = args.npar_data or args.npar_data_max
 
     # assemble arguments
-    args.toy_args = f"-s {args.toy_seed} --expectSignal 0"
+    args.ftoy_args = f"-s {args.ftoy_seed} --expectSignal 0"
     args.dc_args = join_none(" ",[
         f"--basis-mc {args.tf_basis}",
         f"--tf-from-mc" if args.tf_mc else "",
@@ -181,10 +249,16 @@ def derive_args(args_orig, alt=False):
         f"--basis {args.tf_basis}",
         f"--npar {args.npar_data-1}",
         f"--ftest" if args.ftest else "",
-        args.toy_args,
-        f"-t {args.toys}" if args.toys else "",
+        args.ftoy_args,
+        f"-t {args.ftoys}" if args.ftoys else "",
         f"--suff {args.suff}" if args.suff else "",
     ])
+    args.bias_toy_args = f"-t {args.btoys} -s {args.btoy_seed}"
+    args.bias_fit_args = f"{args.bias_toy_args} --range {args.brange[0]} {args.brange[1]}"
+    args.scan_toy_args = f"-t -1 -s {args.stoy_seed}"
+    args.scan_args_base = f"--range {args.srange[0]} {args.srange[1]} -s {args.stoy_seed}"
+    args.scan_args = f"{args.scan_args_base} --asimov"
+    args.scan_inj_args = f"{args.scan_args_base} -t -1"
 
     # account for change in histogram production/naming
     args.hists_name = f"_{qty}" if int(args.hists_date) > change_date else ""
@@ -208,17 +282,35 @@ def derive_args(args_orig, alt=False):
     args.dc_dir = f"dc_{args.dc_date}_{args.sel}"
 
     args.data_toy_suff = join_none("_",[args.suff,"simple"])
-    args.data_toy_args = f"{args.toy_args} -t 1"
-    args.data_toy_file = f"toys_{args.toy_date}/higgsCombineObserveddc_bkg.GenerateOnly.mH120.{args.toy_seed}.root"
+    args.data_toy_args = f"-s {args.dtoy_seed} --expectSignal 0 -t 1"
+    args.data_toy_file = f"toys_{args.dtoy_date}/higgsCombineObserveddc_bkg.GenerateOnly.mH120.{args.dtoy_seed}.root"
     args.region_args2 = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg} --data {args.data_toy_file} {args.data_toy_file}"
 
     args.bf_dir = f"bestfits_{args.dc_date}"
 
+    args.bias_fits_dir = f"toyfits_{args.bfit_date}"
+    args.bias_test_type = "bias" if 'alt' in args.suff else "closure"
+    args.bias_results_rinj = "1" if args.rinj!=0 else "0"
+    args.bias_results_basedir = f"{args.bias_test_type}_test"
+    args.bias_results_dir = f"{args.bias_results_basedir}/rinj{args.bias_results_rinj}"
+
+    args.scan_dir = f"scans_{args.scan_date}"
+    # signal-injected asimov toy is shared
+    signal_inj = Signal(*args.siginj)
+    siginj_args = fill_signal_args(args, signal_inj)
+    args.scan_dc_name = siginj_args.dc_name
+    args.scan_toy_file_old = siginj_args.scan_toy_file_old
+    args.scan_toy_file = siginj_args.scan_toy_file
+    args.scan_inj_args = join_none(" ",[args.scan_inj_args, f"--toysFile {args.scan_toy_file}"])
+    args.scan_inj_name_short = join_none('_',args.siginj)
+
     return args
 
 if __name__=="__main__":
+    default_signal = ["350","10","0p3"]
+
     desc = [
-        "\n".join(["Steps:"]+[f"{key}. {val.name}" for key,val in sorted(steps.items())]),
+        "\n".join(["Steps:"]+[f"{key}. {val.name}" for key,val in sorted(steps.items(), key=lambda item: nat_sort(item[0]))]),
         "(add 'b' to any step to use alt TF basis)",
         "",
         "\n".join(["Predefs:"]+[f"{key} = "+" ".join(val) for key,val in predefs.items()]),
@@ -237,6 +329,7 @@ if __name__=="__main__":
     group_cx = group_co.add_mutually_exclusive_group()
     group_cx.add_argument("--steps", type=str, nargs='+', help="step(s) to run")
     group_cx.add_argument("--predef", type=str, default="", choices=list(predefs.keys()), help="predefined sequence to run")
+    group_co.add_argument("--dryrun", default=False, action="store_true", help="just print commands, don't run anything")
     group_co.add_argument("--sel", type=str, required=True, help="selection name")
     group_co.add_argument("--antiloose", default=False, action="store_true", help="use antiloose region")
     group_co.add_argument("--suff", type=str, default="", help="suffix for dc")
@@ -244,11 +337,12 @@ if __name__=="__main__":
     group_co.add_argument("--hists-dir", type=str, default="hists", help="histogram directory")
     group_co.add_argument("--hists-date", type=str, default=None, help="date for signal region histograms")
     group_co.add_argument("--hists-date-anti", type=str, default=None, help="date for anti-signal region histograms")
-    group_co.add_argument("--toy-date", type=str, default=today, help="date for toy folder (if skipping step 0)")
+    group_co.add_argument("--dtoy-date", type=str, default=today, help="date for pseudodata toy folder (if skipping step 0)")
+    group_co.add_argument("--dtoy-seed", type=int, default=1001, help="random seed for pseudodata toy generation")
     group_co.add_argument("--dc-date", type=str, default=today, help="date for dc folder (if skipping step 1)")
     group_si = parser.add_argument_group("signal")
     group_sx = group_si.add_mutually_exclusive_group()
-    group_sx.add_argument("--signal", dest="signals", metavar=("mMed","mDark","rinv"), type=str, default=["350","10","0p3"], nargs=3, help="signal parameters")
+    group_sx.add_argument("--signal", dest="signals", metavar=("mMed","mDark","rinv"), type=str, default=default_signal, nargs=3, help="signal parameters")
     group_sx.add_argument("--signals", dest="signals", type=str, default="", help="text file w/ list of signal parameters")
     group_dc = parser.add_argument_group("datacard")
     group_dc.add_argument("--tf-basis", type=str, default=allowed_basis[0], choices=allowed_basis, help="transfer factor polynomial basis")
@@ -257,8 +351,23 @@ if __name__=="__main__":
     group_dc.add_argument("--npar-mc-max", type=int, default=6, help="max number of parameters for MC TF F-test")
     group_dc.add_argument("--npar-data", type=int, default=None, help="number of parameters for data TF, if not using F-test")
     group_dc.add_argument("--npar-data-max", type=int, default=5, help="max number of parameters for data TF F-test")
-    group_dc.add_argument("--toys", type=int, default=0, help="number of toys for data TF F-test")
-    group_dc.add_argument("--toy-seed", type=int, default=1001, help="random seed for toy generation")
+    group_dc.add_argument("--ftoys", type=int, default=0, help="number of toys for data TF F-test")
+    group_dc.add_argument("--ftoy-seed", type=int, default=1005, help="random seed for F-test toy generation")
+    group_ty = parser.add_argument_group("toys")
+    group_ty.add_argument("--rinj", type=float, default=0, help="toy signal injection strength; if -x, strength = expected limit * x")
+    group_sc = parser.add_argument_group("scan")
+    group_sc.add_argument("--stoy-date", type=str, default=today, help="date for toy folder for Asimov test (if skipping step)")
+    group_sc.add_argument("--stoy-seed", type=int, default=1002, help="random seed for toy generation for Asimov test")
+    group_sc.add_argument("--scan-date", type=str, default=today, help="date for scans (if skipping step)")
+    group_sc.add_argument("--srange", type=float, default=[0,2], nargs=2, help="likelihood scan r range")
+    group_sc.add_argument("--siginj", metavar=("mMed","mDark","rinv"), type=str, default=default_signal, nargs=3, help="signal to inject for Asimov test")
+    group_bi = parser.add_argument_group("bias")
+    group_bi.add_argument("--btoys", type=int, default=0, help="number of toys for bias test")
+    group_bi.add_argument("--btoy-seed", type=int, default=1003, help="random seed for toy generation for bias test")
+    group_bi.add_argument("--btoy-date", type=str, default=today, help="date for toy folder for bias test (if skipping step)")
+    group_bi.add_argument("--bfit-date", type=str, default=today, help="date for bias fit folder (if skipping step)")
+    group_bi.add_argument("--brange", type=float, default=[-5,5], nargs=2, help="bias study r range")
+    # todo: expose pointsRandProf options
     args = parser.parse_args()
     if args.predef: args.steps = predefs[args.predef]
 
@@ -271,11 +380,13 @@ if __name__=="__main__":
             for line in sfile:
                 line = line.rstrip()
                 if len(line)==0: continue
-                signals.append(Signal(*line.split()))
+                props = line.split()
+                # todo: get expected limit strength
+                signals.append(Signal(*props))
 
     # execute requested steps in order
     for step in args.steps:
         alt = step.endswith('b')
         step = step.replace('b','')
         args_step = derive_args(args, alt=alt)
-        steps[step].run(args_step, signals)
+        steps[step].run(args_step, signals, args.dryrun)
