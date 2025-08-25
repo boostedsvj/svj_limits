@@ -3,6 +3,7 @@ import argparse
 from time import strftime
 from copy import deepcopy
 from dataclasses import dataclass
+from collections import defaultdict
 from boosted_fits import run_generic_command as run_cmd, blank_logger as logger
 
 # default values
@@ -42,7 +43,7 @@ class Signal:
     mMed: str
     mDark: str
     rinv: str
-#    exp: str
+    exp: str
 
     def mMed_val(self) -> int:
         return int(self.mMed)
@@ -344,6 +345,7 @@ if __name__=="__main__":
     group_sx = group_si.add_mutually_exclusive_group()
     group_sx.add_argument("--signal", dest="signals", metavar=("mMed","mDark","rinv"), type=str, default=default_signal, nargs=3, help="signal parameters")
     group_sx.add_argument("--signals", dest="signals", type=str, default="", help="text file w/ list of signal parameters")
+    group_si.add_argument("--explim", type=str, default="", help="generated file with expected limit values per signal from Asimov scan")
     group_dc = parser.add_argument_group("datacard")
     group_dc.add_argument("--tf-basis", type=str, default=allowed_basis[0], choices=allowed_basis, help="transfer factor polynomial basis")
     group_dc.add_argument("--tf-mc", default=False, action="store_true", help="use TF from MC")
@@ -372,17 +374,30 @@ if __name__=="__main__":
     if args.predef: args.steps = predefs[args.predef]
 
     # signals
+    explim_default = '0.2'
+    explims = defaultdict(lambda: explim_default)
+    if args.explim:
+        with open(args.explim,'r') as efile:
+            for line in efile:
+                line = line.rstrip()
+                props = line.split()
+                explims[tuple(props[:-1]),props[-1]]
+    else:
+        logger.warning(f"explim file not provided; commands with --rinj -x will use default {explim_default}")
+    def make_signal(props):
+        # get expected limit strength
+        props.append(explims[tuple(props)])
+        return Signal(*props)
     signals = []
     if isinstance(args.signals,list):
-        signals.append(Signal(*args.signals))
+        signals.append(make_signal(args.signals))
     else:
         with open(args.signals,'r') as sfile:
             for line in sfile:
                 line = line.rstrip()
                 if len(line)==0: continue
                 props = line.split()
-                # todo: get expected limit strength
-                signals.append(Signal(*props))
+                signals.append(make_signal(props))
 
     # execute requested steps in order
     for step in args.steps:
