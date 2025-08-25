@@ -113,6 +113,13 @@ def organize_rootfiles(rootfiles, split_bdt_wps=False):
     Takes an unordered set of rootfiles, and splits them up logically
     by obs/asimov, mz, and bdt
     """
+    rootfiles_orig = rootfiles[:]
+    rootfiles = []
+    for rootfile in rootfiles_orig:
+        if not osp.exists(rootfile):
+            logger.warning(f"organize_rootfiles: {rootfile} not found, skipping")
+            continue
+        rootfiles.append(rootfile)
 
     if split_bdt_wps:
         bdt_wps = set(get_bdt(f) for f in rootfiles)
@@ -128,6 +135,8 @@ def organize_rootfiles(rootfiles, split_bdt_wps=False):
 
     obs_rootfiles = [f for f in rootfiles if 'Observed' in osp.basename(f)]
     asimov_rootfiles = [f for f in rootfiles if 'Asimov' in osp.basename(f)]
+    if len(obs_rootfiles)==0:
+        obs_rootfiles = asimov_rootfiles[:]
     assert [get_mz(f) for f in obs_rootfiles] == [get_mz(f) for f in asimov_rootfiles]
     return obs_rootfiles, asimov_rootfiles
 
@@ -303,6 +312,9 @@ def get_scans(rootfiles, correct_minimum=False, keep_all=False):
     if isinstance(rootfiles, str): rootfiles = [rootfiles]
     scans = {}
     for rootfile in rootfiles:
+        if not osp.exists(rootfile):
+            logger.warning(f"get_scans: {rootfile} not found, skipping")
+            continue
         name = name_from_combine_rootfile(rootfile)
         stmp = extract_scans(rootfile, correct_minimum, keep_all)
         if len(stmp)==1: scans[name] = stmp[0]

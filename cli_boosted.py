@@ -606,7 +606,7 @@ def likelihood_scan(args=None):
 
         print(sys.argv)
 
-        outdir = bsvj.pull_arg('-o', '--outdir', type=str).outdir
+        outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('scans_%Y%m%d')).outdir
         txtfile = bsvj.pull_arg('datacard', type=str).datacard
         bestfit, scan = make_bestfit_and_scan_commands(txtfile)
 
