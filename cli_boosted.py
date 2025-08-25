@@ -238,6 +238,8 @@ def gen_datacards():
     # conduct ftest
     # todo: allow reusing existing result (--cache arg? or --npar -1?)
     if ftest:
+        npar_suff = f'_npar{npar}'
+        dcname_base = osp.basename(dcfile).replace(npar_suff,'').replace('dc_','').replace('.txt','')
         if ntoys==0:
             bsvj.logger.warning("F-test w/o toys may not be accurate")
         if not i_winner:
@@ -245,7 +247,7 @@ def gen_datacards():
         # assign i_winner as the "main" datacard
         outdir = osp.dirname(dcfile)
         npar_suff = f'_npar{i_winner}'
-        wfiles = glob(osp.join(outdir,f'*{npar_suff}.*'))
+        wfiles = glob(osp.join(outdir,f'*{dcname_base}{npar_suff}.*'))
         for wfile in wfiles:
             # leave intermediate f-test files for backup folder
             if osp.basename(wfile).startswith('higgsCombine'): continue
@@ -256,7 +258,7 @@ def gen_datacards():
         # put others into a backup folder
         bakdir = osp.join(outdir,'ftest')
         if not osp.isdir(bakdir): os.makedirs(bakdir)
-        bfiles = glob(osp.join(outdir,'*_npar*.*'))
+        bfiles = glob(osp.join(outdir,f'*{dcname_base}_npar*.*'))
         for bfile in bfiles:
             shutil.move(bfile, osp.join(bakdir,osp.basename(bfile)))
         # also save results in backup folder for histogramming etc.
