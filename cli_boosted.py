@@ -165,6 +165,7 @@ def gen_datacards():
     suff = bsvj.pull_arg('--suff', type=str, default='').suff
     ftest = bsvj.pull_arg('--ftest', default=False, action="store_true").ftest
     ntoys = bsvj.read_arg('-t', type=int, default=0).t
+    ftest_long = bsvj.pull_arg('--ftest-long', default=False, action="store_true").ftest_long
     verbose = bsvj.pull_arg('--verbose', default=False, action="store_true").verbose
 
     # use npar arg as max value in saturated gof f-test
@@ -181,6 +182,7 @@ def gen_datacards():
     # format: results[(i,j)] = ((n1,gof1),(n2,gof2))
     # non-toy case: gof result for each n
     results = {} if ntoys>0 else []
+    i_winner = None
     for ipar,npar in enumerate(npar_vals):
         npar_suff = suff
         if ftest:
@@ -223,6 +225,13 @@ def gen_datacards():
                     'data': result_npar['gof'],
                 }
                 results[(ipar-1,ipar)] = ((npar, gof1), (npar+1, gof2))
+                if not ftest_long:
+                    # shortcircuit toy-based ftest for speed
+                    i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=True)
+                    if i_winner==ipar-1:
+                        break
+                    else:
+                        i_winner = None
             else:
                 results.append((npar+1, result_npar['gof'][0]))
 
@@ -231,7 +240,8 @@ def gen_datacards():
     if ftest:
         if ntoys==0:
             bsvj.logger.warning("F-test w/o toys may not be accurate")
-        i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=ntoys>0)
+        if not i_winner:
+            i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=ntoys>0)
         # assign i_winner as the "main" datacard
         outdir = osp.dirname(dcfile)
         npar_suff = f'_npar{i_winner}'
