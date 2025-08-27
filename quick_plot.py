@@ -768,25 +768,54 @@ def safe_divide(a, b):
     return np.divide(a, b, out=np.zeros_like(a), where=b!=0)
 
 
+class LimitObj:
+    def __init__(self):
+        self.rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
+        self.clean = bsvj.pull_arg('--clean', action='store_true').clean
+
+        # compute cls curves and limits
+        # sorted by signal parameters
+        self.results = {}
+        for observed, asimov in zip(*organize_rootfiles(self.rootfiles)):
+            meta = svj.metadata_from_path(asimov)
+            key = (meta['mz'], meta['mdark'], meta['rinv'])
+
+            obs, asi = extract_scans([observed, asimov], correct_minimum=True)
+            if self.clean:
+                obs = clean_scan(obs)
+                asi = clean_scan(asi)
+
+            result = {}
+            result['cls'] = get_cls(obs, asi)
+            result['limit'] = interpolate_95cl_limit(result['cls'])
+            result['observed'] = observed
+            result['asimov'] = asimov
+            self.results[key] = result
+
+
+@scripter
+def explim():
+    limits = LimitObj()
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='explim.txt').outfile
+
+    with open(outfile, 'w') as ofile:
+        for key,result in limits.results.items():
+            ofile.write(' '.join(str(x) for x in [key[0], key[1], key[2], result['limit'].expected])+'\n')
+
+
 @scripter
 def cls():
-    rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
+    limits = LimitObj()
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
-    clean = bsvj.pull_arg('--clean', action='store_true').clean
 
-    for observed, asimov in zip(*organize_rootfiles(rootfiles)):
-        obs, asimov = extract_scans([observed, asimov], correct_minimum=True)
-        if clean:
-            obs = clean_scan(obs)
-            asimov = clean_scan(asimov)
-
-        cls = get_cls(obs, asimov)
-        limit = interpolate_95cl_limit(cls)
+    for key,result in limits.results.items():
+        cls = result['cls']
+        limit = result['limit']
 
         logger.info(
-            'Limit {}: 2sd={:.4f} 1sd={:.4f} exp={:.4f} 1su={:.4f} 2su={:.4f} obs={:.4f}'
+            'Limit {} {} {}: 2sd={:.4f} 1sd={:.4f} exp={:.4f} 1su={:.4f} 2su={:.4f} obs={:.4f}'
             .format(
-                get_mz(observed),
+                key[0], key[1], key[2],
                 limit.twosigma_down,
                 limit.onesigma_down,
                 limit.expected,
@@ -801,7 +830,7 @@ def cls():
             mu = cls.obs.df['mu']
             mu_best = cls.obs.bestfit.df['mu']
 
-            ax.plot([], [], ' ', label=name_from_combine_rootfile(observed, True))
+            ax.plot([], [], ' ', label=name_from_combine_rootfile(result['observed'], True))
             ax.plot([mu[0], mu[-1]], [.05, .05], label='95%', c='purple')
             ax.plot(mu, cls.s, label='s', c='black')
             ax.plot(mu, cls.b, label='b', c='blue')
@@ -836,29 +865,17 @@ def cls():
 
 @scripter
 def brazil():
-    rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
+    limits = LimitObj()
     outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
-    clean = bsvj.pull_arg('--clean', action='store_true').clean
-
-    obs_rootfiles, asimov_rootfiles = organize_rootfiles(rootfiles)
 
     points = []
-    for obs_rootfile, asimov_rootfile in zip(obs_rootfiles, asimov_rootfiles):
-        mz = get_mz(obs_rootfile)
-        xsec = bsvj.get_xs(mz)
-        assert mz == get_mz(asimov_rootfile)
-        obs, asimov = extract_scans([obs_rootfile, asimov_rootfile])
-        if clean:
-            obs = clean_scan(obs)
-            asimov = clean_scan(asimov)
-        cls = get_cls(obs, asimov)
-        limit = interpolate_95cl_limit(cls)
+    for key,result in limits.results.items():
         points.append(bsvj.AttrDict(
-            mz = mz,
-            xsec = xsec,
-            limit = limit,
-            cls = cls
-            ))
+            mz = key[0],
+            xsec = bsvj.get_xs(key[0]),
+            limit = result['limit'],
+            cls = result['cls']
+        ))
 
     print(
         '{:<5s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s} | {:>8s}'
