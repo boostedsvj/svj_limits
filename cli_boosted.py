@@ -20,6 +20,35 @@ scripter = bsvj.Scripter()
 
 
 @scripter
+def run_mp():
+    """
+    Runs any scripter-exposed function in parallel.
+    For each function call, inputs should be specified as command-line arguments in a single line of a txt file
+    """
+    npool = bsvj.pull_arg('--npool', type=int, default=8).npool
+    fn_name = bsvj.pull_arg('function', type=str).function
+    input_file = bsvj.pull_arg('input', type=str).input
+
+    fn = scripter.scripts[fn_name]
+    input = [{'fn': fn, 'line': line.rstrip()} for line in input_file]
+
+    from multiprocessing import Pool
+    p = Pool(npool)
+    p.imap_unordered(run_mp_impl, input)
+    p.close()
+    p.join()
+    bsvj.logger.info('Finished pool')
+
+
+def run_mp_impl(args):
+    fn = args['fn']
+    input_line = args['line']
+    # each process in pool gets a copy of sys.argv, so they can be overwritten and reset independently
+    with bsvj.set_args(shlex.split(input_line)):
+        fn()
+
+
+@scripter
 def plot_scipy_fits():
     parser = argparse.ArgumentParser(inspect.stack()[0][3])
     parser.add_argument('rootfile', type=str)
@@ -348,20 +377,9 @@ def make_bestfit_and_scan_commands(txtfile, args=None):
 
 
 @scripter
-def bestfit(txtfile=None):
-    if txtfile is None:
-        # Allow multiprocessing if multiple datacards are passed on the command line
-        txtfiles = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
-        if len(txtfiles) > 1:
-            # Call this function in a pool instead
-            import multiprocessing as mp
-            with mp.Manager() as manager:
-                pool = mp.Pool(8)
-                pool.map(bestfit, txtfiles)
-                pool.close()
-            return
-        else:
-            txtfile = osp.abspath(txtfiles[0])
+def bestfit():
+    txtfile = bsvj.pull_arg('datacard', type=str).datacard
+    txtfile = osp.abspath(txtfile)
 
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('bestfits_%Y%m%d')).outdir
     outdir = osp.abspath(outdir)
@@ -596,49 +614,20 @@ def impacts():
         )
     bsvj.run_command(plot_impacts_nobkg_cmd)
 
+
 @scripter
-def likelihood_scan(args=None):
+def likelihood_scan():
     """
     Runs a likelihood scan on a datacard
     """
-    if args is None: args = sys.argv
-    with bsvj.set_args(args):
-
-        print(sys.argv)
-
-        outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('scans_%Y%m%d')).outdir
-        txtfile = bsvj.pull_arg('datacard', type=str).datacard
-        bestfit, scan = make_bestfit_and_scan_commands(txtfile)
-
-        for cmd in [bestfit, scan]:
-            bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
-            if outdir is None:
-                bsvj.logger.error('No outdir specified')
-
-
-@scripter
-def likelihood_scan_mp():
-    """
-    Like likelihood_scan, but accepts multiple datacards. 
-    """
-    datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('scans_%Y%m%d')).outdir
+    txtfile = bsvj.pull_arg('datacard', type=str).datacard
+    bestfit, scan = make_bestfit_and_scan_commands(txtfile)
 
-    # Copy sys.argv per job, setting first argument to the datacard
-    args = sys.argv[:]
-    args.insert(1, datacards[0])
-    args.extend(['--outdir', outdir])
-    jobs = []
-    for txtfile in datacards:
-        args[1] = txtfile
-        jobs.append(args[:])
-
-    import multiprocessing
-    p = multiprocessing.Pool(16)
-    p.map(likelihood_scan, jobs)
-    p.close()
-    p.join()
-    bsvj.logger.info('Finished pool')
+    for cmd in [bestfit, scan]:
+        bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
+        if outdir is None:
+            bsvj.logger.error('No outdir specified')
 
 
 @scripter

@@ -54,42 +54,48 @@ class Signal:
     def exp_val(self) -> float:
         return float(self.exp)
 
-# run a command over potentially multiple signal arguments; variants:
+# run a command over potentially multiple signal arguments; variants for broadcasting across multiple signals:
 # 1. "single": runs once even when multiple signals specified
-# 2. "loop": runs in serial over signals in a loop
+# 2. "loop": runs in serial over signals in a loop (default)
 # 3. "mp": runs in parallel over signals using multiprocessing version of function
 class Command:
-    def __init__(self, pre, function, flags, function_mp=None, single=False):
+    def __init__(self, pre, function, flags, cast='loop'):
         self.pre = pre
         self.function = function
-        self.function_mp = function_mp
         self.flags = flags
-        self.single = single
+        self.cast = cast
+
+    def get_flags(self, args):
+        return self.flags.format(**vars(args))
 
     def run(self, args, signals, dryrun):
         # "single"
-        if self.single:
+        if self.cast=='single':
             args_signal = fill_signal_args(args, signals[0])
-            self.run_single(args_signal, self.function, dryrun)
+            flags_signal = self.get_flags(args_signal)
+            self.run_single(self.function, flags_signal, dryrun)
         # "loop"
-        elif args.npool==0 or self.function_mp is None:
+        elif self.cast=='loop' or args.npool==0:
             for signal in signals:
                 args_signal = fill_signal_args(args, signal)
-                self.run_single(args_signal, self.function, dryrun)
+                flags_signal = self.get_flags(args_signal)
+                self.run_single(self.function, flags_signal, dryrun)
         # "mp"
-        else:
-            # todo: modify this approach: write out args to txt file, then call general run_mp function
-            args_signal = None
-            for signal in signals:
-                args_tmp = fill_signal_args(args, signal)
-                if args_signal is None: args_signal = args_tmp
-                else:
-                    for key in vars(args_signal).keys(): setattr(args_signal, key, join_none(" ",[getattr(args_signal, key), getattr(args_tmp, key)]))
-            self.run_single(args_signal, self.function_mp, dryrun)
+        elif self.cast=='mp':
+            # write out args to txt file
+            arg_filename = f"args_{strftime('%Y%m%d%H%M%S')}.txt"
+            with open(arg_filename, 'w') as arg_file:
+                for signal in signals:
+                    args_signal = fill_signal_args(args, signal)
+                    arg_file.write(self.flags.format(**vars(args_signal))+'\n')
 
-    def run_single(self, args, fn, dryrun):
-        cmd_template = join_none(" ",[self.pre,fn,self.flags])
-        cmd = cmd_template.format(**vars(args))
+            # call general run_mp function
+            self.run_single('run_mp', f'--npool {args.npool} {self.function} {arg_filename}', dryrun)
+        else:
+            raise RuntimeError(f"Unknown broadcast value {self.cast}")
+
+    def run_single(self, fn, flags, dryrun):
+        cmd = join_none(" ",[self.pre,fn,flags])
         if dryrun:
             logger.info(cmd)
         else:
@@ -107,16 +113,16 @@ class StepRunner:
 
 steps = {}
 steps['0'] = StepRunner('pseudodata', [
-    Command("python3 cli_boosted.py", "gen_datacards", "--norm-type crsimple --suff {data_toy_suff} {region_args1} --sig {regions_sig}", single=True),
-    Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_toy_name} {data_toy_args}", single=True),
-    Command("mv", "", "{data_toy_file_old} {data_toy_file}", single=True),
+    Command("python3 cli_boosted.py", "gen_datacards", "--norm-type crsimple --suff {data_toy_suff} {region_args1} --sig {regions_sig}", cast='single'),
+    Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_toy_name} {data_toy_args}", cast='single'),
+    Command("mv", "", "{data_toy_file_old} {data_toy_file}", cast='single'),
 ])
 steps['1'] = StepRunner('datacard generation', [
-    Command("python3 cli_boosted.py", "gen_datacards", "--norm-type rhalpha {region_args2} --sig {regions_sig} {dc_args}"),
+    Command("python3 cli_boosted.py", "gen_datacards", "--norm-type rhalpha {region_args2} --sig {regions_sig} {dc_args}", cast='mp'),
 ])
 steps['2'] = StepRunner('diagnostics', [
     # run bestfit
-    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range -1 1"),
+    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range -1 1", cast='mp'),
     # hessian analysis
     Command("python3", "hessian.py", "-w {bf_file}:w -f {bf_file}:fit_mdf -s 0.1"),
     # make plots
@@ -134,17 +140,17 @@ steps['2'] = StepRunner('diagnostics', [
     # todo: move all plots into one folder?
 )
 steps['3'] = StepRunner('bias toys', [
-    Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_name} {bias_toy_args} {rinj_arg}"),
+    Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_name} {bias_toy_args} {rinj_arg}", cast='mp'),
     Command("mv", "", "{bias_toy_file_old} {bias_toy_file}"),
 ])
 steps['3a'] = StepRunner('Asimov toy', [
-    Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{scan_dc_name} {scan_toy_args} {rinj_arg}", single=True),
-    Command("mv", "", "{scan_toy_file_old} {scan_toy_file}", single=True),
+    Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{scan_dc_name} {scan_toy_args} {rinj_arg}", cast='single'),
+    Command("mv", "", "{scan_toy_file_old} {scan_toy_file}", cast='single'),
 ])
 steps['4'] = StepRunner('likelihood scan', [
-    Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_args}"),
+    Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_args}", cast='mp'),
     # dump expected limit signal strengths into a file
-    Command("python3 quick_plot.py", "explim", "{all_scan_files} -o {explim_name}", single=True),
+    Command("python3 quick_plot.py", "explim", "{all_scan_files} -o {explim_name}", cast='single'),
 ])
 # todo: add "observed" likelihood command (using pseudodata/toy)
 steps['5'] = StepRunner('likelihood plots', [
@@ -153,18 +159,18 @@ steps['5'] = StepRunner('likelihood plots', [
     Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.png"),
 ])
 steps['6'] = StepRunner('Asimov injection test', [
-    Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}"),
+    Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
 ])
 steps['7'] = StepRunner('Asimov injection plots', [
-    Command("python3 quick_plot.py", "brazil", "{scan_dir}/higgsCombine*{sel}*.root -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", single=True),
+    Command("python3 quick_plot.py", "brazil", "{scan_dir}/higgsCombine*{sel}*.root -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
 ])
 steps['8'] = StepRunner('bias fits', [
-    Command("python3 cli_boosted.py", "fittoys", "{dc_dir}/{dc_name} {bias_fit_args} {bias_sig_args} --cminDefaultMinimizerStrategy=0"),
-    Command("mkdir", "", "-p {bias_results_dir}", single=True),
+    Command("python3 cli_boosted.py", "fittoys", "{dc_dir}/{dc_name} {bias_fit_args} {bias_sig_args}", cast='mp'),
+    Command("mkdir", "", "-p {bias_results_dir}", cast='single'),
     Command("mv", "", "{bias_fit_file} {bias_results_dir}/"),
 ])
 steps['9'] = StepRunner('bias plots', [
-    Command("python3", "plot_bias_or_self_study.py", "--base_dir {bias_results_basedir} --sel {sel} --test {bias_test_type}", single=True),
+    Command("python3", "plot_bias_or_self_study.py", "--base_dir {bias_results_basedir} --sel {sel} --test {bias_test_type}", cast='single'),
 ])
 # todo: nuisance impacts
 
@@ -257,7 +263,7 @@ def derive_args(args_orig, signals, alt=False):
         f"--suff {args.suff}" if args.suff else "",
     ])
     args.bias_toy_args = f"-t {args.btoys} -s {args.btoy_seed}"
-    args.bias_fit_args = f"{args.bias_toy_args} --range {args.brange[0]} {args.brange[1]}"
+    args.bias_fit_args = f"{args.bias_toy_args} --range {args.brange[0]} {args.brange[1]} --cminDefaultMinimizerStrategy 0"
     args.scan_toy_args = f"-t -1 -s {args.stoy_seed}"
     args.scan_args_base = f"--range {args.srange[0]} {args.srange[1]} -s {args.stoy_seed}"
     args.scan_args = f"{args.scan_args_base} --asimov"
