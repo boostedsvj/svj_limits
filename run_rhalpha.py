@@ -143,7 +143,8 @@ steps['3a'] = StepRunner('Asimov toy', [
 ])
 steps['4'] = StepRunner('likelihood scan', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_args}"),
-    # todo: command to dump expected limit signal strengths into a file
+    # dump expected limit signal strengths into a file
+    Command("python3 quick_plot.py", "explim", "{all_scan_files} -o {explim_name}", single=True),
 ])
 # todo: add "observed" likelihood command (using pseudodata/toy)
 steps['5'] = StepRunner('likelihood plots', [
@@ -171,7 +172,7 @@ steps['9'] = StepRunner('bias plots', [
 predefs = {
     'gen_datacard': ['0','1','2'],
     'gen_datacard_alt': ['0','1b','2b'],
-    'asimov': ['1','4','5'],
+    'likelihood': ['1','4','5'],
     'asimov_inj': ['1','3a','6','7'],
     'closure': ['1','3','8','9'],
     'bias': ['1','1b','3b','8','9'],
@@ -225,7 +226,7 @@ def fill_signal_args(args, signal):
 
 # todo:
 # option to swap out all pseudodata-related toy args for real data args
-def derive_args(args_orig, alt=False):
+def derive_args(args_orig, signals, alt=False):
     args = deepcopy(args_orig)
 
     # swap to alt versions for bias study
@@ -306,10 +307,18 @@ def derive_args(args_orig, alt=False):
     args.scan_inj_args = join_none(" ",[args.scan_inj_args, f"--toysFile {args.scan_toy_file}"])
     args.scan_inj_name_short = join_none('_',args.siginj)
 
+    # agglomerate all signal scan result files
+    args.all_scan_files = []
+    for signal in signals:
+        signal_args = fill_signal_args(args, signal)
+        args.all_scan_files.append(signal_args.scan_files)
+    args.all_scan_files = join_none(" ",args.all_scan_files)
+
     return args
 
 if __name__=="__main__":
     default_signal = ["350","10","0p3"]
+    default_explim = "explim_{sel}.txt"
 
     desc = [
         "\n".join(["Steps:"]+[f"{key}. {val.name}" for key,val in sorted(steps.items(), key=lambda item: nat_sort(item[0]))]),
@@ -346,7 +355,7 @@ if __name__=="__main__":
     group_sx = group_si.add_mutually_exclusive_group()
     group_sx.add_argument("--signal", dest="signals", metavar=("mMed","mDark","rinv"), type=str, default=default_signal, nargs=3, help="signal parameters")
     group_sx.add_argument("--signals", dest="signals", type=str, default="", help="text file w/ list of signal parameters")
-    group_si.add_argument("--explim", type=str, default="", help="generated file with expected limit values per signal from Asimov scan")
+    group_si.add_argument("--explim", type=str, default=default_explim, help="generated file with expected limit values per signal from Asimov scan")
     group_dc = parser.add_argument_group("datacard")
     group_dc.add_argument("--tf-basis", type=str, default=allowed_basis[0], choices=allowed_basis, help="transfer factor polynomial basis")
     group_dc.add_argument("--tf-mc", default=False, action="store_true", help="use TF from MC")
@@ -373,6 +382,14 @@ if __name__=="__main__":
     # todo: expose pointsRandProf options
     args = parser.parse_args()
     if args.predef: args.steps = predefs[args.predef]
+    if args.explim:
+        args.explim = args.explim.format(**vars(args))
+        # explim is the input file name (used in asimov_inj, closure/bias, etc.)
+        # explim_name is the output file name (created during likelihood scan for use in above steps)
+        args.explim_name = args.explim[:]
+        if not os.path.isfile(args.explim):
+            logger.warning(f"explim file {args.explim} not found")
+            args.explim = ""
 
     # signals
     explim_default = '0.2'
@@ -399,10 +416,11 @@ if __name__=="__main__":
                 if len(line)==0: continue
                 props = line.split()
                 signals.append(make_signal(props))
+    args.siginj.append(explims[tuple(args.siginj)])
 
     # execute requested steps in order
     for step in args.steps:
         alt = step.endswith('b')
         step = step.replace('b','')
-        args_step = derive_args(args, alt=alt)
+        args_step = derive_args(args, signals, alt=alt)
         steps[step].run(args_step, signals, args.dryrun)
