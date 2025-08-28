@@ -55,7 +55,7 @@ class Signal:
         return float(self.exp)
 
 # run a command over potentially multiple signal arguments; variants for broadcasting across multiple signals:
-# 1. "single": runs once even when multiple signals specified
+# 1. "single": runs once even when multiple signals specified (either independent of signal, or aggregates across all signals)
 # 2. "loop": runs in serial over signals in a loop (default)
 # 3. "mp": runs in parallel over signals using multiprocessing version of function
 class Command:
@@ -178,10 +178,10 @@ steps['9'] = StepRunner('bias plots', [
 predefs = {
     'gen_datacard': ['0','1','2'],
     'gen_datacard_alt': ['0','1b','2b'],
-    'likelihood': ['1','4','5'],
-    'asimov_inj': ['1','3a','6','7'],
-    'closure': ['1','3','8','9'],
-    'bias': ['1','1b','3b','8','9'],
+    'likelihood': ['0','1','4','5'],
+    'asimov_inj': ['0','1','3a','6','7'],
+    'closure': ['0','1','3','8','9'],
+    'bias': ['0','1','1b','3b','8','9'],
 }
 
 def get_rinj(rinj, signal):
