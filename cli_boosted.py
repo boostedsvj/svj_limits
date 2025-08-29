@@ -28,10 +28,11 @@ def run_mp():
     """
     npool = bsvj.pull_arg('--npool', type=int, default=8).npool
     fn_name = bsvj.pull_arg('function', type=str).function
-    input_file = bsvj.pull_arg('input', type=str).input
+    input_filename = bsvj.pull_arg('input', type=str).input
 
     fn = scripter.scripts[fn_name]
-    input = [{'fn': fn, 'line': line.rstrip()} for line in input_file]
+    with open(input_filename, 'r') as input_file:
+        input = [{'fn': fn, 'line': line.rstrip()} for line in input_file]
 
     from multiprocessing import Pool
     listener = bsvj.start_queue_listener()
