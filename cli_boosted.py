@@ -34,12 +34,14 @@ def run_mp():
     input = [{'fn': fn, 'line': line.rstrip()} for line in input_file]
 
     from multiprocessing import Pool
+    listener = bsvj.start_queue_listener()
     p = Pool(npool)
     for result in p.imap_unordered(run_mp_impl, input):
         pass
     p.close()
     p.join()
     logger.info('Finished pool')
+    listener.stop()
 
 
 def run_mp_impl(args):

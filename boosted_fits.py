@@ -62,6 +62,23 @@ logger = setup_logger_boosted()
 blank_logger = setup_logger_blank()
 
 
+def start_queue_listener():
+    """Handle logging in multiprocessing mode"""
+    from multiprocessing import Queue
+    from logging.handlers import QueueHandler, QueueListener
+    queue = Queue(-1)
+    loggers = [logging.getLogger(logger_name) for logger_name in logging.root.manager.loggerDict]
+    handlers = []
+    for logger_obj in loggers:
+        handlers.extend(logger_obj.handlers)
+    listener = logging.handlers.QueueListener(queue, *handlers)
+    listener.start()
+    for logger_obj in loggers:
+        logger_obj.handlers.clear()
+        logger_obj.addHandler(logging.handlers.QueueHandler(queue))
+    return listener
+
+
 def debug(flag=True):
     """Sets the logger level to debug (for True) or warning (for False)"""
     logger.setLevel(logging.DEBUG if flag else DEFAULT_LOGGING_LEVEL)
