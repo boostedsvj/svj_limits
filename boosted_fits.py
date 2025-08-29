@@ -50,10 +50,16 @@ def setup_logger(name, fmt='{color}%(levelname)s:%(module)s:%(lineno)s{black} %(
         logger.setLevel(DEFAULT_LOGGING_LEVEL)
         logger.addHandler(handler)
     return logger
-logger = setup_logger('boosted')
-logger.subprocess_logger = setup_logger('subp', '{color}[%(asctime)s]{black} %(message)s', '\033[34m')
-blank_logger = setup_logger('blank', '', '')
-blank_logger.subprocess_logger = setup_logger('subp_blank', '', '')
+def setup_logger_boosted():
+    logger = setup_logger('boosted')
+    logger.subprocess_logger = setup_logger('subp', '{color}[%(asctime)s]{black} %(message)s', '\033[34m')
+    return logger
+def setup_logger_blank():
+    blank_logger = setup_logger('blank', '', '')
+    blank_logger.subprocess_logger = setup_logger('subp_blank', '', '')
+    return blank_logger
+logger = setup_logger_boosted()
+blank_logger = setup_logger_blank()
 
 
 def debug(flag=True):
@@ -102,7 +108,7 @@ def get_xs(mz):
 
 @contextmanager
 def set_args(args):
-    _old_sys_args = sys.argv
+    _old_sys_args = sys.argv[:]
     try:
         sys.argv = args
         yield args

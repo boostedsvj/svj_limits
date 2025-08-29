@@ -11,6 +11,7 @@ from glob import glob
 import numpy as np
 
 import boosted_fits as bsvj
+from boosted_fits import logger
 
 import ROOT # type: ignore
 ROOT.RooMsgService.instance().setSilentMode(True)
@@ -38,7 +39,7 @@ def run_mp():
         pass
     p.close()
     p.join()
-    bsvj.logger.info('Finished pool')
+    logger.info('Finished pool')
 
 
 def run_mp_impl(args):
@@ -73,7 +74,7 @@ def plot_scipy_fits():
 
             for pdf_type in bsvj.known_pdfs():
                 if args.pdftype and pdf_type != args.pdftype: continue
-                bsvj.logger.info('Fitting pdf_type=%s, tdir_name=%s', pdf_type, tdir_name)
+                logger.info('Fitting pdf_type=%s, tdir_name=%s', pdf_type, tdir_name)
                 fig = plt.figure(figsize=(8,8))
                 ax = fig.gca()
                 binning, counts = bsvj.th1_binning_and_values(tdir.Get('Bkg'))
@@ -86,7 +87,7 @@ def plot_scipy_fits():
                 else:
                     npars_iter = list(range(1,5) if pdf_type == 'alt' else range(2,6))
                 for npars in npars_iter:
-                    bsvj.logger.info('Fitting pdf_type=%s, tdir_name=%s, npars=%s', pdf_type, tdir_name, npars)
+                    logger.info('Fitting pdf_type=%s, tdir_name=%s, npars=%s', pdf_type, tdir_name, npars)
                     res = bsvj.fit_scipy(pdf_type, npars, bkg_hist)
                     y_pdf = bsvj.eval_expression(bsvj.pdf_expression(pdf_type, npars), [bin_centers] + list(res.x))
                     y_pdf = y_pdf/y_pdf.sum() * counts.sum()
@@ -131,13 +132,13 @@ def plot_roofit_fits():
             mt = bsvj.get_mt_from_th1(bkg_hist)
             for pdf_type in bsvj.known_pdfs():
                 if args.pdftype and pdf_type != args.pdftype: continue
-                bsvj.logger.info('Fitting pdf_type=%s, tdir_name=%s', pdf_type, tdir_name)
+                logger.info('Fitting pdf_type=%s, tdir_name=%s', pdf_type, tdir_name)
                 if args.npars is not None and len(args.npars):
                     npars_iter = list(args.npars)
                 else:
                     npars_iter = list(range(1,5) if pdf_type == 'alt' else range(2,6))
                 for npars in npars_iter:
-                    bsvj.logger.info('Fitting pdf_type=%s, tdir_name=%s, npars=%s', pdf_type, tdir_name, npars)
+                    logger.info('Fitting pdf_type=%s, tdir_name=%s, npars=%s', pdf_type, tdir_name, npars)
                     res_scipy = bsvj.fit_scipy(pdf_type, npars, bkg_hist)
                     if len(res_scipy.x) != npars:
                         raise Exception(
@@ -271,7 +272,7 @@ def gen_datacards():
         npar_suff = f'_npar{npar}'
         dcname_base = osp.basename(dcfile).replace(npar_suff,'').replace('dc_','').replace('.txt','')
         if ntoys==0:
-            bsvj.logger.warning("F-test w/o toys may not be accurate")
+            logger.warning("F-test w/o toys may not be accurate")
         if not i_winner:
             i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=ntoys>0)
         # assign i_winner as the "main" datacard
@@ -356,7 +357,7 @@ def collect_gof(gof_file):
             # convert to nll
             out[j] = -2.0 * np.log(tree.limit)
     except:
-        bsvj.logger.warning(f"Skipping {gof_file}")
+        logger.warning(f"Skipping {gof_file}")
         pass
 
     return out
@@ -401,7 +402,7 @@ def gentoys():
     """
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('toys_%Y%m%d')).outdir
-    bsvj.logger.info(f'Output will be moved to {outdir}')
+    logger.info(f'Output will be moved to {outdir}')
 
     for dc_file in datacards:
         dc = bsvj.Datacard.from_txt(dc_file)
@@ -419,7 +420,7 @@ def gentoys():
 def fittoys2():
     infiles = bsvj.pull_arg('infiles', type=str, nargs='+').infiles
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('fittoys_%Y%m%d')).outdir
-    bsvj.logger.info(f'Output will be moved to {outdir}')
+    logger.info(f'Output will be moved to {outdir}')
 
     # Sort datacards and toysfiles
     datacards = []
@@ -536,7 +537,7 @@ def impacts():
         base_cmd.args.remove('--toysFrequentist')
 
     workdir = strftime(f'impacts_cli_%Y%m%d_{osp.basename(dc_file).replace(".txt","")}')
-    bsvj.logger.info(f'Executing from {workdir}')
+    logger.info(f'Executing from {workdir}')
     if not bsvj.DRYMODE:
         os.makedirs(workdir, exist_ok=True)
         os.chdir(workdir)
@@ -550,7 +551,7 @@ def impacts():
     cmd.args.add('--saveWorkspace')
     cmd.name = '_initialFit_Test'
     if osp.isfile(cmd.outfile):
-        bsvj.logger.warning(
+        logger.warning(
             f'Initial fit output already exists, not running initial fit command: {cmd}'
             )
     else:
@@ -562,7 +563,7 @@ def impacts():
         if 'mcstat' in syst: continue
         if syst in base_cmd.freeze_parameters: continue
         systs.append(syst)
-    bsvj.logger.info(f'Doing systematics: {" ".join(systs)}')
+    logger.info(f'Doing systematics: {" ".join(systs)}')
 
     # calculate all impacts
     combinetool_dofit_cmd = base_cmd.copy()
@@ -628,7 +629,7 @@ def likelihood_scan():
     for cmd in [bestfit, scan]:
         bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
         if outdir is None:
-            bsvj.logger.error('No outdir specified')
+            logger.error('No outdir specified')
 
 
 @scripter
@@ -652,7 +653,7 @@ def remove_fsr():
     for dc_file in dc_files:
         dc = bsvj.Datacard.from_txt(dc_file)
         dc.systs = [s for s in dc.systs if s[0] != 'fsr']
-        bsvj.logger.info(f'Overwriting {dc_file}')
+        logger.info(f'Overwriting {dc_file}')
         with open(dc_file, 'w') as f:
             f.write(bsvj.parse_dc(dc))
 
