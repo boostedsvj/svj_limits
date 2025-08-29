@@ -2,7 +2,7 @@
 Scripts using building blocks in boosted_fits.py to create datacards
 """
 
-import argparse, inspect, os, os.path as osp, re, json, itertools, sys, shutil
+import argparse, inspect, os, os.path as osp, re, json, itertools, sys, shutil, shlex
 from pprint import pprint
 from time import strftime, sleep
 from copy import copy, deepcopy
@@ -34,7 +34,8 @@ def run_mp():
 
     from multiprocessing import Pool
     p = Pool(npool)
-    p.imap_unordered(run_mp_impl, input)
+    for result in p.imap_unordered(run_mp_impl, input):
+        pass
     p.close()
     p.join()
     bsvj.logger.info('Finished pool')
