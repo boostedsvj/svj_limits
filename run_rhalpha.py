@@ -162,7 +162,7 @@ steps['6'] = StepRunner('Asimov injection test', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
 ])
 steps['7'] = StepRunner('Asimov injection plots', [
-    Command("python3 quick_plot.py", "brazil", "{scan_dir}/higgsCombine*{sel}*.root -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
+    Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
 ])
 steps['8'] = StepRunner('bias fits', [
     Command("python3 cli_boosted.py", "fittoys", "{dc_dir}/{dc_name} {bias_fit_args} {bias_sig_args}", cast='mp'),
@@ -187,7 +187,7 @@ predefs = {
 def get_rinj(rinj, signal):
     if rinj<0:
         exp_val = signal.exp_val()
-        return exp_val*rinj
+        return exp_val*abs(rinj)
     else:
         return rinj
 
@@ -223,8 +223,8 @@ def fill_signal_args(args, signal):
     signal_args.bias_sig_args = f"--toysFile {signal_args.bias_toy_file} --expectSignal 0"
     signal_args.bias_fit_file = f"toyfits_{args.bfit_date}/higgsCombineObserveddc_{signal_args.signame_btoy}.FitDiagnostics.mH120.{args.btoy_seed}.root"
 
-    signal_args.scan_toy_file_old = f"toys_{args.stoy_date}/higgsCombineAsimovdc_{signal_args.signame}.GenerateOnly.mH120.{args.stoy_seed}.root"
-    signal_args.scan_toy_file = signal_args.scan_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
+    signal_args._scan_toy_file_old = f"toys_{args.stoy_date}/higgsCombineAsimovdc_{signal_args.signame}.GenerateOnly.mH120.{args.stoy_seed}.root"
+    signal_args._scan_toy_file = signal_args._scan_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
     signal_args.scan_files = f"{args.scan_dir}/higgsCombinedc_{signal_args.signame}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
     signal_args.scan_files += f" {signal_args.scan_files.replace('Observed','Asimov')}"
 
@@ -264,7 +264,7 @@ def derive_args(args_orig, signals, alt=False):
     ])
     args.bias_toy_args = f"-t {args.btoys} -s {args.btoy_seed}"
     args.bias_fit_args = f"{args.bias_toy_args} --range {args.brange[0]} {args.brange[1]} --cminDefaultMinimizerStrategy 0"
-    args.scan_toy_args = f"-t -1 -s {args.stoy_seed}"
+    args.scan_toy_args = f"--asimov -s {args.stoy_seed}"
     args.scan_args_base = f"--range {args.srange[0]} {args.srange[1]} -s {args.stoy_seed}"
     args.scan_args = f"{args.scan_args_base} --asimov"
     args.scan_inj_args = f"{args.scan_args_base} -t -1"
@@ -308,8 +308,8 @@ def derive_args(args_orig, signals, alt=False):
     signal_inj = Signal(*args.siginj)
     siginj_args = fill_signal_args(args, signal_inj)
     args.scan_dc_name = siginj_args.dc_name
-    args.scan_toy_file_old = siginj_args.scan_toy_file_old
-    args.scan_toy_file = siginj_args.scan_toy_file
+    args.scan_toy_file_old = siginj_args._scan_toy_file_old
+    args.scan_toy_file = siginj_args._scan_toy_file
     args.scan_inj_args = join_none(" ",[args.scan_inj_args, f"--toysFile {args.scan_toy_file}"])
     args.scan_inj_name_short = join_none('_',args.siginj)
 
