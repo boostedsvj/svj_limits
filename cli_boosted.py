@@ -45,7 +45,7 @@ def run_mp():
 
 def run_mp_impl(args):
     # send logs to queue
-    bsvj.logger = bsvj.setup_logger_boosted(stream=False, suff=str(os.getpid()))
+    bsvj.logger = bsvj.setup_loggers_boosted(stream=False, suff=str(os.getpid()))
     # decompose args
     fn = args['fn']
     input_line = args['line']

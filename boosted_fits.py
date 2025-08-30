@@ -42,7 +42,7 @@ class ListHandler(logging.Handler):
 
 
 DEFAULT_LOGGING_LEVEL = logging.INFO
-def setup_logger(name, fmt='{color}%(levelname)s:%(module)s:%(lineno)s{black} %(message)s', color='\033[33m', queue=None):
+def setup_logger(name, fmt='', color='', queue=None):
     if name in logging.Logger.manager.loggerDict:
         logger = logging.getLogger(name)
         logger.info('Logger %s is already defined', name)
@@ -58,20 +58,23 @@ def setup_logger(name, fmt='{color}%(levelname)s:%(module)s:%(lineno)s{black} %(
         logger.setLevel(DEFAULT_LOGGING_LEVEL)
         logger.addHandler(handler)
     return logger
-def setup_logger_boosted(stream=True, suff=""):
+def setup_loggers(name, stream=True, suff="", kwargs=None, subp_kwargs=None):
     queue = None if stream else []
-    logger = setup_logger(f'boosted{suff}', queue=queue)
-    logger.subprocess_logger = setup_logger(f'subp{suff}', '{color}[%(asctime)s]{black} %(message)s', '\033[34m', queue=queue)
+    if kwargs is None: kwargs = {}
+    if subp_kwargs is None: subp_kwargs = {}
+    logger = setup_logger(f'{name}{suff}', queue=queue, **kwargs)
+    logger.subprocess_logger = setup_logger(f'subp_{name}{suff}', queue=queue, **subp_kwargs)
     logger.queue = queue
     return logger
-def setup_logger_blank(stream=True, suff=""):
-    queue = None if stream else []
-    blank_logger = setup_logger(f'blank{suff}', '', '', queue=queue)
-    blank_logger.subprocess_logger = setup_logger(f'subp_blank{suff}', '', '', queue=queue)
-    blank_logger.queue = queue
-    return blank_logger
-logger = setup_logger_boosted()
-blank_logger = setup_logger_blank()
+def setup_loggers_boosted(stream=True, suff=""):
+    return setup_loggers('boosted', stream=stream, suff=suff,
+        kwargs = dict(fmt='{color}%(levelname)s:%(module)s:%(lineno)s{black} %(message)s', color='\033[33m'),
+        subp_kwargs = dict(fmt='{color}[%(asctime)s]{black} %(message)s', color='\033[34m'),
+    )
+def setup_loggers_blank(stream=True, suff=""):
+    return setup_loggers('blank', stream=stream, suff=suff)
+logger = setup_loggers_boosted()
+blank_logger = setup_loggers_blank()
 
 
 def debug(flag=True):
