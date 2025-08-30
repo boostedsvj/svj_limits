@@ -24,7 +24,47 @@ git clone git@github.com:boostedsvj/svj_limits.git boosted/svj_limits
 cd boosted/svj_limits
 ```
 
+## Rhalphabet
+
+The rhalphabet background estimation method uses a "fail" or anti-tag control region to predict the background in the "pass" or tagged signal region.
+The background shapes in the two regions are assumed to be related by a low-order polynomial.
+The similarity of the two shapes can be enforced by applying the DDT approach to the tagger.
+
+This method has many options and settings.
+To ensure consistency, a driver script is provided to execute all steps related to validating the background prediction: [run_rhalpha.py](./run_rhalpha.py).
+
+The full details of the script can be viewed using its `--help` argument. Notable features include:
+* `--dryrun`: preview the commands that each step will run without executing them
+* `--npool [n]`: run computationally-intensive steps in parallel via multiprocessing
+* `--predef [name]`: select a predefined sequence of steps corresponding to a specific test
+    * `--steps [step [step [...]]]`: alternative to specify steps manually
+    * `--skip [name or step]`: allows skipping steps, e.g. to customize a predefined sequence
+* `--signals [file]`: run over multiple signals with parameters specified in a text file
+
+### Typical usage
+
+For a given selection and choice of options for the method, a complete suite of tests looks like this:
+```bash
+sel="cutbased_ddt=0.11"
+signals="signals_default.txt"
+common_args="--sel ${sel} --signals ${signals} --npool 8"
+dc_args="--ftoys 100 --tf-mc"
+skip_dc="--skip gen_datacard"
+skip_dc_alt="${skip_dc} gen_datacard_alt"
+
+python3 run_rhalpha.py --predef gen_datacard ${common_args} ${dc_args}
+python3 run_rhalpha.py --predef gen_datacard_alt --skip 0 ${common_args} ${dc_args}
+python3 run_rhalpha.py --predef likelihood ${skip_dc} ${common_args}
+python3 run_rhalpha.py --predef asimov_inj ${skip_dc} ${common_args} --rinj -1
+python3 run_rhalpha.py --predef self ${skip_dc} ${common_args} --rinj 0 --btoys 300
+python3 run_rhalpha.py --predef self ${skip_dc} ${common_args} --rinj -1 --btoys 300
+python3 run_rhalpha.py --predef bias ${skip_dc_alt} ${common_args} --rinj 0 --btoys 300
+python3 run_rhalpha.py --predef bias ${skip_dc_alt} ${common_args} --rinj -1 --btoys 300
+```
+
 ## Analytic fit
+
+The analytic fit method predicts the background by fitting an exponentially falling function to the observed data.
 
 ### Generating the datacards
 
