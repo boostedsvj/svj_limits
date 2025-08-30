@@ -33,8 +33,16 @@ def check_tty():
     return sys.stdout.isatty() or os.getenv('PARENT_IS_A_TTY',"false").lower()=="true"
 
 
+class ListHandler(logging.Handler):
+    def __init__(self, queue):
+        super().__init__()
+        self.outputs = queue
+    def emit(self, record):
+        self.outputs.append(self.format(record))
+
+
 DEFAULT_LOGGING_LEVEL = logging.INFO
-def setup_logger(name, fmt='{color}%(levelname)s:%(module)s:%(lineno)s{black} %(message)s', color='\033[33m'):
+def setup_logger(name, fmt='{color}%(levelname)s:%(module)s:%(lineno)s{black} %(message)s', color='\033[33m', queue=None):
     if name in logging.Logger.manager.loggerDict:
         logger = logging.getLogger(name)
         logger.info('Logger %s is already defined', name)
@@ -44,63 +52,26 @@ def setup_logger(name, fmt='{color}%(levelname)s:%(module)s:%(lineno)s{black} %(
             fmtr = logging.Formatter(fmt=fmt.format(color=color, black='\033[0m'), datefmt=datefmt)
         else:
             fmtr = logging.Formatter(fmt=fmt.format(color='', black=''), datefmt=datefmt)
-        handler = logging.StreamHandler()
+        handler = logging.StreamHandler() if queue is None else ListHandler(queue)
         handler.setFormatter(fmtr)
         logger = logging.getLogger(name)
         logger.setLevel(DEFAULT_LOGGING_LEVEL)
         logger.addHandler(handler)
     return logger
-def setup_logger_boosted():
-    logger = setup_logger('boosted')
-    logger.subprocess_logger = setup_logger('subp', '{color}[%(asctime)s]{black} %(message)s', '\033[34m')
+def setup_logger_boosted(stream=True, suff=""):
+    queue = None if stream else []
+    logger = setup_logger(f'boosted{suff}', queue=queue)
+    logger.subprocess_logger = setup_logger(f'subp{suff}', '{color}[%(asctime)s]{black} %(message)s', '\033[34m', queue=queue)
+    logger.queue = queue
     return logger
-def setup_logger_blank():
-    blank_logger = setup_logger('blank', '', '')
-    blank_logger.subprocess_logger = setup_logger('subp_blank', '', '')
+def setup_logger_blank(stream=True, suff=""):
+    queue = None if stream else []
+    blank_logger = setup_logger(f'blank{suff}', '', '', queue=queue)
+    blank_logger.subprocess_logger = setup_logger(f'subp_blank{suff}', '', '', queue=queue)
+    blank_logger.queue = queue
     return blank_logger
 logger = setup_logger_boosted()
 blank_logger = setup_logger_blank()
-
-
-class QueueLogger:
-    def __init__(self):
-        """Keep track of objects used in queue-based logging for multiprocessing"""
-        from multiprocessing import Queue
-        from logging.handlers import QueueHandler
-        self.log_queue = Queue(-1)
-        loggers = [logging.getLogger(logger_name) for logger_name in logging.root.manager.loggerDict]
-        self.handlers_orig = []
-        for logger_obj in loggers:
-            # install filters to prevent duplication
-            for handler in logger_obj.handlers:
-                handler.addFilter(logging.Filter(logger_obj.name))
-                self.handlers_orig.append(handler)
-            # redirect into queue handler
-            logger_obj.handlers.clear()
-            logger_obj.addHandler(logging.handlers.QueueHandler(self.log_queue))
-            logger_obj.propagate = False
-
-    def flush(self, pid):
-        """Drain queue for records from process w/ specified pid and send to original handler"""
-        import queue
-        drained = []
-        kept = []
-        while True:
-            try:
-                rec = self.log_queue.get_nowait()
-            except queue.Empty:
-                break
-            if rec.process == pid:
-                drained.append(rec)
-            else:
-                # push back into queue for later
-                kept.append(rec)
-        for rec in kept:
-            self.log_queue.put(rec)
-        # Now handle selected records
-        for rec in drained:
-            for handler in self.handlers_orig:
-                handler.handle(rec)
 
 
 def debug(flag=True):
@@ -1840,7 +1811,7 @@ def gof_bkgfit(mt, data, pdfs, gof_type='rss'):
 
 def fisher_metric(gof1, gof2, n1, n2, n_bins):
     with np.errstate(divide='ignore'):
-	    return ((gof1-gof2) / float(n2-n1)) / (gof2 / float(n_bins-n2))
+        return ((gof1-gof2) / float(n2-n1)) / (gof2 / float(n_bins-n2))
 
 
 # compute fisher test confidence level
