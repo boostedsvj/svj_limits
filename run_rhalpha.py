@@ -215,7 +215,7 @@ steps['7'] = StepRunner('Asimov injection plots', [
     Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
 ])
 steps['8'] = StepRunner('bias fits', [
-    Command("python3 cli_boosted.py", "fittoys", "{dc_dir}/{dc_name} {bias_fit_args} {bias_sig_args}", cast='mp'),
+    Command("python3 cli_boosted.py", "fittoys", "{dc_dir}/{dc_name_main} {bias_fit_args} {bias_sig_args}", cast='mp'),
     Command("mkdir", "", "-p {bias_results_dir}", cast='single'),
     Command("mv", "", "{bias_fit_file} {bias_results_dir}/"),
 ])
@@ -231,7 +231,7 @@ predefs = {
     'likelihood': ['0','1','4','5'],
     'asimov_inj': ['0','1','3a','6','7'],
     'self': ['0','1','3','8','9'],
-    'bias': ['0','1','1b','3b','8','9b'],
+    'bias': ['0','1','1b','3b','8b','9b'],
 }
 
 def fill_signal_args(args, signal):
@@ -249,6 +249,7 @@ def fill_signal_args(args, signal):
     signal_args.regions_sig = f"{signal_args.sig} {signal_args.antisig}"
     signal_args.signame_dc = join_none("_",[signal_args.signame, args.suff])
     signal_args.dc_name = f"dc_{signal_args.signame_dc}.txt"
+    signal_args.dc_name_main = signal_args.dc_name.replace('_alt','')
 
     signal_args.signame_dtoy = f"{signal_args.signame}_{args.data_toy_suff}"
     signal_args.data_toy_file_old = args.data_toy_file.replace("_bkg.",f"_{signal_args.signame_dtoy}.")
@@ -264,7 +265,7 @@ def fill_signal_args(args, signal):
     signal_args.bias_toy_file = signal_args.bias_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
 
     signal_args.bias_sig_args = f"--toysFile {signal_args.bias_toy_file} --expectSignal 0"
-    signal_args.bias_fit_file = f"toyfits_{args.bfit_date}/higgsCombineObserveddc_{signal_args.signame_btoy}.FitDiagnostics.mH120.{args.btoy_seed}.root"
+    signal_args.bias_fit_file = f"toyfits_{args.bfit_date}/higgsCombineObserveddc_{signal_args.signame}.FitDiagnostics.mH120.{args.btoy_seed}.root"
 
     signal_args._scan_toy_file_old = f"toys_{args.stoy_date}/higgsCombineAsimovdc_{signal_args.signame}.GenerateOnly.mH120.{args.stoy_seed}.root"
     signal_args._scan_toy_file = signal_args._scan_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
