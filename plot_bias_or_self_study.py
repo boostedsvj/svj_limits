@@ -14,8 +14,12 @@ matplotlib.use('Agg') # prevents opening displays (fast), must use before pyplot
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
+import os
+
+from run_rhalpha import handle_signals_explim, get_signame, get_rinj
 
 ROOT.gROOT.SetBatch(True)  # Prevents ROOT from opening canvases
+ROOT.TH1.AddDirectory(True)
 
 def main():
     imgs = ["pdf", "png"]
@@ -30,15 +34,18 @@ def main():
                         help="Selection type")
     parser.add_argument('--test', type=str, required=True, choices=['bias', 'self'],
                         help="Test type: 'bias' or 'self'")
-    parser.add_argument('--mz', nargs='+', type=int, default=[200, 250, 300, 350, 400, 450, 500, 550],
-                        help="List of mass points. Default is [200, 250, 300, 350, 400, 450, 500, 550]")
+    parser.add_argument("--signals", dest="signals", type=str, default="",
+                        help="text file w/ list of signal parameters")
     parser.add_argument('--inj-types', type=int, choices=[0,1], nargs='*', default=[0,1],
                         help="which signal injection type(s) to plot")
-    parser.add_argument('--inj-value', type=float, default=None,
-                        help="Set all injection values to a specific number for testing (e.g., 0.3)")
+    parser.add_argument("--explim", type=str, default="explim_{sel}.txt",
+                        help="generated file with expected limit values per signal from Asimov scan")
+    parser.add_argument("--rinj", type=float, default=0,
+                        help="toy signal injection strength; if -x, strength = expected limit * x")
     parser.add_argument('-s', '--seed', type=int, default=1001,
                         help="toy seed")
     args = parser.parse_args()
+    args, signals, _ = handle_signals_explim(args)
 
     # Switch between bias and self test
     test = args.test
@@ -46,42 +53,29 @@ def main():
     if test == 'bias' : test_title = 'Bias'
     elif test == 'self' : test_title = 'Self'
 
-    # injected signal strength
-    # Needs to be added for cutbased
-    if args.inj_value is not None:
-        # If the user specifies --inj_value, override all injection values
-        inj = {mz: args.inj_value for mz in args.mz}
-    elif args.sel == 'bdt=0.67':
-        # Expected limit values for bdt=0.67
-        inj_values = [0.267, 0.129, 0.160, 0.184, 0.208, 0.248, 0.262, 0.396]
-        inj = {mz: inj_val for mz, inj_val in zip(args.mz, inj_values)}
-    elif args.sel == "cutbased":
-        inj_values = [0.427, 0.377, 0.340, 0.279, 0.364, 0.772, 0.859, 0.897]
-        inj = {mz: inj_val for mz, inj_val in zip(args.mz, inj_values)}
-    else:
-        # Default case with warning
-        print("WARNING: using 0.2 as injected signal value, please correct if unintended")
-        inj = {mz: 0.2 for mz in args.mz}
-
     # Directories for r_inj = 0 and r_inj = inj
     results = {}
     for inj_type in args.inj_types:
-        inj_val = {mz: 0 for mz in args.mz} if inj_type==0 else inj
+        base = f"{args.base_dir}/rinj{inj_type}{args.suff}"
+        if not os.path.exists(base):
+            print(f"inj_type {inj_type} not found at {base}, skipping")
+            continue
 
-        path = [f"{args.base_dir}/rinj{inj_type}{args.suff}/higgsCombineObserveddc_SVJ_s-channel_mMed-{mz}_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-{args.sel}_mt_smooth.FitDiagnostics.mH120.{args.seed}.root" for mz in args.mz]
+        rinj = 0 if inj_type==0 else args.rinj
 
         results[inj_type] = {"mean": [], "emean": [], "sigma": [], "esigma": []}
 
-        for i, (mz, f_inj) in enumerate(zip(args.mz, path)):
-            print(f_inj)
-            afile = ROOT.TFile(f_inj)
+        for signal in signals:
+            rinj_signal = get_rinj(rinj,signal)
+            path = f"{base}/higgsCombineObserveddc_{get_signame(signal)}_sel-{args.sel}_mt_smooth.FitDiagnostics.mH120.{args.seed}.root"
+            afile = ROOT.TFile(path)
             atree = afile.Get("tree_fit_sb")
 
             # Create histograms for r/rErr
-            histo = ROOT.TH1F(f"histo_rinj{inj_type}_{mz}", f"Histogram of (r-rinj)/(0.5*(rLoErr+rHiErr)) for MZ = {mz} GeV (r_inj={inj_val[mz]})", 50, -10, 10)
+            histo = ROOT.TH1F(f"histo_rinj{inj_type}_{signal.mMed}", f"Histogram of (r-rinj)/(0.5*(rLoErr+rHiErr)) for MZ = {signal.mMed} GeV (r_inj={rinj_signal})", 50, -10, 10)
 
             # Draw r/rErr into the histogram
-            atree.Draw(f"(r - {inj_val[mz]})/(0.5*(rLoErr+rHiErr))>>{histo.GetName()}", "fit_status==0 || fit_status==1")
+            atree.Draw(f"(r - {rinj_signal})/(0.5*(rLoErr+rHiErr))>>{histo.GetName()}", "fit_status==0 || fit_status==1")
 
             # Perform Gaussian fit
             fit = histo.Fit("gaus", "S", "Q")
@@ -96,15 +90,16 @@ def main():
             canvas = ROOT.TCanvas("canvas", "canvas", 800, 600)
             histo.Draw()
             for img in imgs:
-                canvas.SaveAs(f"{test}_rinj{inj_type}_MZ_{mz}_GeV.{img}")
+                canvas.SaveAs(f"{args.base_dir}/{test}_rinj{inj_type}_MZ_{signal.mMed}_GeV.{img}")
 
     # keep consistent colors
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
     # Plot mean for both r_inj = 0 and r_inj = 1
     inj_label = ["0", "Expected"]
-    for inj_type in args.inj_types:
-        plt.errorbar(args.mz, results[inj_type]["mean"], yerr=results[inj_type]["emean"], color=color_cycle[inj_type], marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=${inj_label[inj_type]}')
+    xvals = [signal.mMed_val() for signal in signals]
+    for inj_type in results:
+        plt.errorbar(xvals, results[inj_type]["mean"], yerr=results[inj_type]["emean"], color=color_cycle[inj_type], marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=${inj_label[inj_type]}')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('Mean', fontsize=12)
@@ -112,19 +107,19 @@ def main():
     plt.ylim(-3.0, 3.0)
     plt.fill_between(plt.xlim(), 0.5, -0.5, color='#f88379', alpha=0.25, label='$\pm 0.5$')
     for img in imgs:
-        plt.savefig(f'{test}_pull_mean.{img}')
+        plt.savefig(f'{args.base_dir}/{test}_pull_mean.{img}')
     plt.close()
 
     # Plot sigma for both r_inj = 0 and r_inj = 1
-    for inj_type in args.inj_types:
-        plt.errorbar(args.mz, results[inj_type]["sigma"], yerr=results[inj_type]["esigma"], color=color_cycle[inj_type], marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=${inj_label[inj_type]}')
+    for inj_type in results:
+        plt.errorbar(xvals, results[inj_type]["sigma"], yerr=results[inj_type]["esigma"], color=color_cycle[inj_type], marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=${inj_label[inj_type]}')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('$\sigma$', fontsize=12)
     plt.title(f'{test_title} Test: Gaussian $\sigma$ of $(r-r_{{inj}})/\\langle\\varepsilon_{{r}}\\rangle$', fontsize=15)
     plt.ylim(0.5, 2.5)
     for img in imgs:
-        plt.savefig(f'{test}_pull_stdev.{img}')
+        plt.savefig(f'{args.base_dir}/{test}_pull_stdev.{img}')
     plt.close()
 
 main()

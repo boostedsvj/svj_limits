@@ -54,6 +54,54 @@ class Signal:
     def exp_val(self) -> float:
         return float(self.exp)
 
+def get_rinj(rinj, signal):
+    if rinj<0:
+        exp_val = signal.exp_val()
+        return exp_val*abs(rinj)
+    else:
+        return rinj
+
+def handle_signals_explim(args):
+    if args.explim:
+        args.explim = args.explim.format(**vars(args))
+        # explim is the input file name (used in asimov_inj, self/bias, etc.)
+        # explim_name is the output file name (created during likelihood scan for use in above steps)
+        args.explim_name = args.explim[:]
+        if not os.path.isfile(args.explim):
+            logger.warning(f"explim file {args.explim} not found")
+            args.explim = ""
+
+    # signals
+    explim_default = '0.2'
+    explims = defaultdict(lambda: explim_default)
+    if args.explim:
+        with open(args.explim,'r') as efile:
+            for line in efile:
+                line = line.rstrip()
+                props = line.split()
+                explims[tuple(props[:-1])] = props[-1]
+    else:
+        logger.warning(f"explim file not provided; commands with --rinj -x will use default {explim_default}")
+    def make_signal(props):
+        # get expected limit strength
+        props.append(explims[tuple(props)])
+        return Signal(*props)
+    signals = []
+    if isinstance(args.signals,list):
+        signals.append(make_signal(args.signals))
+    else:
+        with open(args.signals,'r') as sfile:
+            for line in sfile:
+                line = line.rstrip()
+                if len(line)==0: continue
+                props = line.split()
+                signals.append(make_signal(props))
+
+    return args, signals, explims
+
+def get_signame(signal):
+    return f"SVJ_s-channel_mMed-{signal.mMed}_mDark-{signal.mDark}_rinv-{signal.rinv}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8"
+
 # run a command over potentially multiple signal arguments; variants for broadcasting across multiple signals:
 # 1. "single": runs once even when multiple signals specified (either independent of signal, or aggregates across all signals)
 # 2. "loop": runs in serial over signals in a loop (default)
@@ -172,7 +220,7 @@ steps['8'] = StepRunner('bias fits', [
     Command("mv", "", "{bias_fit_file} {bias_results_dir}/"),
 ])
 steps['9'] = StepRunner('bias plots', [
-    Command("python3", "plot_bias_or_self_study.py", "--base_dir {bias_results_basedir} --sel {sel} --test {bias_test_type}", cast='single'),
+    Command("python3", "plot_bias_or_self_study.py", "--base-dir {bias_results_basedir} --sel {sel} --test {bias_test_type} -s {btoy_seed} --explim {explim} --signals {signals}", cast='single'),
 ])
 # todo: nuisance impacts
 
@@ -182,22 +230,15 @@ predefs = {
     'gen_datacard_alt': ['0','1b','2b'],
     'likelihood': ['0','1','4','5'],
     'asimov_inj': ['0','1','3a','6','7'],
-    'closure': ['0','1','3','8','9'],
-    'bias': ['0','1','1b','3b','8','9'],
+    'self': ['0','1','3','8','9'],
+    'bias': ['0','1','1b','3b','8','9b'],
 }
-
-def get_rinj(rinj, signal):
-    if rinj<0:
-        exp_val = signal.exp_val()
-        return exp_val*abs(rinj)
-    else:
-        return rinj
 
 def fill_signal_args(args, signal):
     signal_args = deepcopy(args)
 
     # directories and names
-    signal_args.signame_base = f"SVJ_s-channel_mMed-{signal.mMed}_mDark-{signal.mDark}_rinv-{signal.rinv}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8"
+    signal_args.signame_base = get_signame(signal)
 
     signal_args.signame = f"{signal_args.signame_base}_sel-{args.sel}{args.hists_name}_smooth"
     signal_args.sig = f"{args.smoothdir}/{signal_args.signame}.json"
@@ -300,7 +341,7 @@ def derive_args(args_orig, signals, alt=False):
     args.bf_dir = f"bestfits_{args.dc_date}"
 
     args.bias_fits_dir = f"toyfits_{args.bfit_date}"
-    args.bias_test_type = "bias" if 'alt' in args.suff else "closure"
+    args.bias_test_type = "bias" if alt else "self"
     args.bias_results_rinj = "1" if args.rinj!=0 else "0"
     args.bias_results_basedir = f"{args.bias_test_type}_test"
     args.bias_results_dir = f"{args.bias_results_basedir}/rinj{args.bias_results_rinj}"
@@ -326,7 +367,6 @@ def derive_args(args_orig, signals, alt=False):
 
 if __name__=="__main__":
     default_signal = ["350","10","0p3"]
-    default_explim = "explim_{sel}.txt"
 
     desc = [
         "\n".join(["Steps:"]+[f"{key}. {val.name}" for key,val in sorted(steps.items(), key=lambda item: nat_sort(item[0]))]),
@@ -363,7 +403,7 @@ if __name__=="__main__":
     group_sx = group_si.add_mutually_exclusive_group()
     group_sx.add_argument("--signal", dest="signals", metavar=("mMed","mDark","rinv"), type=str, default=default_signal, nargs=3, help="signal parameters")
     group_sx.add_argument("--signals", dest="signals", type=str, default="", help="text file w/ list of signal parameters")
-    group_si.add_argument("--explim", type=str, default=default_explim, help="generated file with expected limit values per signal from Asimov scan")
+    group_si.add_argument("--explim", type=str, default="explim_{sel}.txt", help="generated file with expected limit values per signal from Asimov scan")
     group_dc = parser.add_argument_group("datacard")
     group_dc.add_argument("--tf-basis", type=str, default=allowed_basis[0], choices=allowed_basis, help="transfer factor polynomial basis")
     group_dc.add_argument("--tf-mc", default=False, action="store_true", help="use TF from MC")
@@ -390,40 +430,8 @@ if __name__=="__main__":
     # todo: expose pointsRandProf options
     args = parser.parse_args()
     if args.predef: args.steps = predefs[args.predef]
-    if args.explim:
-        args.explim = args.explim.format(**vars(args))
-        # explim is the input file name (used in asimov_inj, closure/bias, etc.)
-        # explim_name is the output file name (created during likelihood scan for use in above steps)
-        args.explim_name = args.explim[:]
-        if not os.path.isfile(args.explim):
-            logger.warning(f"explim file {args.explim} not found")
-            args.explim = ""
 
-    # signals
-    explim_default = '0.2'
-    explims = defaultdict(lambda: explim_default)
-    if args.explim:
-        with open(args.explim,'r') as efile:
-            for line in efile:
-                line = line.rstrip()
-                props = line.split()
-                explims[tuple(props[:-1])] = props[-1]
-    else:
-        logger.warning(f"explim file not provided; commands with --rinj -x will use default {explim_default}")
-    def make_signal(props):
-        # get expected limit strength
-        props.append(explims[tuple(props)])
-        return Signal(*props)
-    signals = []
-    if isinstance(args.signals,list):
-        signals.append(make_signal(args.signals))
-    else:
-        with open(args.signals,'r') as sfile:
-            for line in sfile:
-                line = line.rstrip()
-                if len(line)==0: continue
-                props = line.split()
-                signals.append(make_signal(props))
+    args, signals, explims = handle_signals_explim(args)
     args.siginj.append(explims[tuple(args.siginj)])
 
     # execute requested steps in order
