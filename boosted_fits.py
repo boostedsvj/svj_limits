@@ -62,24 +62,45 @@ logger = setup_logger_boosted()
 blank_logger = setup_logger_blank()
 
 
-def start_queue_listener():
-    """Handle logging in multiprocessing mode"""
-    from multiprocessing import Queue
-    from logging.handlers import QueueHandler, QueueListener
-    queue = Queue(-1)
-    loggers = [logging.getLogger(logger_name) for logger_name in logging.root.manager.loggerDict]
-    handlers = []
-    for logger_obj in loggers:
-        for handler in logger_obj.handlers:
-            handler.addFilter(logging.Filter(logger_obj.name))
-            handlers.append(handler)
-    listener = logging.handlers.QueueListener(queue, *handlers)
-    listener.start()
-    for logger_obj in loggers:
-        logger_obj.handlers.clear()
-        logger_obj.addHandler(logging.handlers.QueueHandler(queue))
-        logger_obj.propagate = False
-    return listener
+class QueueLogger:
+    def __init__(self):
+        """Keep track of objects used in queue-based logging for multiprocessing"""
+        from multiprocessing import Queue
+        from logging.handlers import QueueHandler
+        self.log_queue = Queue(-1)
+        loggers = [logging.getLogger(logger_name) for logger_name in logging.root.manager.loggerDict]
+        self.handlers_orig = []
+        for logger_obj in loggers:
+            # install filters to prevent duplication
+            for handler in logger_obj.handlers:
+                handler.addFilter(logging.Filter(logger_obj.name))
+                self.handlers_orig.append(handler)
+            # redirect into queue handler
+            logger_obj.handlers.clear()
+            logger_obj.addHandler(logging.handlers.QueueHandler(self.log_queue))
+            logger_obj.propagate = False
+
+    def flush(self, pid):
+        """Drain queue for records from process w/ specified pid and send to original handler"""
+        import queue
+        drained = []
+        kept = []
+        while True:
+            try:
+                rec = self.log_queue.get_nowait()
+            except queue.Empty:
+                break
+            if rec.process == pid:
+                drained.append(rec)
+            else:
+                # push back into queue for later
+                kept.append(rec)
+        for rec in kept:
+            self.log_queue.put(rec)
+        # Now handle selected records
+        for rec in drained:
+            for handler in self.handlers_orig:
+                handler.handle(rec)
 
 
 def debug(flag=True):

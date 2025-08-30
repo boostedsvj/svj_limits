@@ -35,14 +35,13 @@ def run_mp():
         input = [{'fn': fn, 'line': line.rstrip()} for line in input_file]
 
     from multiprocessing import Pool
-    listener = bsvj.start_queue_listener()
+    queue_logger = bsvj.QueueLogger()
     p = Pool(npool)
-    for result in p.imap_unordered(run_mp_impl, input):
-        pass
+    for pid in p.imap_unordered(run_mp_impl, input):
+        queue_logger.flush(pid)
     p.close()
     p.join()
     logger.info('Finished pool')
-    listener.stop()
 
 
 def run_mp_impl(args):
@@ -51,6 +50,7 @@ def run_mp_impl(args):
     # each process in pool gets a copy of sys.argv, so they can be overwritten and reset independently
     with bsvj.set_args(['run_mp_impl']+shlex.split(input_line)):
         fn()
+    return os.getpid()
 
 
 @scripter
