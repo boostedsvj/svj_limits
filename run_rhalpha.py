@@ -389,6 +389,7 @@ if __name__=="__main__":
     group_cx = group_co.add_mutually_exclusive_group()
     group_cx.add_argument("--steps", type=str, nargs='+', help="step(s) to run")
     group_cx.add_argument("--predef", type=str, default="", choices=list(predefs.keys()), help="predefined sequence to run")
+    group_co.add_argument("--skip", type=str, nargs='*', default=[], help="skip these steps and/or predefined sequences")
     group_co.add_argument("--dryrun", default=False, action="store_true", help="just print commands, don't run anything")
     group_co.add_argument("--sel", type=str, required=True, help="selection name")
     group_co.add_argument("--antiloose", default=False, action="store_true", help="use antiloose region")
@@ -430,7 +431,18 @@ if __name__=="__main__":
     group_bi.add_argument("--brange", type=float, default=[-5,5], nargs=2, help="bias study r range")
     # todo: expose pointsRandProf options
     args = parser.parse_args()
+
     if args.predef: args.steps = predefs[args.predef]
+    if args.skip:
+        steps_to_skip = []
+        for skip in args.skip:
+            if skip in predefs: steps_to_skip.extend(predefs[skip])
+            else: steps_to_skip.append(skip)
+        steps_to_keep = []
+        for step in args.steps:
+            if step in steps_to_skip: continue
+            else: steps_to_keep.append(step)
+        args.steps = steps_to_keep
 
     args, signals, explims = handle_signals_explim(args)
     args.siginj.append(explims[tuple(args.siginj)])
