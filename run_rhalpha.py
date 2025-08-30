@@ -87,7 +87,7 @@ class Command:
             with open(arg_filename, 'w') as arg_file:
                 for signal in signals:
                     args_signal = fill_signal_args(args, signal)
-                    arg_file.write(self.flags.format(**vars(args_signal))+'\n')
+                    arg_file.write(args_signal.signame_base+' '+self.flags.format(**vars(args_signal))+'\n')
 
             # call general run_mp function
             self.run_single('run_mp', f'--npool {args.npool} {self.function} {arg_filename}', dryrun)
@@ -195,12 +195,12 @@ def fill_signal_args(args, signal):
     signal_args = deepcopy(args)
 
     # directories and names
-    signame_base = f"SVJ_s-channel_mMed-{signal.mMed}_mDark-{signal.mDark}_rinv-{signal.rinv}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8"
+    signal_args.signame_base = f"SVJ_s-channel_mMed-{signal.mMed}_mDark-{signal.mDark}_rinv-{signal.rinv}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8"
 
-    signal_args.signame = f"{signame_base}_sel-{args.sel}{args.hists_name}_smooth"
+    signal_args.signame = f"{signal_args.signame_base}_sel-{args.sel}{args.hists_name}_smooth"
     signal_args.sig = f"{args.smoothdir}/{signal_args.signame}.json"
 
-    antisigname = f"{signame_base}_sel-{args.antisel}{args.hists_name_anti}_smooth"
+    antisigname = f"{signal_args.signame_base}_sel-{args.antisel}{args.hists_name_anti}_smooth"
     signal_args.antisig = f"{args.antismoothdir}/{antisigname}.json"
 
     signal_args.regions_sig = f"{signal_args.sig} {signal_args.antisig}"
