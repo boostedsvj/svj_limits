@@ -234,45 +234,45 @@ predefs = {
     'bias': ['0','1','1b','3b','8b','9b'],
 }
 
-def fill_signal_args(args, signal):
-    signal_args = deepcopy(args)
+def fill_signal_args(_args, signal):
+    args = deepcopy(_args)
 
     # directories and names
-    signal_args.signame_base = get_signame(signal)
+    args.signame_base = get_signame(signal)
 
-    signal_args.signame = f"{signal_args.signame_base}_sel-{args.sel}{args.hists_name}_smooth"
-    signal_args.sig = f"{args.smoothdir}/{signal_args.signame}.json"
+    args.signame = f"{args.signame_base}_sel-{args.sel}{args.hists_name}_smooth"
+    args.sig = f"{args.smoothdir}/{args.signame}.json"
 
-    antisigname = f"{signal_args.signame_base}_sel-{args.antisel}{args.hists_name_anti}_smooth"
-    signal_args.antisig = f"{args.antismoothdir}/{antisigname}.json"
+    antisigname = f"{args.signame_base}_sel-{args.antisel}{args.hists_name_anti}_smooth"
+    args.antisig = f"{args.antismoothdir}/{antisigname}.json"
 
-    signal_args.regions_sig = f"{signal_args.sig} {signal_args.antisig}"
-    signal_args.signame_dc = join_none("_",[signal_args.signame, args.suff])
-    signal_args.dc_name = f"dc_{signal_args.signame_dc}.txt"
-    signal_args.dc_name_main = signal_args.dc_name.replace('_alt','')
+    args.regions_sig = f"{args.sig} {args.antisig}"
+    args.signame_dc = join_none("_",[args.signame, args.suff])
+    args.dc_name = f"dc_{args.signame_dc}.txt"
+    args.dc_name_main = args.dc_name.replace('_alt','')
 
-    signal_args.signame_dtoy = f"{signal_args.signame}_{args.data_toy_suff}"
-    signal_args.data_toy_file_old = args.data_toy_file.replace("_bkg.",f"_{signal_args.signame_dtoy}.")
-    signal_args.dc_toy_name = f"dc_{signal_args.signame_dtoy}.txt"
+    args.signame_dtoy = f"{args.signame}_{args.data_toy_suff}"
+    args.data_toy_file_old = args.data_toy_file.replace("_bkg.",f"_{args.signame_dtoy}.")
+    args.dc_toy_name = f"dc_{args.signame_dtoy}.txt"
 
-    signal_args.bf_file = f"{args.bf_dir}/higgsCombineObservedBestfit_dc_{signal_args.signame_dc}.MultiDimFit.mH120.root"
-    signal_args.fit_mc_arg = f"--fit-mc {args.dc_dir}/bkgfit_{signal_args.signame_dc}.root:bkgfit" if args.tf_mc else ""
+    args.bf_file = f"{args.bf_dir}/higgsCombineObservedBestfit_dc_{args.signame_dc}.MultiDimFit.mH120.root"
+    args.fit_mc_arg = f"--fit-mc {args.dc_dir}/bkgfit_{args.signame_dc}.root:bkgfit" if args.tf_mc else ""
 
-    signal_args.rinj_arg = f"--expectSignal {get_rinj(args.rinj,signal)}"
-    signal_args.signame_btoy = join_none("_", [signal_args.signame, args.suff])
-    signal_args.bias_toy_file_old = f"toys_{args.btoy_date}/higgsCombineObserveddc_{signal_args.signame_btoy}.GenerateOnly.mH120.{args.btoy_seed}.root"
+    args.rinj_arg = f"--expectSignal {get_rinj(args.rinj,signal)}"
+    args.signame_btoy = join_none("_", [args.signame, args.suff])
+    args.bias_toy_file_old = f"toys_{args.btoy_date}/higgsCombineObserveddc_{args.signame_btoy}.GenerateOnly.mH120.{args.btoy_seed}.root"
     rinjname = "Exp" if args.rinj<0 else args.rinj
-    signal_args.bias_toy_file = signal_args.bias_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
+    args.bias_toy_file = args.bias_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
 
-    signal_args.bias_sig_args = f"--toysFile {signal_args.bias_toy_file} --expectSignal 0"
-    signal_args.bias_fit_file = f"toyfits_{args.bfit_date}/higgsCombineObserveddc_{signal_args.signame}.FitDiagnostics.mH120.{args.btoy_seed}.root"
+    args.bias_sig_args = f"--toysFile {args.bias_toy_file} --expectSignal 0"
+    args.bias_fit_file = f"toyfits_{args.bfit_date}/higgsCombineObserveddc_{args.signame}.FitDiagnostics.mH120.{args.btoy_seed}.root"
 
-    signal_args._scan_toy_file_old = f"toys_{args.stoy_date}/higgsCombineAsimovdc_{signal_args.signame}.GenerateOnly.mH120.{args.stoy_seed}.root"
-    signal_args._scan_toy_file = signal_args._scan_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
-    signal_args.scan_files = f"{args.scan_dir}/higgsCombinedc_{signal_args.signame}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
-    signal_args.scan_files += f" {signal_args.scan_files.replace('Observed','Asimov')}"
+    args._scan_toy_file_old = f"toys_{args.stoy_date}/higgsCombineAsimovdc_{args.signame}.GenerateOnly.mH120.{args.stoy_seed}.root"
+    args._scan_toy_file = args._scan_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
+    args.scan_files = f"{args.scan_dir}/higgsCombinedc_{args.signame}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
+    args.scan_files += f" {args.scan_files.replace('Observed','Asimov')}"
 
-    return signal_args
+    return args
 
 # todo:
 # option to swap out all pseudodata-related toy args for real data args
