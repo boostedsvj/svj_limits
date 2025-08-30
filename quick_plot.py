@@ -800,7 +800,7 @@ def explim():
 
     with open(outfile, 'w') as ofile:
         for key,result in limits.results.items():
-            ofile.write(' '.join(str(x) for x in [key[0], key[1], key[2], result['limit'].expected])+'\n')
+            ofile.write(' '.join(str(x) for x in [key[0], key[1], str(key[2]).replace('.','p'), result['limit'].expected])+'\n')
 
 
 @scripter

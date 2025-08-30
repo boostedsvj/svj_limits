@@ -405,7 +405,7 @@ if __name__=="__main__":
             for line in efile:
                 line = line.rstrip()
                 props = line.split()
-                explims[tuple(props[:-1]),props[-1]]
+                explims[tuple(props[:-1])] = props[-1]
     else:
         logger.warning(f"explim file not provided; commands with --rinj -x will use default {explim_default}")
     def make_signal(props):
