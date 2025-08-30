@@ -220,7 +220,7 @@ steps['8'] = StepRunner('bias fits', [
     Command("mv", "", "{bias_fit_file} {bias_results_dir}/"),
 ])
 steps['9'] = StepRunner('bias plots', [
-    Command("python3", "plot_bias_or_self_study.py", "--base-dir {bias_results_basedir} --sel {sel} --test {bias_test_type} -s {btoy_seed} --explim {explim} --signals {signals}", cast='single'),
+    Command("python3", "plot_bias_or_self_study.py", "--base-dir {bias_results_basedir} --sel {sel} --test {bias_test_type} -s {btoy_seed} --rinj {rinj} --explim {explim} --signals {signals}", cast='single'),
 ])
 # todo: nuisance impacts
 
