@@ -2,7 +2,7 @@
 Scripts using building blocks in boosted_fits.py to create datacards
 """
 
-import argparse, inspect, os, os.path as osp, re, json, itertools, sys, shutil, shlex
+import argparse, inspect, os, os.path as osp, re, json, itertools, sys, shutil, shlex, traceback
 from pprint import pprint
 from time import strftime, sleep
 from copy import copy, deepcopy
@@ -35,12 +35,21 @@ def run_mp():
 
     from multiprocessing import Pool
     p = Pool(npool)
-    for sig, logs in p.imap_unordered(run_mp_impl, input):
-        bsvj.logger.info(f'Finished {sig}')
+    all_success = True
+    for sig, success, logs in p.imap_unordered(run_mp_impl, input):
+        if success:
+            bsvj.logger.info(f'Finished {sig}')
+        else:
+            bsvj.logger.info(f'Failed {sig}')
+            all_success = False
         bsvj.blank_logger.info('\n'.join(logs))
     p.close()
     p.join()
-    bsvj.logger.info('Finished pool')
+    if all_success:
+        bsvj.logger.info('Finished pool')
+    else:
+        bsvj.logger.info('Failed pool')
+        sys.exit(1)
 
 
 def run_mp_impl(args):
@@ -51,9 +60,14 @@ def run_mp_impl(args):
     input_line = args['line']
     fn_args = shlex.split(input_line)
     # each process in pool gets a copy of sys.argv, so they can be overwritten and reset independently
+    success = True
     with bsvj.set_args(fn_args):
-        fn()
-    return fn_args[0], bsvj.logger.queue
+        try:
+            fn()
+        except Exception as e:
+            bsvj.logger.error(traceback.format_exc())
+            success = False
+    return fn_args[0], success, bsvj.logger.queue
 
 
 @scripter
