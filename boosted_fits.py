@@ -70,12 +70,15 @@ def start_queue_listener():
     loggers = [logging.getLogger(logger_name) for logger_name in logging.root.manager.loggerDict]
     handlers = []
     for logger_obj in loggers:
-        handlers.extend(logger_obj.handlers)
+        for handler in logger_obj.handlers:
+            handler.addFilter(logging.Filter(logger_obj.name))
+            handlers.append(handler)
     listener = logging.handlers.QueueListener(queue, *handlers)
     listener.start()
     for logger_obj in loggers:
         logger_obj.handlers.clear()
         logger_obj.addHandler(logging.handlers.QueueHandler(queue))
+        logger_obj.propagate = False
     return listener
 
 
