@@ -83,7 +83,9 @@ class Command:
         # "mp"
         elif self.cast=='mp':
             # write out args to txt file
-            arg_filename = f"args_{strftime('%Y%m%d%H%M%S')}.txt"
+            argdir = 'args'
+            os.makedirs(argdir, exist_ok=True)
+            arg_filename = f"{argdir}/{self.function}_{strftime('%Y%m%d%H%M%S')}.txt"
             with open(arg_filename, 'w') as arg_file:
                 for signal in signals:
                     args_signal = fill_signal_args(args, signal)
