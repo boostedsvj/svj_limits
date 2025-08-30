@@ -531,7 +531,7 @@ def likelihood_scan_mp():
         jobs.append(args[:])
 
     import multiprocessing
-    p = multiprocessing.Pool(os.cpu_count())
+    p = multiprocessing.Pool(16)
     p.map(likelihood_scan, jobs)
     p.close()
     p.join()
