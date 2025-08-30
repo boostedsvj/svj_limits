@@ -34,13 +34,20 @@ def run_mp():
     with open(input_filename, 'r') as input_file:
         input = [{'fn': fn, 'line': line.rstrip()} for line in input_file]
 
+    from multiprocessing import set_start_method
+    set_start_method("spawn")
     from multiprocessing import Pool
     queue_logger = bsvj.QueueLogger()
     p = Pool(npool)
-    for pid in p.imap_unordered(run_mp_impl, input):
-        queue_logger.flush(pid)
+    pids = []
+    for sig, pid in p.imap_unordered(run_mp_impl, input):
+        print(f'Finished {sig}')
+        pids.append(pid)
     p.close()
     p.join()
+    # flush only after pool empties to avoid race in log queue
+    for pid in pids:
+        queue_logger.flush(pid)
     logger.info('Finished pool')
 
 
@@ -48,9 +55,10 @@ def run_mp_impl(args):
     fn = args['fn']
     input_line = args['line']
     # each process in pool gets a copy of sys.argv, so they can be overwritten and reset independently
-    with bsvj.set_args(['run_mp_impl']+shlex.split(input_line)):
+    fn_args = shlex.split(input_line)
+    with bsvj.set_args(fn_args):
         fn()
-    return os.getpid()
+    return fn_args[0], os.getpid()
 
 
 @scripter
