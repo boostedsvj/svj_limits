@@ -31,7 +31,7 @@ def run_mp():
 
     fn = scripter.scripts[fn_name]
     with open(input_filename, 'r') as input_file:
-        input = [{'fn': fn, 'line': line.rstrip()} for line in input_file]
+        input = [{'fn': fn, 'fn_name': fn_name, 'line': line.rstrip()} for line in input_file]
 
     from multiprocessing import Pool
     p = Pool(npool)
@@ -61,6 +61,7 @@ def run_mp_impl(args):
     fn_args = shlex.split(input_line)
     # each process in pool gets a copy of sys.argv, so they can be overwritten and reset independently
     success = True
+    bsvj.logger.info(f"Running: {args['fn_name']} {' '.join(fn_args[1:])}")
     with bsvj.set_args(fn_args):
         try:
             fn()
