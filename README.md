@@ -20,6 +20,7 @@ scram b -j 4
 pip3 install git+https://github.com/boostedsvj/seutils
 pip3 install git+https://github.com/boostedsvj/svj_ntuple_processing
 pip3 install git+https://github.com/boostedsvj/rhalphalib
+pip3 install --upgrade 'uproot>=4' 'awkward>=1.10' # Forcing awkward to be updated for svj_ntuple_processing
 git clone git@github.com:boostedsvj/svj_limits.git boosted/svj_limits
 cd boosted/svj_limits
 ```
