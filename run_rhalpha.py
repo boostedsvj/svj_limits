@@ -172,7 +172,7 @@ steps['1'] = StepRunner('datacard generation', [
 ])
 steps['2'] = StepRunner('diagnostics', [
     # run bestfit
-    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range -2 2", cast='mp'),
+    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range -1.616 1.616", cast='mp'),
     # hessian analysis
     Command("python3", "hessian.py", "-w {bf_file}:w -f {bf_file}:fit_mdf -s 0.1"),
     # make plots
@@ -180,7 +180,7 @@ steps['2'] = StepRunner('diagnostics', [
     Command("python3 quick_plot.py", "bkgsrcr", "{region_args2} --sig {regions_sig} -o {dc_dir}/srcr_{sel}.png"),
     # TF fit(s)
     Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.png --basis {tf_basis} --basis-mc {tf_basis} --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
-    Command("python3 quick_plot.py", "ftest_toys", "--result_dump {dc_dir}/ftest/results.py -o {dc_dir}")
+    Command("python3 quick_plot.py", "ftest_toys", "--results_dump {dc_dir}/ftest/results.py -o {dc_dir}")
     ] + [
     # postfit
     Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.png".format(sel, channel))

@@ -1286,7 +1286,7 @@ def ftest_toys():
     import imp
     ftest_dump = bsvj.pull_arg('--results_dump', type=str).results_dump
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default='./').outdir
-    dump = imp.load_source('dump', ftest_dump)
+    dump = imp.load_source('ftest_dump', ftest_dump)
     winner = dump.winner
     nbins = dump.nbins
     results_gof = {} # Dictionary for the goodness of fit results
