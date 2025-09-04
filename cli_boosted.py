@@ -316,6 +316,7 @@ def gen_datacards():
         # also save results in backup folder for histogramming etc.
         with open(osp.join(bakdir,'results.py'), 'w') as resfile:
             resfile.write(f"winner = {i_winner}\n")
+            resfile.write(f'nbins = {input.n_bins}\n')
             resfile.write("results = "+repr(results)+"\n")
 
 

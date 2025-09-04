@@ -20,6 +20,7 @@ import numpy as np
 import matplotlib as mpl
 mpl.use('Agg') # in order to run in background / no-graphics environments
 import matplotlib.pyplot as plt # type:ignore
+import matplotlib.transforms as transforms
 
 def set_mpl_fontsize(small=22, medium=28, large=32, legend=None):
     plt.rc('font', size=small)          # controls default text sizes
@@ -1279,6 +1280,55 @@ def bkgtf():
 
     # todo:
     # postfit MC-only TF w/ uncertainties
+
+@scripter
+def ftest_toys():
+    import imp
+    ftest_dump = bsvj.pull_arg('--results_dump', type=str).results_dump
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default='./').outdir
+    dump = imp.load_source('dump', ftest_dump)
+    winner = dump.winner
+    nbins = dump.nbins
+    results_gof = {} # Dictionary for the goodness of fit results
+    results_data = {}
+    for (p1, p1_dict), (p2, p2_dict) in dump.results.values():
+        f_toys = np.array([bsvj.fisher_metric(p1_dict["toys"][k], p2_dict["toys"][k], p1, p2, nbins) for k in p1_dict["toys"].keys() if k in p2_dict["toys"].keys()])
+        f_data =  np.array([bsvj.fisher_metric(p1_dict["data"][k], p2_dict["data"][k], p1, p2, nbins) for k in p1_dict["data"].keys() if k in p2_dict["data"].keys()])[0]
+        f_toys = f_toys[f_toys > 0]
+        p_val = np.sum(f_toys > f_data) / len(f_toys)
+        outfile = os.path.join(outdir, f"ftest_{p1}_{p2}.png")
+        with quick_ax(outfile=outfile) as ax:
+            h_val, bins = np.histogram(f_toys, bins=40)
+            ax.hist(f_toys, bins=40, histtype='step', label="Toys")
+            x = np.linspace(np.min(f_toys), np.max(f_toys), 100)
+            f = np.array([ROOT.TMath.FDist(_x, p2-p1, nbins-p2) for _x in x]) * (len(f_toys) * (bins[1]-bins[0]))
+            ax.plot(x,f, color="red", label=f"F-dist, ndf=({p2-p1}, {nbins-p2})")
+            ax.set_ylim(top=np.max(h_val) *1.5)
+            trans = transforms.blended_transform_factory(ax.transData, ax.transAxes)
+            ax.annotate("", xy=(f_data, 0), xycoords=trans,
+                xytext=(f_data, 0.25), textcoords=trans,
+                arrowprops=dict(lw='4', color='b', arrowstyle="->,head_length=1.5,head_width=0.5"),
+            )
+            ax.plot([],[], color='b', label=f'Observed {f_data:.4f}')
+            ax.plot([],[], color='none', label=f"p-value: {p_val:.4f}")
+            ax.set_xlabel("F-test statistic.")
+            ax.set_ylabel("Number of toys")
+            ax.legend(title=f"Order {p1} vs {p2}")
+
+    for (p1, p1_dict), _ in dump.results.values():
+        if p1 != winner: continue
+        f_toys = np.array([x for x in p1_dict["toys"].values()])
+        f_data = [x for x in p1_dict["data"].values()][0]
+        outfile = os.path.join(outdir, f"GOF_{p1}.png")
+        with quick_ax(outfile=outfile) as ax:
+            ax.hist(f_toys, bins=40, histtype='step', label="Toys")
+            ax.vlines([f_data], ymin=0, ymax=3, color='b' )
+            ax.plot([],[],color='b', label=f'Observed {f_data:.4f}')
+            ax.set_xlabel("-2 log $\lambda$")
+            ax.set_ylabel("Number of toys")
+            ax.legend(title=f"GOF distribution")
+
+
 
 def plot_hist(th1, ax, **kwargs):
     hist = bsvj.th1_to_hist(th1)

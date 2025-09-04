@@ -180,6 +180,7 @@ steps['2'] = StepRunner('diagnostics', [
     Command("python3 quick_plot.py", "bkgsrcr", "{region_args2} --sig {regions_sig} -o {dc_dir}/srcr_{sel}.png"),
     # TF fit(s)
     Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.png --basis {tf_basis} --basis-mc {tf_basis} --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
+    Command("python3 quick_plot.py", "ftest_toys", "--result_dump {dc_dir}/ftest/results.py -o {dc_dir}")
     ] + [
     # postfit
     Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.png".format(sel, channel))
