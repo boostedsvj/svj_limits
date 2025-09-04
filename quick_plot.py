@@ -567,8 +567,70 @@ def mtdist():
         ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
         # do not check range
 
+    # calculate chi square for prefit bkg fit
+    _wrapped_prefit = bsvj.PDF()  
+    _wrapped_prefit.pdf = ws.pdf('shapeBkg_roomultipdf_bsvj')
+    _wrapped_prefit.n_pars = _wrapped_prefit.pdf.getCurrentPdf().getParameters(data).getSize()
+    chi2_prefit_vf = bsvj.get_chi2_viaframe(mt, _wrapped_prefit, data)
+    chi2_prefit = chi2_prefit_vf['chi2']
+    ndf_prefit = chi2_prefit_vf['ndf']
+    chi2_prefit = f'{chi2_prefit:.1f}'
+
+    # calculate chi square for s+b
+    _wrapped_postfit = bsvj.PDF()  
+    _bkg_pdf = ws.pdf("shapeBkg_roomultipdf_bsvj")
+    _sig_pdf = ws.pdf("shapeSig_bsvj_sig_morph")
+    _bkg_frac = ROOT.RooRealVar("test", "test", sum(y_bkg) / sum(y_sb))
+    _wrapped_postfit.pdf = ROOT.RooAddPdf("_addpdf", "_addpdf",
+            _bkg_pdf, _sig_pdf , _bkg_frac
+    )
+    _wrapped_postfit.n_pars = _bkg_pdf.getCurrentPdf().getParameters(data).getSize() + 1
+    chi2_postfit_vf = bsvj.get_chi2_viaframe(mt, _wrapped_postfit, data)
+    logger.info(str(chi2_postfit_vf))
+    chi2_sb = chi2_postfit_vf['chi2']
+    ndf_sb = chi2_postfit_vf['ndf']
+    chi2_sb = f'{chi2_sb:.1f}'
+
     leg = ax.legend(framealpha=0.0, fontsize=22, title=name_from_combine_rootfile(rootfile), ncol=1 if only_sig else 2)
-    leg._legend_box.align = "left"
+    #leg = ax.legend(handles=handles, labels=labels, framealpha=0.0, fontsize=22, title=name_from_combine_rootfile(rootfile), ncol=1 if only_sig else 2)
+    handles, labels = ax.get_legend_handles_labels()
+
+    # Create lists to hold the "prefit" and "fit" entries
+    prefit_handles = []
+    prefit_labels = []
+    fit_handles = []
+    fit_labels = []
+
+    # Loop over the handles and labels to categorize them
+    for handle, label in zip(handles, labels):
+        if "prefit" in label.lower():  # Check if the label contains 'prefit'
+            prefit_handles.append(handle)
+            prefit_labels.append(label)
+        elif "fit" in label.lower():  # Check if the label contains 'fit'
+            fit_handles.append(handle)
+            fit_labels.append(label)
+        else:
+            # If it's the data or any other entry, you can choose where to place it
+            prefit_handles.append(handle)
+            prefit_labels.append(label)
+    add_prefit_entries = [
+        mpl.lines.Line2D([0], [0], marker='o', color='w', markerfacecolor='w', markersize=0, label=r'$\chi^2_{\mathrm{prefit}}/NdF = ' + f'{chi2_prefit}/{ndf_prefit}$'),
+    ]
+    add_fit_entries = [
+        mpl.lines.Line2D([0], [0], marker='o', color='w', markerfacecolor='w', markersize=0, label=r'$\chi^2_{\mathrm{fit}}/NdF = ' + f'{chi2_sb}/{ndf_sb}$')
+    ]
+    prefit_handles.extend([entry for entry in add_prefit_entries])
+    fit_handles.extend([entry for entry in add_fit_entries])
+    prefit_labels.extend([entry.get_label() for entry in add_prefit_entries])
+    fit_labels.extend([entry.get_label() for entry in add_fit_entries])
+
+    # Now combine the lists: prefit entries first, then fit entries
+    desired_handles = prefit_handles + fit_handles
+    desired_labels = prefit_labels + fit_labels
+    
+    # Update the legend with the new order
+    leg = ax.legend(handles=desired_handles, labels=desired_labels, framealpha=0.0, fontsize=22, title=name_from_combine_rootfile(rootfile), ncol=1 if only_sig else 2) 
+    leg._legend_box.align = "right"
     ax.set_ylabel('$N_{\mathrm{events}}$')
     ax2.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
     ax.set_yscale('log')
