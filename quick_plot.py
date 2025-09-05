@@ -6,6 +6,7 @@ import ROOT # type:ignore
 ROOT.RooMsgService.instance().setSilentMode(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.ERROR)
 from time import strftime
+import imp
 import argparse
 
 # Add the directory of this file to the path so the boosted tools can be imported
@@ -14,6 +15,7 @@ from contextlib import contextmanager
 sys.path.append(osp.dirname(osp.abspath(__file__)))
 import svj_ntuple_processing as svj
 import boosted_fits as bsvj
+import run_rhalpha as rhalph
 logger = bsvj.setup_logger('quickplot')
 
 import numpy as np
@@ -1283,51 +1285,103 @@ def bkgtf():
 
 @scripter
 def ftest_toys():
-    import imp
     ftest_dump = bsvj.pull_arg('--results_dump', type=str).results_dump
-    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default='./').outdir
+    outpre = bsvj.pull_arg('-o', '--outpre', type=str).outpre
     dump = imp.load_source('ftest_dump', ftest_dump)
     winner = dump.winner
     nbins = dump.nbins
-    results_gof = {} # Dictionary for the goodness of fit results
-    results_data = {}
-    for (p1, p1_dict), (p2, p2_dict) in dump.results.values():
-        f_toys = np.array([bsvj.fisher_metric(p1_dict["toys"][k], p2_dict["toys"][k], p1, p2, nbins) for k in p1_dict["toys"].keys() if k in p2_dict["toys"].keys()])
-        f_data =  np.array([bsvj.fisher_metric(p1_dict["data"][k], p2_dict["data"][k], p1, p2, nbins) for k in p1_dict["data"].keys() if k in p2_dict["data"].keys()])[0]
-        f_toys = f_toys[f_toys > 0]
-        p_val = np.sum(f_toys > f_data) / len(f_toys)
-        outfile = os.path.join(outdir, f"ftest_{p1}_{p2}.png")
-        with quick_ax(outfile=outfile) as ax:
-            h_val, bins = np.histogram(f_toys, bins=40)
-            ax.hist(f_toys, bins=40, histtype='step', label="Toys")
-            x = np.linspace(np.min(f_toys), np.max(f_toys), 100)
-            f = np.array([ROOT.TMath.FDist(_x, p2-p1, nbins-p2) for _x in x]) * (len(f_toys) * (bins[1]-bins[0]))
-            ax.plot(x,f, color="red", label=f"F-dist, ndf=({p2-p1}, {nbins-p2})")
-            ax.set_ylim(top=np.max(h_val) *1.5)
-            trans = transforms.blended_transform_factory(ax.transData, ax.transAxes)
-            ax.annotate("", xy=(f_data, 0), xycoords=trans,
-                xytext=(f_data, 0.25), textcoords=trans,
-                arrowprops=dict(lw='4', color='b', arrowstyle="->,head_length=1.5,head_width=0.5"),
-            )
-            ax.plot([],[], color='b', label=f'Observed {f_data:.4f}')
-            ax.plot([],[], color='none', label=f"p-value: {p_val:.4f}")
-            ax.set_xlabel("F-test statistic.")
-            ax.set_ylabel("Number of toys")
-            ax.legend(title=f"Order {p1} vs {p2}")
+    results = dump.results
 
-    for (p1, p1_dict), _ in dump.results.values():
-        if p1 != winner: continue
-        f_toys = np.array([x for x in p1_dict["toys"].values()])
-        f_data = [x for x in p1_dict["data"].values()][0]
-        outfile = os.path.join(outdir, f"GOF_{p1}.png")
+    # Running the toys items
+    range_max = len(results)
+    range_i = list(range(range_max))
+    range_j = lambda i: list(range(i+1, range_max+1))
+    range_i, range_j, range_max = bsvj.range_toys(results)
+
+    # Extracting the information
+    ftest_toys = {}
+    ftest_data = {}
+    ftest_pval = {}
+    for i in range_i:
+        for j in range_j:
+            if (i,j) not in results: continue
+            results_dict = bsvj.extract_results_toys(results,i,j)
+            n1, n2 = results_dict["n1"], results_dict["n2"]
+            toys1, toys2 = results_dict["gof1"]["toys"], results_dict["gof2"]["toys"]
+            data1, data2 = results_dict["gof1"]["data"][0], results_dict["gof2"]["data"][0]
+            ftest_toys[(n1,n2)] = [bsvj.fisher_metric(toys1[x], toys2[x], n1, n2, nbins) for x in toys1.keys()]
+            ftest_data[(n1,n2)] = bsvj.fisher_metric(data1, data2, n1, n2, nbins)
+            ftest_pval[(n1,n2)] = bsvj.compute_fisher_toys(results_dict["gof1"], results_dict["gof2"], n1, n2, nbins)
+
+    winner = None
+    for (n1,n2) in ftest_toys.keys(): # Creating the per-parameter comparion f-test plots
+        f_toys = np.array(ftest_toys[(n1,n2)])
+        f_toys = f_toys[f_toys > 0] # Only plotting stuff larger than 0
+        f_data = ftest_data[(n1, n2)]
+        if ftest_pval[(n1,n2)] > 0.05 and winner is None:
+            winner = n1
+        outfile = f"{outpre}_fstat-{n1}vs{n2}.png"
         with quick_ax(outfile=outfile) as ax:
-            ax.hist(f_toys, bins=40, histtype='step', label="Toys")
+            h_val, bins = np.histogram(f_toys, bins=40) # Getting the bin values required to normalized the F-distribution plot
+            ax.hist(f_toys, bins=40, histtype='step', label="Toys") # Tooys results
+            x = np.linspace(np.min(f_toys), np.max(f_toys), 500) # F-distribution
+            f = np.array([ROOT.TMath.FDist(_x, n2-n1, nbins-n2) for _x in x]) * (len(f_toys) * (bins[1]-bins[0]))
+            ax.plot(x,f,color='r', label=f"F-dist, ndf=({n2-n1}, {nbins-n2})")
             ax.vlines([f_data], ymin=0, ymax=3, color='b' )
-            ax.plot([],[],color='b', label=f'Observed {f_data:.4f}')
-            ax.set_xlabel("-2 log $\lambda$")
+            ax.plot([],[],color='b', label=f'Observed ({f_data:.4f})')
+            ax.plot([],[],color='none', label=f"p-value: {p_val:.4f}")
+            ax.set_xlabel("F-test statistics")
             ax.set_ylabel("Number of toys")
-            ax.legend(title=f"GOF distribution")
+            ax.set_ylim(top=np.max(h_val)*1.5)
+            ax.legend(title=f"F-test for fit orders: ({n1}, {n2})")
 
+    # Plotting the files for the winner evaluation
+    for i,j in [(i,j) for i in range_i for j in range_j]:
+        if (i,j) not in results: continue
+        results_dict = bsvj.extract_results_toys(results,i,j)
+        n1 = results_dict["n1"]
+        if n1 != winner: continue
+        toys1, data1 = list(results_dict["gof1"]["toys"].values()), results_dict["gof2"]["data"][0]
+        p_val = np.sum(np.array(toys1) > data1) / len(toys1)
+        outfile = f"{outpre}_gof-npar{n1}.png"
+        with quick_ax(outfile=outfile) as ax:
+            h_val, bins = np.histogram(toys1, bins=40) # Getting the bin values required to normalized the F-distribution plot
+            ax.hist(toys1, bins=40, histtype='step', label="Toys") # Toys results
+            ax.vlines([data1], ymin=0, ymax=3, color='b' )
+            ax.plot([],[],color='b', label=f'Observed ({data1:.4f})')
+            ax.plot([],[],color='none', label=f"p-value: {p_val:.4f}")
+            ax.set_xlabel("Best fit likelihood")
+            ax.set_ylabel("Number of toys")
+            ax.set_ylim(top=np.max(h_val)*1.5)
+            ax.legend(title=f"{n1}-parameter fit")
+
+
+@scripter
+def ftest_scan():
+    ftest_dir= bsvj.pull_arg('--results_dir', type=str).results_dir
+    sel = bsvj.pull_arg('--sel', type=str).sel
+    signals = bsvj.pull_arg("--signals", dest="signals", type=str, default="").signals
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str).outdir
+
+    with open(signals,'r') as sfile:
+        signals = [rhalph.Signal(*line.split(), 0) for line in sfile]
+        ftest_dump_list = [f'{ftest_dir}/{rhalph.get_signame(s)}_sel-{sel}_mt_smooth_ftest-results.py' for s in signals]
+
+    # Aggregarating the result into a signal file
+    result = {
+        (sig.mMed, sig.mDark, sig.rinv): imp.load_source('ftest_dump', ftest_dump).winner
+        for sig, ftest_dump in zip(signals, ftest_dump_list)
+    }
+    # Scanning verse mp
+    with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed.png") as ax:
+        plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]=='10' and sig[2] == '0p3'])
+        print(plot_points)
+        mMed = plot_points[:,0]
+        npar = plot_points[:, 1]
+        ax.plot(mMed, npar, marker='o')
+        ax.set_ylabel('Chosen number of parameters')
+        ax.set_xlabel("$m_{X}$ [GeV]")
+        ax.legend(title="$m_{dark}$ = 10 GeV, $r_{inv}$ = 0.3")
 
 
 def plot_hist(th1, ax, **kwargs):
