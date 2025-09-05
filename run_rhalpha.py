@@ -12,6 +12,7 @@ from boosted_fits import run_generic_command as run_cmd, blank_logger as logger
 hists_dates = {
     "cutbased": ("20241101", "20250218", "20250206"),
     "cutbased_ddt": ("20250710", "", ""),
+    "rtcutbased_ddt=0.1": ("20250829", "", ""),
     "cutbased_ddt=0.11": ("20250715", "", ""),
     "cutbased_ddt=0.12": ("20250711", "", ""),
     "bdt=0.55": ("20250715", "", ""),
@@ -206,11 +207,18 @@ steps['4'] = StepRunner('likelihood scan', [
     # dump expected limit signal strengths into a file
     Command("python3 quick_plot.py", "explim", "{all_scan_files} -o {explim_name}", cast='single'),
 ])
+# todo: add "signal injection postfit plot" step
 # todo: add "observed" likelihood command (using pseudodata/toy)
 steps['5'] = StepRunner('likelihood plots', [
     Command("python3 quick_plot.py", "muscan", "{scan_files} -o {scan_dir}/muscan_{signame_dc}.png"),
     Command("python3 quick_plot.py", "cls", "{scan_files} -o {scan_dir}/cls_{signame_dc}.png"),
     Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.png"),
+])
+steps['5a'] = StepRunner('likelihood postfit plot', [
+    Command("python3 quick_plot.py", "muscan", "{scan_files} -o {scan_dir}/muscan_{signame_dc}.png"),
+    Command("python3 quick_plot.py", "cls", "{scan_files} -o {scan_dir}/cls_{signame_dc}.png"),
+    Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.png"),
+    Command("python3 quick_plot.py", "mtdist", "{scan_postfit_file} --clean --outfile {scan_dir}/bestfit_{signame_dc}.png", cast='single'),
 ])
 steps['6'] = StepRunner('Asimov injection test', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
@@ -233,7 +241,7 @@ predefs = {
     'gen_datacard': ['0','1','2'],
     'gen_datacard_alt': ['0','1b','2b'],
     'likelihood': ['0','1','4','5'],
-    'asimov_inj': ['0','1','3a','6','7'],
+    'asimov_inj': ['0','1','3a','5a','6','7'],
     'self': ['0','1','3','8','9'],
     'bias': ['0','1','1b','3b','8b','9b'],
 }
@@ -275,6 +283,8 @@ def fill_signal_args(_args, signal):
     args._scan_toy_file = args._scan_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
     args.scan_files = f"{args.scan_dir}/higgsCombinedc_{args.signame}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
     args.scan_files += f" {args.scan_files.replace('Observed','Asimov')}"
+
+    args.scan_postfit_file = f"{args.scan_dir}/higgsCombinedc_{args.signame}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
 
     return args
 
