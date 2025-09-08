@@ -1280,8 +1280,30 @@ def bkgtf():
         escape = lambda x: x.replace('_','\\_')
         plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{escape(suff_data)}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label=label_data, title=title)
 
-    # todo:
     # postfit MC-only TF w/ uncertainties
+    if fit_mc:
+        paramfile = fit_mc_file.split(':')[0].replace("/bkgfit_","/mctf_").replace(".root",".npy")
+        fit_mc_nominal = np.load(paramfile)
+        if verbose: print('fit_mc_nominal',fit_mc_nominal.tolist())
+        decofile = paramfile.replace("/mctf_","/deco_")
+        decoVector = np.load(decofile)
+        if verbose: print('decoVector',decoVector.tolist())
+        fit_mc_parvalues = np.full(fit_mc_nominal.shape, None)
+        for i in range(fit_mc_nominal.size):
+            coef = decoVector[:, i]
+            order = np.argsort(np.abs(coef))
+            fit_mc_parvalues[i] = np.sum(coef[order] * fit_mc_nuis[order]) + fit_mc_nominal[i]
+        if verbose: print('fit_mc', fit_mc['tf_fn_vals'].tolist())
+        if verbose: print('chi2_mc', fit_mc['chi2'], fit_mc['ndf'])
+        tf_post = {} # Creating the new ite for plotting
+        tf_post['bkg_eff'] = fit_mc_vals # bkg_eff multiplies tf_fn_vals in get_tf_fit(), so include entire MC TF in this case
+        tf_post['th1'] = tf_mc['th1'].Clone()
+        tf_post['arr'] = bsvj.th1_to_hist(tf_post['th1'])
+        if verbose: print('tf_comb_th1', tf_post['arr']['vals'].tolist())
+        print(tf_post)
+        print(tf_data)
+        fit_post = get_tf_fit(fitresult_mc, 'tf_mc', tf_post['th1'], mt['scaled'], tf_post['bkg_eff'], basis=basis_mc)
+        plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title)
 
 @scripter
 def ftest_toys():
@@ -1318,7 +1340,8 @@ def ftest_toys():
         f_toys = np.array(ftest_toys[(n1,n2)])
         f_toys = f_toys[f_toys > 0] # Only plotting stuff larger than 0
         f_data = ftest_data[(n1, n2)]
-        if ftest_pval[(n1,n2)] > 0.05 and winner is None:
+        p_val = ftest_pval[(n1,n2)]
+        if p_val > 0.05 and winner is None:
             winner = n1
         outfile = f"{outpre}_fstat-{n1}vs{n2}.png"
         with quick_ax(outfile=outfile) as ax:
@@ -1375,7 +1398,6 @@ def ftest_scan():
     # Scanning verse mp
     with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed.png") as ax:
         plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]=='10' and sig[2] == '0p3'])
-        print(plot_points)
         mMed = plot_points[:,0]
         npar = plot_points[:, 1]
         ax.plot(mMed, npar, marker='o')
