@@ -207,7 +207,6 @@ steps['4'] = StepRunner('likelihood scan', [
     # dump expected limit signal strengths into a file
     Command("python3 quick_plot.py", "explim", "{all_scan_files} -o {explim_name}", cast='single'),
 ])
-# todo: add "signal injection postfit plot" step
 # todo: add "observed" likelihood command (using pseudodata/toy)
 steps['5'] = StepRunner('likelihood plots', [
     Command("python3 quick_plot.py", "muscan", "{scan_files} -o {scan_dir}/muscan_{signame_dc}.png"),
@@ -216,7 +215,7 @@ steps['5'] = StepRunner('likelihood plots', [
 ])
 steps['6'] = StepRunner('Asimov injection test', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
-    Command("python3 quick_plot.py", "mtdist", "{scan_postfit_file} --clean --outfile {scan_dir}/bestfit_{signame_dc}.png", cast='single'),
+    Command("python3 quick_plot.py", "mtdist", "{scan_inj_postfit_file} --clean --outfile {scan_dir}/bestfit_{inj_signame}.png", cast='single'),
 ])
 steps['7'] = StepRunner('Asimov injection plots', [
     Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
@@ -278,8 +277,6 @@ def fill_signal_args(_args, signal):
     args._scan_toy_file = args._scan_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
     args.scan_files = f"{args.scan_dir}/higgsCombinedc_{args.signame}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
     args.scan_files += f" {args.scan_files.replace('Observed','Asimov')}"
-
-    args.scan_postfit_file = f"{args.scan_dir}/higgsCombinedc_{args.signame}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
 
     return args
 
@@ -360,11 +357,13 @@ def derive_args(args_orig, signals, alt=False):
     # signal-injected asimov toy is shared
     signal_inj = Signal(*args.siginj)
     siginj_args = fill_signal_args(args, signal_inj)
+    args.inj_signame = siginj_args.signame
     args.scan_dc_name = siginj_args.dc_name
     args.scan_toy_file_old = siginj_args._scan_toy_file_old
     args.scan_toy_file = siginj_args._scan_toy_file
     args.scan_inj_args = join_none(" ",[args.scan_inj_args, f"--toysFile {args.scan_toy_file}"])
     args.scan_inj_name_short = join_none('_',args.siginj)
+    args.scan_inj_postfit_file = f"{args.scan_dir}/higgsCombinedc_{args.inj_signame}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
 
     # agglomerate all signal scan result files
     args.all_scan_files = []
