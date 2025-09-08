@@ -214,14 +214,9 @@ steps['5'] = StepRunner('likelihood plots', [
     Command("python3 quick_plot.py", "cls", "{scan_files} -o {scan_dir}/cls_{signame_dc}.png"),
     Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.png"),
 ])
-steps['5a'] = StepRunner('likelihood postfit plot', [
-    Command("python3 quick_plot.py", "muscan", "{scan_files} -o {scan_dir}/muscan_{signame_dc}.png"),
-    Command("python3 quick_plot.py", "cls", "{scan_files} -o {scan_dir}/cls_{signame_dc}.png"),
-    Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.png"),
-    Command("python3 quick_plot.py", "mtdist", "{scan_postfit_file} --clean --outfile {scan_dir}/bestfit_{signame_dc}.png", cast='single'),
-])
 steps['6'] = StepRunner('Asimov injection test', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
+    Command("python3 quick_plot.py", "mtdist", "{scan_postfit_file} --clean --outfile {scan_dir}/bestfit_{signame_dc}.png", cast='single'),
 ])
 steps['7'] = StepRunner('Asimov injection plots', [
     Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
@@ -241,7 +236,7 @@ predefs = {
     'gen_datacard': ['0','1','2'],
     'gen_datacard_alt': ['0','1b','2b'],
     'likelihood': ['0','1','4','5'],
-    'asimov_inj': ['0','1','3a','5a','6','7'],
+    'asimov_inj': ['0','1','3a','6','7'],
     'self': ['0','1','3','8','9'],
     'bias': ['0','1','1b','3b','8b','9b'],
 }
