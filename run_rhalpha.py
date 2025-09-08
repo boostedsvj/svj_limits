@@ -215,9 +215,9 @@ steps['5'] = StepRunner('likelihood plots', [
 ])
 steps['6'] = StepRunner('Asimov injection test', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
-    Command("python3 quick_plot.py", "mtdist", "{scan_inj_postfit_file} --clean --outfile {scan_dir}/bestfit_{inj_signame}.png", cast='single'),
 ])
 steps['7'] = StepRunner('Asimov injection plots', [
+    Command("python3 quick_plot.py", "mtdist", "{scan_inj_postfit_file} --clean --outfile {scan_dir}/bestfit_{inj_signame}.png", cast='single'),
     Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
 ])
 steps['8'] = StepRunner('bias fits', [
