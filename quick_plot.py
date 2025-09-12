@@ -1396,14 +1396,18 @@ def ftest_scan():
         for sig, ftest_dump in zip(signals, ftest_dump_list)
     }
     # Scanning verse mp
-    with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed.png") as ax:
-        plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]=='10' and sig[2] == '0p3'])
-        mMed = plot_points[:,0]
-        npar = plot_points[:, 1]
-        ax.plot(mMed, npar, marker='o')
-        ax.set_ylabel('Chosen number of parameters')
-        ax.set_xlabel("$m_{X}$ [GeV]")
-        ax.legend(title="$m_{dark}$ = 10 GeV, $r_{inv}$ = 0.3")
+    for mDark in set(sig[1] for sig in result.keys()):
+        with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed_mDark={mDark}.png") as ax:
+            for rinv in set(sig[2] for sig in result.keys()):
+                plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]==mDark and sig[2] == rinv])
+                if(len(plot_points) == 0): continue
+                shift = float(rinv.replace('p', '.')) * 0.2
+                mMed = plot_points[:,0]
+                npar = plot_points[:, 1] + shift
+                ax.plot(mMed, npar, marker='o')
+            ax.set_ylabel('Chosen number of parameters')
+            ax.set_xlabel("$m_{X}$ [GeV]")
+            ax.legend(title="$m_{dark}$ = " + mDark + " GeV")
 
 
 def plot_hist(th1, ax, **kwargs):
