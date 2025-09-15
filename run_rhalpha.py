@@ -12,9 +12,8 @@ from boosted_fits import run_generic_command as run_cmd, blank_logger as logger
 hists_dates = {
     "cutbased": ("20241101", "20250218", "20250206"),
     "cutbased_ddt": ("20250710", "", ""),
-    "rtcutbased_ddt=0.1": ("20250829", "", ""),
     "cutbased_ddt=0.11": ("20250715", "", ""),
-    "cutbased_ddt=0.12": ("20250902", "", ""),
+    "cutbased_ddt=0.12": ("20250711", "", ""),
     "rtcutbased_ddt=0.1": ("20250829", "", ""),
     "bdt=0.55": ("20250715", "", ""),
     "bdt=0.75": ("20250711", "", ""),
