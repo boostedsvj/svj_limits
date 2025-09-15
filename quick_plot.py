@@ -1275,7 +1275,7 @@ def bkgtf():
             tf_post['arr'] = bsvj.th1_to_hist(tf_post['th1'])
             if verbose: print('tf_post_th1', tf_post['arr']['vals'].tolist())
             fit_post = get_tf_fit(fitresult_mc, 'tf_mc', tf_post['th1'], mt['scaled'], tf_post['bkg_eff'], basis=basis_mc)
-            plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title)
+            plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}^{{\\mathrm{{postfit}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title)
         else:
             if verbose: print('tf_data_th1', bsvj.th1_to_hist(tf_data['th1'])['vals'].tolist())
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
