@@ -12,6 +12,7 @@ from boosted_fits import run_generic_command as run_cmd, blank_logger as logger
 hists_dates = {
     "cutbased": ("20241101", "20250218", "20250206"),
     "cutbased_ddt": ("20250710", "", ""),
+    "rtcutbased_ddt=0.1": ("20250829", "", ""),
     "cutbased_ddt=0.11": ("20250715", "", ""),
     "cutbased_ddt=0.12": ("20250711", "", ""),
     "bdt=0.55": ("20250715", "", ""),
@@ -216,6 +217,7 @@ steps['6'] = StepRunner('Asimov injection test', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
 ])
 steps['7'] = StepRunner('Asimov injection plots', [
+    Command("python3 quick_plot.py", "mtdist", "{scan_files} --clean --outfile {scan_dir}/bestfit_{signame_dc}.png"),
     Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
 ])
 steps['8'] = StepRunner('bias fits', [
