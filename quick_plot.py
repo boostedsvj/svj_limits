@@ -1267,6 +1267,15 @@ def bkgtf():
             # bkg_eff already included in MC TF
             tf_data['bkg_eff'] = 1.0
             suff_data = 'data_res'
+
+            # Postfit MC-only TF w/ uncertainties
+            tf_post = {} # Creating the new ite for plotting
+            tf_post['bkg_eff'] = fit_mc_vals
+            tf_post['th1'] = tf_mc['th1'].Clone() # Key distinction compared with above
+            tf_post['arr'] = bsvj.th1_to_hist(tf_post['th1'])
+            if verbose: print('tf_post_th1', tf_post['arr']['vals'].tolist())
+            fit_post = get_tf_fit(fitresult_mc, 'tf_mc', tf_post['th1'], mt['scaled'], tf_post['bkg_eff'], basis=basis_mc)
+            plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title)
         else:
             if verbose: print('tf_data_th1', bsvj.th1_to_hist(tf_data['th1'])['vals'].tolist())
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
@@ -1280,30 +1289,6 @@ def bkgtf():
         escape = lambda x: x.replace('_','\\_')
         plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{escape(suff_data)}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label=label_data, title=title)
 
-    # postfit MC-only TF w/ uncertainties
-    if fit_mc:
-        paramfile = fit_mc_file.split(':')[0].replace("/bkgfit_","/mctf_").replace(".root",".npy")
-        fit_mc_nominal = np.load(paramfile)
-        if verbose: print('fit_mc_nominal',fit_mc_nominal.tolist())
-        decofile = paramfile.replace("/mctf_","/deco_")
-        decoVector = np.load(decofile)
-        if verbose: print('decoVector',decoVector.tolist())
-        fit_mc_parvalues = np.full(fit_mc_nominal.shape, None)
-        for i in range(fit_mc_nominal.size):
-            coef = decoVector[:, i]
-            order = np.argsort(np.abs(coef))
-            fit_mc_parvalues[i] = np.sum(coef[order] * fit_mc_nuis[order]) + fit_mc_nominal[i]
-        if verbose: print('fit_mc', fit_mc['tf_fn_vals'].tolist())
-        if verbose: print('chi2_mc', fit_mc['chi2'], fit_mc['ndf'])
-        tf_post = {} # Creating the new ite for plotting
-        tf_post['bkg_eff'] = fit_mc_vals # bkg_eff multiplies tf_fn_vals in get_tf_fit(), so include entire MC TF in this case
-        tf_post['th1'] = tf_mc['th1'].Clone()
-        tf_post['arr'] = bsvj.th1_to_hist(tf_post['th1'])
-        if verbose: print('tf_comb_th1', tf_post['arr']['vals'].tolist())
-        print(tf_post)
-        print(tf_data)
-        fit_post = get_tf_fit(fitresult_mc, 'tf_mc', tf_post['th1'], mt['scaled'], tf_post['bkg_eff'], basis=basis_mc)
-        plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title)
 
 @scripter
 def ftest_toys():
