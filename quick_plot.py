@@ -1394,17 +1394,18 @@ def ftest_scan():
     result = {
         (sig.mMed, sig.mDark, sig.rinv): imp.load_source('ftest_dump', ftest_dump).winner
         for sig, ftest_dump in zip(signals, ftest_dump_list)
+        if os.path.exists(ftest_dump)
     }
     # Scanning verse mp
     for mDark in set(sig[1] for sig in result.keys()):
         with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed_mDark={mDark}.png") as ax:
-            for rinv in set(sig[2] for sig in result.keys()):
+            for rinv in sorted(set(sig[2] for sig in result.keys())):
                 plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]==mDark and sig[2] == rinv])
                 if(len(plot_points) == 0): continue
                 shift = float(rinv.replace('p', '.')) * 0.2
                 mMed = plot_points[:,0]
                 npar = plot_points[:, 1] + shift
-                ax.plot(mMed, npar, marker='o')
+                ax.plot(mMed, npar, marker='o', label="$r_{inv}$ = " + rinv.replace("p", "."))
             ax.set_ylabel('Chosen number of parameters')
             ax.set_xlabel("$m_{X}$ [GeV]")
             ax.legend(title="$m_{dark}$ = " + mDark + " GeV")
