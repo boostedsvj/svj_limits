@@ -1339,7 +1339,7 @@ def ftest_toys():
             ax.plot(x,f,color='r', label=f"F-dist, ndf=({n2-n1}, {nbins-n2})")
             ax.vlines([f_data], ymin=0, ymax=3, color='b' )
             ax.plot([],[],color='b', label=f'Observed ({f_data:.4f})')
-            ax.plot([],[],color='none', label=f"p-value: {p_val:.4f}")
+            ax.plot([],[],color='r', label=f"p-value: {p_val:.4f}")
             ax.set_xlabel("F-test statistics")
             ax.set_ylabel("Number of toys")
             ax.set_ylim(top=np.max(h_val)*1.5)
@@ -1352,14 +1352,16 @@ def ftest_toys():
         n1 = results_dict["n1"]
         n2 = results_dict["n2"]
         toys1, data1 = list(results_dict["gof1"]["toys"].values()), results_dict["gof1"]["data"][0]
-        toys2 = list(results_dict["gof2"]["toys"].values())
+        toys2, data2 = list(results_dict["gof2"]["toys"].values()), results_dict["gof2"]["data"][0]
         outfile = f"{outpre}_gof-npar{n1}.png"
         with quick_ax(outfile=outfile) as ax:
             h_val, bins = np.histogram(toys1, bins=40) # Getting the bin values required to normalized the F-distribution plot
             ax.hist(toys1, bins=40, histtype='step', label=f"Toys (n = {n1})") # Toys results
             ax.hist(toys2, bins=40, histtype='step', label=f"Toys (n = {n2})") # Toys results
             ax.vlines([data1], ymin=0, ymax=3, color='b' )
+            ax.vlines([data2], ymin=0, ymax=3, color='r' )
             ax.plot([],[],color='b', label=f'Observed = {data1:.4f} (n={n1})')
+            ax.plot([],[],color='r', label=f'Observed = {data2:.4f} (n={n2})')
             ax.set_xlabel("Goodness of fit")
             ax.set_ylabel("Number of toys")
             ax.set_ylim(top=np.max(h_val)*1.5)
