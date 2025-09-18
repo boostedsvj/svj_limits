@@ -1090,38 +1090,39 @@ def rreplace(s, old, new, count=1):
     return (s[::-1].replace(old[::-1], new[::-1], count))[::-1]
 
 # plot a given tf and (optional) fit
-def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff=""):
+def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff="", canvas=None):
     if suff:
         outfile = rreplace(outfile,'.',f'_{suff}.',1)
 
-    if fit is not None:
-        figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
-    else:
-        figure = plt.figure(figsize=(12,12))
-        ax = figure.gca()
-
     colors = get_color_cycle()
-    pcolor = next(colors)
-    ax.errorbar(mt['pts'], tf['arr']['vals'], yerr=tf['arr']['errs'], label=label, color=pcolor)
-    ax.set_ylabel(ylabel)
-    xlabel = r'$m_{\mathrm{T}}$ [GeV]'
-    if fit is not None:
+    if canvas is None: # Ploting existing items
+        figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
         pcolor = next(colors)
-        ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"fit ($\\mathrm{{n}} = {fit['npar']+1}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
-        ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
-        leg_args = {'fontsize': 18, 'framealpha': 0.0}
-        if title: leg_args['title'] = title
-        ax.legend(**leg_args)
-        # pulls in lower panel
-        pulls = (tf['arr']['vals'] - fit['tf_fn_vals']) / tf['arr']['errs']
-        ax2.plot(mt['range'], [0.,0.], c='gray')
-        ax2.scatter(mt['pts'], pulls, color=pcolor)
+        ax.errorbar(mt['pts'], tf['arr']['vals'], yerr=tf['arr']['errs'], label=label, color=pcolor)
+        ax.set_ylabel(ylabel)
+        xlabel = r'$m_{\mathrm{T}}$ [GeV]'
+        pcolor = next(colors)
         ax2.set_ylabel(r'(TF - fit) / $\Delta$TF')
         ax2.set_xlabel(xlabel)
     else:
-        ax.set_xlabel(xlabel)
+        figure, (ax, ax2) = canvas
+        _ = next(colors)
+        _ = next(colors)
+        pcolor = next(colors) # Moving the color label
+        print(outfile, "Updating canvas")
+
+    ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"$fit^{{{suff}}}$ ($\\mathrm{{n}} = {fit['npar']+1}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
+    ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
+    leg_args = {'fontsize': 18, 'framealpha': 0.0}
+    if title: leg_args['title'] = title
+    ax.legend(**leg_args)
+    # pulls in lower panel
+    pulls = (tf['arr']['vals'] - fit['tf_fn_vals']) / tf['arr']['errs']
+    ax2.plot(mt['range'], [0.,0.], c='gray')
+    ax2.scatter(mt['pts'], pulls, color=pcolor)
     apply_ranges(ax)
-    plt.savefig(outfile, bbox_inches='tight')
+    figure.savefig(outfile, bbox_inches='tight')
+    return figure, (ax, ax2) # Returning the plot containers so that it can be updated
 
 @scripter
 def bkgtf():
@@ -1165,7 +1166,7 @@ def bkgtf():
         if verbose: print('chi2_mc', fit_mc['chi2'], fit_mc['ndf'])
 
     # plot TF from MC
-    plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mc', title=title)
+    mc_canvas = plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mc', title=title)
 
     # TF from data: everything comes from postfit file
     fit_data = None
@@ -1275,7 +1276,8 @@ def bkgtf():
             tf_post['arr'] = bsvj.th1_to_hist(tf_post['th1'])
             if verbose: print('tf_post_th1', tf_post['arr']['vals'].tolist())
             fit_post = get_tf_fit(fitresult_mc, 'tf_mc', tf_post['th1'], mt['scaled'], tf_post['bkg_eff'], basis=basis_mc)
-            plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}^{{\\mathrm{{postfit}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title)
+            plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}^{{\\mathrm{{postfit}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title, canvas=mc_canvas)
+            # plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}^{{\\mathrm{{postfit}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title)
         else:
             if verbose: print('tf_data_th1', bsvj.th1_to_hist(tf_data['th1'])['vals'].tolist())
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
@@ -1348,14 +1350,16 @@ def ftest_toys():
         if (i,j) not in results: continue
         results_dict = bsvj.extract_results_toys(results,i,j)
         n1 = results_dict["n1"]
-        toys1, data1 = list(results_dict["gof1"]["toys"].values()), results_dict["gof2"]["data"][0]
-        p_val = np.sum(np.array(toys1) > data1) / len(toys1)
+        n2 = results_dict["n2"]
+        toys1, data1 = list(results_dict["gof1"]["toys"].values()), results_dict["gof1"]["data"][0]
+        toys2 = list(results_dict["gof2"]["toys"].values())
         outfile = f"{outpre}_gof-npar{n1}.png"
         with quick_ax(outfile=outfile) as ax:
             h_val, bins = np.histogram(toys1, bins=40) # Getting the bin values required to normalized the F-distribution plot
-            ax.hist(toys1, bins=40, histtype='step', label="Toys") # Toys results
+            ax.hist(toys1, bins=40, histtype='step', label=f"Toys (n = {n1})") # Toys results
+            ax.hist(toys2, bins=40, histtype='step', label=f"Toys (n = {n2})") # Toys results
             ax.vlines([data1], ymin=0, ymax=3, color='b' )
-            ax.plot([],[],color='b', label=f'Observed ({data1:.4f})')
+            ax.plot([],[],color='b', label=f'Observed = {data1:.4f} (n={n1})')
             ax.set_xlabel("Goodness of fit")
             ax.set_ylabel("Number of toys")
             ax.set_ylim(top=np.max(h_val)*1.5)
