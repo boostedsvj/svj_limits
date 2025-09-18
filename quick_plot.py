@@ -1348,7 +1348,6 @@ def ftest_toys():
         if (i,j) not in results: continue
         results_dict = bsvj.extract_results_toys(results,i,j)
         n1 = results_dict["n1"]
-        if n1 != winner: continue
         toys1, data1 = list(results_dict["gof1"]["toys"].values()), results_dict["gof2"]["data"][0]
         p_val = np.sum(np.array(toys1) > data1) / len(toys1)
         outfile = f"{outpre}_gof-npar{n1}.png"
@@ -1357,8 +1356,7 @@ def ftest_toys():
             ax.hist(toys1, bins=40, histtype='step', label="Toys") # Toys results
             ax.vlines([data1], ymin=0, ymax=3, color='b' )
             ax.plot([],[],color='b', label=f'Observed ({data1:.4f})')
-            ax.plot([],[],color='none', label=f"p-value: {p_val:.4f}")
-            ax.set_xlabel("Best fit likelihood")
+            ax.set_xlabel("Goodness of fit")
             ax.set_ylabel("Number of toys")
             ax.set_ylim(top=np.max(h_val)*1.5)
             ax.legend(title=f"{n1}-parameter fit")
