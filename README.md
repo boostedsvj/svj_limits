@@ -19,68 +19,102 @@ git clone https://github.com/cms-analysis/CombineHarvester.git CombineHarvester 
 scram b -j 4
 pip3 install git+https://github.com/boostedsvj/seutils
 pip3 install git+https://github.com/boostedsvj/svj_ntuple_processing
+pip3 install git+https://github.com/boostedsvj/rhalphalib
+pip3 install --upgrade 'uproot>=4' 'awkward>=1.10' # Forcing awkward to be updated for svj_ntuple_processing
 git clone git@github.com:boostedsvj/svj_limits.git boosted/svj_limits
 cd boosted/svj_limits
 ```
 
-The code currently assumes Python 3.
-For convenience, you can do:
+## Rhalphabet
 
+The rhalphabet background estimation method uses a "fail" or anti-tag control region to predict the background in the "pass" or tagged signal region.
+The background shapes in the two regions are assumed to be related by a low-order polynomial.
+The similarity of the two shapes can be enforced by applying the DDT approach to the tagger.
+
+This method has many options and settings.
+To ensure consistency, a driver script is provided to execute all steps related to validating the background prediction: [run_rhalpha.py](./run_rhalpha.py).
+
+The full details of the script can be viewed using its `--help` argument. Notable features include:
+* `--dryrun`: preview the commands that each step will run without executing them
+* `--npool [n]`: run computationally-intensive steps in parallel via multiprocessing
+* `--predef [name]`: select a predefined sequence of steps corresponding to a specific test
+    * `--steps [step [step [...]]]`: alternative to specify steps manually
+    * `--skip [name or step]`: allows skipping steps, e.g. to customize a predefined sequence
+* `--signals [file]`: run over multiple signals with parameters specified in a text file
+
+### Typical usage
+
+For a given selection and choice of options for the method, a complete suite of tests looks like this:
 ```bash
-alias python=python3
+sel="cutbased_ddt=0.11"
+signals="signals_default.txt"
+common_args="--sel ${sel} --signals ${signals} --npool 8"
+dc_args="--ftoys 100 --tf-mc"
+skip_dc="--skip gen_datacard"
+skip_dc_alt="${skip_dc} gen_datacard_alt"
+
+python3 run_rhalpha.py --predef gen_datacard ${common_args} ${dc_args}
+python3 run_rhalpha.py --predef gen_datacard_alt --skip 0 ${common_args} ${dc_args}
+python3 run_rhalpha.py --predef likelihood ${skip_dc} ${common_args}
+python3 run_rhalpha.py --predef asimov_inj ${skip_dc} ${common_args} --rinj -1
+python3 run_rhalpha.py --predef self ${skip_dc} ${common_args} --rinj 0 --btoys 300
+python3 run_rhalpha.py --predef self ${skip_dc} ${common_args} --rinj -1 --btoys 300
+python3 run_rhalpha.py --predef bias ${skip_dc_alt} ${common_args} --rinj 0 --btoys 300
+python3 run_rhalpha.py --predef bias ${skip_dc_alt} ${common_args} --rinj -1 --btoys 300
 ```
 
-The commands below assume you are using this alias; if you're not, replace `python` with `python3`.
+## Analytic fit
 
+The analytic fit method predicts the background by fitting an exponentially falling function to the observed data.
 
-## Generating the datacards
+### Generating the datacards
 
 You first need json files for signal, background, and (optionally) data; see https://github.com/boostedsvj/svj_uboost.
 
 Then:
 
 ```bash
-python cli_boosted.py gen_datacards --bkg merged_20240729/bkg_sel-cutbased.json --sig smooth_20240729/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json
-for SIGNAL in cutbased/smooth_20240920/SVJ_s-channel_mMed-*_mDark-10_rinv-0p3*.json; do python cli_boosted.py gen_datacards --bkg cutbased/merged_20240920/bkg_sel-cutbased.json --sig $SIGNAL; done
+python3 cli_boosted.py gen_datacards --bkg merged_20240729/bkg_sel-cutbased.json --sig smooth_20240729/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json
+for SIGNAL in cutbased/smooth_20240920/SVJ_s-channel_mMed-*_mDark-10_rinv-0p3*.json; do python3 cli_boosted.py gen_datacards --bkg cutbased/merged_20240920/bkg_sel-cutbased.json --sig $SIGNAL; done
 ```
 
 
-## Running the likelihood scans
+### Running the likelihood scans
 
 For all BDT working points and all signals, do simply:
 
 ```bash
-python cli_boosted.py likelihood_scan dc_Dec07/*.txt
-python cli_boosted.py likelihood_scan dc_Dec07/*.txt --asimov
+python3 cli_boosted.py likelihood_scan dc_Dec07/*.txt
+python3 cli_boosted.py likelihood_scan dc_Dec07/*.txt --asimov
 ```
 
 Selecting BDT working points and particular signals is easily done via wildcard patterns to select the right datacards, e.g.:
 
 ```bash
-python cli_boosted.py likelihood_scan dc_Dec07_minmt300/dc_mz*rinv0.3*bdt0p{0,3,5}*.txt --asimov --minmu -.5 --maxmu .5 -n 100
+python3 cli_boosted.py likelihood_scan dc_Dec07_minmt300/dc_mz*rinv0.3*bdt0p{0,3,5}*.txt --asimov --minmu -.5 --maxmu .5 -n 100
 ```
 
 Note also the options `--minmu` and `--maxmu` which handle the range of the signal parameter to scan, and the option `-n` which controls the number of points in the range.
 
 
-## Bias study
+### Bias study
 
 Generate toys:
 
-```
-python cli_boosted.py gentoys dc_20240920_cutbased/dc_SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.txt -t 300 --expectSignal 0 -s 1001 --rMin -2 --rMax 3
-for DC in dc_20240920_cutbased/*.txt; do python cli_boosted.py gentoys $DC -t 300 --expectSignal 0 -s 1001 --rMin -2 --rMax 3; done
+```bash
+python3 cli_boosted.py gentoys dc_20240920_cutbased/dc_SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.txt -t 300 --expectSignal 0 -s 1001 --rMin -2 --rMax 3
+for DC in dc_20240920_cutbased/*.txt; do python3 cli_boosted.py gentoys $DC -t 300 --expectSignal 0 -s 1001 --rMin -2 --rMax 3; done
 ```
 
 Fit the toys:
 
-```
-python cli_boosted.py fittoys dc_20240920_cutbased/dc_SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.txt --toysFile toys_20240924/higgsCombineObserveddc_SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.GenerateOnly.mH120.1001.root --expectSignal 0 --rMin -2 --rMax 3
+```bash
+python3 cli_boosted.py fittoys dc_20240920_cutbased/dc_SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.txt --toysFile toys_20240924/higgsCombineObserveddc_SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.GenerateOnly.mH120.1001.root --expectSignal 0 --rMin -2 --rMax 3
  
-for MZ in 200 250 300 350 400 450 500 550; do python cli_boosted.py fittoys dc_20240920_cutbased/dc_SVJ_s-channel_mMed-$MZ*.txt --toysFile toys_20240924/higgsCombineObserveddc_SVJ_s-channel_mMed-$MZ*.root --expectSignal 0 --rMin -2 --rMax 3; done
+for MZ in 200 250 300 350 400 450 500 550; do python3 cli_boosted.py fittoys dc_20240920_cutbased/dc_SVJ_s-channel_mMed-$MZ*.txt --toysFile toys_20240924/higgsCombineObserveddc_SVJ_s-channel_mMed-$MZ*.root --expectSignal 0 --rMin -2 --rMax 3; done
 ```
 
-## Nuisance impacts
+### Nuisance impacts
 
 The nuisance impacts show how much each systematic uncertainty impacts the fit, and whether any systematics are pulled or constrained.
 The input is a datacard txt file.
@@ -90,32 +124,32 @@ Signal injection is required to see the effects of signal systematics (the uncer
 python3 cli_boosted.py impacts dc.txt --nfits 16 --asimov --normRange 0.1 2.0 --rMin -10 --rMax 10 --robustFit 1 --expectSignal 0.2
 ```
 
-## Plotting
+### Plotting
 
 Fit to background distribution:
 ```bash
-python quick_plot.py bkgfit ua2 --bkg cutbased/merged_20240920/bkg_sel-cutbased.json --sig cutbased/smooth_20240920/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json --outfile fit_bkg.png
+python3 quick_plot.py bkgfit ua2 --bkg cutbased/merged_20240920/bkg_sel-cutbased.json --sig cutbased/smooth_20240920/SVJ_s-channel_mMed-350_mDark-10_rinv-0p3_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-cutbased_smooth.json --outfile fit_bkg.png
 ```
 
 ΔNNL as a function of mu:
 ```bash
-python quick_plot.py muscan scans_20241029/*bdt0p3*Scan*.root
+python3 quick_plot.py muscan scans_20241029/*bdt0p3*Scan*.root
 ```
 
 Single parameter as a function of mu:
 ```bash
-python quick_plot.py trackedparam bsvj_bkgfitua2_npars3_p1 scans_cutbased/*Scan*.root
+python3 quick_plot.py trackedparam bsvj_bkgfitua2_npars3_p1 scans_cutbased/*Scan*.root
 ```
 
 All fit parameters as a function of mu:
 ```bash
-python quick_plot.py trackedparams scans_cutbased/*Scan*.root
+python3 quick_plot.py trackedparams scans_cutbased/*Scan*.root
 ```
 
 MT histogram, with bkg-only fit and and sig+bkg fit:
 
 ```bash
-python quick_plot.py mtdist scans_20241029/higgsCombineObserved_dc_mz450_rinv0.3_bdt0p300Bestfit.MultiDimFit.mH120.root
+python3 quick_plot.py mtdist scans_20241029/higgsCombineObserved_dc_mz450_rinv0.3_bdt0p300Bestfit.MultiDimFit.mH120.root
 ```
 
 Note you should use the `Bestfit`-tagged file, not `Scan`.
@@ -125,21 +159,21 @@ Apparently, the single snapshot stored in the `Scan` files is _not_ the best fit
 CLS:
 
 ```bash
-python quick_plot.py cls scans_20241029/higgsCombineObserved_dc_mz450_rinv0.3_bdt0p300.MultiDimFit.mH120.root scans_Dec07/higgsCombineAsimov_dc_mz450_rinv0.3_bdt0p300.MultiDimFit.mH120.root
+python3 quick_plot.py cls scans_20241029/higgsCombineObserved_dc_mz450_rinv0.3_bdt0p300.MultiDimFit.mH120.root scans_Dec07/higgsCombineAsimov_dc_mz450_rinv0.3_bdt0p300.MultiDimFit.mH120.root
 ```
 
 
 Brazil band (relies on good interpolation; always check the CLs plots to double check!):
 
 ```bash
-python quick_plot.py brazil scans_20241029/higgsCombine*bdt0p3*.root #Expects '*Observed*' and '*Asimov*' files
+python3 quick_plot.py brazil scans_20241029/higgsCombine*bdt0p3*.root #Expects '*Observed*' and '*Asimov*' files
 ```
 
-## High-level scripts
+### High-level scripts
 
 These scripts are made to easily execute required statistical tests for the boosted SVJ search.
 
-### Bias and Self Tests
+#### Bias and Self Tests
 
 The bias and self tests can be run via a shell script which makes datacards, generates toys, and fits toys automatically. 
 The shell script is filled with default settings to run a self test from 200 to 550 with rinv=0.3 and mdark=10 with no signal injected for the bdt based search, 
@@ -150,7 +184,7 @@ but these options can easily configured in the command line without needing to a
 ./run_bias_or_self_study.sh
 
 # Run the bias test for the cut based search with a r_inj at expected limit strength for mZ 200
-./run_bias_or_self_study.sh --sel cutbased --test_type bias --siginj --mMed_values "200"
+./run_bias_or_self_study.sh --sel cutbased --test_type bias --rinj exp --mMed_values "200"
 ```
 
 Then to plot the results
@@ -165,22 +199,22 @@ Example from the BDT based search:
 ```bash
 # Self test
 # no signal injected
-./run_bias_or_self_test.sh --siginj 0
+./run_bias_or_self_test.sh --rinj 0
 # signal injected at expected limit
-./run_bias_or_self_test.sh --siginj exp
+./run_bias_or_self_test.sh --rinj exp
 # plot
-python3 plot_bias_or_self_study.py --base_dir ./self_test --sel bdt=0.67 --test self
+python3 plot_bias_or_self_study.py --base-dir ./self_test --sel bdt=0.67 --test self
 
 # Bias test
 # no signal injected
-./run_bias_or_self_study.sh --test_type bias --siginj 0
+./run_bias_or_self_study.sh --test_type bias --rinj 0
 # signal injected at expected limit
-./run_bias_or_self_study.sh --test_type bias --siginj exp
+./run_bias_or_self_study.sh --test_type bias --rinj exp
 # plot
-python3 plot_bias_or_self_study.py --base_dir ./bias_test --sel bdt=0.67 --test bias
+python3 plot_bias_or_self_study.py --base-dir ./bias_test --sel bdt=0.67 --test bias
 ```
 
-### Limits: Expected + Observed = Asimov toy with signal injected at 350
+#### Limits: Expected + Observed = Asimov toy with signal injected at 350
 
 This shell script works in a similar way to the previous in that it is loaded with a number of default settings that can be re-configured on the 
 command line. It defaults to running from 200 to 550 with rinv=0.3 and mdark=10 for the bdt based search. Signal injection mass and a strength
@@ -188,7 +222,7 @@ and mass can be configured.
 
 ```bash
 # Running with signal injected at mZ' 200 with a strength of 0.271
-./run_limit_asimov_sig_inj.sh --mInj 200 --siginj 0.271
+./run_limit_asimov_sig_inj.sh --mInj 200 --rinj 0.271
 # Or to run all signal masses (at expected limit strength)
 ./all_sig_inj_asimov_limits.sh
 ```

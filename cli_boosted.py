@@ -2,10 +2,11 @@
 Scripts using building blocks in boosted_fits.py to create datacards
 """
 
-import argparse, inspect, os, os.path as osp, re, json, itertools, sys, shutil
+import argparse, inspect, os, os.path as osp, re, json, itertools, sys, shutil, shlex, traceback
 from pprint import pprint
 from time import strftime, sleep
 from copy import copy, deepcopy
+from glob import glob
 
 import numpy as np
 
@@ -19,10 +20,62 @@ scripter = bsvj.Scripter()
 
 
 @scripter
+def run_mp():
+    """
+    Runs any scripter-exposed function in parallel.
+    For each function call, inputs should be specified as command-line arguments in a single line of a txt file
+    """
+    npool = bsvj.pull_arg('--npool', type=int, default=8).npool
+    fn_name = bsvj.pull_arg('function', type=str).function
+    input_filename = bsvj.pull_arg('input', type=str).input
+
+    fn = scripter.scripts[fn_name]
+    with open(input_filename, 'r') as input_file:
+        input = [{'fn': fn, 'fn_name': fn_name, 'line': line.rstrip()} for line in input_file]
+
+    from multiprocessing import Pool
+    p = Pool(npool)
+    all_success = True
+    for sig, success, logs in p.imap_unordered(run_mp_impl, input):
+        if success:
+            bsvj.logger.info(f'Finished {sig}')
+        else:
+            bsvj.logger.info(f'Failed {sig}')
+            all_success = False
+        bsvj.blank_logger.info('\n'.join(logs))
+    p.close()
+    p.join()
+    if all_success:
+        bsvj.logger.info('Finished pool')
+    else:
+        bsvj.logger.info('Failed pool')
+        sys.exit(1)
+
+
+def run_mp_impl(args):
+    # send logs to queue
+    bsvj.logger = bsvj.setup_loggers_boosted(stream=False, suff=str(os.getpid()))
+    # decompose args
+    fn = args['fn']
+    input_line = args['line']
+    fn_args = shlex.split(input_line)
+    # each process in pool gets a copy of sys.argv, so they can be overwritten and reset independently
+    success = True
+    bsvj.logger.info(f"Running: {args['fn_name']} {' '.join(fn_args[1:])}")
+    with bsvj.set_args(fn_args):
+        try:
+            fn()
+        except Exception as e:
+            bsvj.logger.error(traceback.format_exc())
+            success = False
+    return fn_args[0], success, bsvj.logger.queue
+
+
+@scripter
 def plot_scipy_fits():
     parser = argparse.ArgumentParser(inspect.stack()[0][3])
     parser.add_argument('rootfile', type=str)
-    parser.add_argument('-o', '--plotdir', type=str, default='plots_bkgfits_%b%d')
+    parser.add_argument('-o', '--plotdir', type=str, default='plots_bkgfits_%Y%m%d')
     parser.add_argument('-b', '--bdtcut', type=float, default=None)
     parser.add_argument('-n', '--npars', type=int, nargs='*')
     parser.add_argument('-p', '--pdftype', type=str, default=None, choices=bsvj.known_pdfs())
@@ -84,7 +137,7 @@ def plot_scipy_fits():
 def plot_roofit_fits():
     parser = argparse.ArgumentParser(inspect.stack()[0][3])
     parser.add_argument('rootfile', type=str)
-    parser.add_argument('-o', '--plotdir', type=str, default='plots_bkgfits_%b%d')
+    parser.add_argument('-o', '--plotdir', type=str, default='plots_bkgfits_%Y%m%d')
     parser.add_argument('-b', '--bdtcut', type=float, default=None)
     parser.add_argument('-n', '--npars', type=int, nargs='*')
     parser.add_argument('-p', '--pdftype', type=str, default=None, choices=bsvj.known_pdfs())
@@ -141,87 +194,219 @@ def plot_roofit_fits():
                 do_plot(tdir_name)
 
 
-
-def this_fn_name():
-    """
-    Returns the name of whatever function this function was called from.
-    (inspect.stack()[0][3] would be "this_fn_name"; [3] is just the index for names)
-    """
-    return inspect.stack()[1][3]
-
 @scripter
 def gen_datacards():
     jsons = bsvj.get_jsons()
+    regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
     mtmin = bsvj.pull_arg('--mtmin', type=float, default=None).mtmin
     mtmax = bsvj.pull_arg('--mtmax', type=float, default=None).mtmax
-    gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=['chi2','rss']).gof_type
+    gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=bsvj.choices('gof')).gof_type
+    norm_type = bsvj.pull_arg('--norm-type', type=str, default='theta', choices=bsvj.choices('norm')).norm_type
     if mtmin is not None: jsons["mt_min"] = mtmin
     if mtmax is not None: jsons["mt_max"] = mtmax
     nosyst = bsvj.pull_arg('--nosyst', default=False, action="store_true").nosyst
-    asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
+    asimov_bkg = bsvj.pull_arg('--asimov-bkg', default=False, action="store_true").asimov_bkg
     winner = bsvj.pull_arg('--winner', default=None, nargs=2, action="append").winner
-    winners = {a:int(b) for a,b in winner} if winner is not None else None
+    winners = {a:int(b) for a,b in winner} if winner is not None else {}
     brute = bsvj.pull_arg('--brute', default=False, action="store_true").brute
-    bsvj.InputData(**jsons, asimov=asimov).gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute)
+    npar = bsvj.pull_arg('--npar', type=int, default=2).npar
+    npar_mc_max = bsvj.pull_arg('--npar-mc-max', type=int, default=6).npar_mc_max
+    tf_from_mc = bsvj.pull_arg('--tf-from-mc', default=False, action="store_true").tf_from_mc
+    basis = bsvj.pull_arg('--basis', default='Bernstein').basis
+    basis_mc = bsvj.pull_arg('--basis-mc', default='Bernstein').basis_mc
+    suff = bsvj.pull_arg('--suff', type=str, default='').suff
+    ftest = bsvj.pull_arg('--ftest', default=False, action="store_true").ftest
+    ntoys = bsvj.read_arg('-t', type=int, default=0).t
+    ftest_long = bsvj.pull_arg('--ftest-long', default=False, action="store_true").ftest_long
+    verbose = bsvj.pull_arg('--verbose', default=False, action="store_true").verbose
 
-@scripter
-def simple_test_fit():
-    """
-    Runs a simple AsymptoticLimits fit on a datacard, without many options
-    """
-    parser = argparse.ArgumentParser(inspect.stack()[0][3])
-    parser.add_argument('datacard', type=str)
-    parser.add_argument('-c', '--chdir', type=str, default=None)
-    args = parser.parse_args()
+    # use npar arg as max value in saturated gof f-test
+    if ftest:
+        if norm_type!="rhalpha":
+            raise ValueError(f"F-test using saturated GoF only implemented for rhalpha method, not {norm_type}")
+        npar_vals = range(npar)
+    else:
+        npar_vals = [npar]
 
-    cmd = bsvj.CombineCommand(args.datacard, 'AsymptoticLimits')
-    cmd.track_parameters.extend(['r'])
-    cmd.args.add('--saveWorkspace')
-    cmd.set_parameter('pdf_index', 1)
-    cmd.freeze_parameters.extend([
-        'pdf_index',
-        'bsvj_bkgfitmain_npars4_p1', 'bsvj_bkgfitmain_npars4_p2', 'bsvj_bkgfitmain_npars4_p3',
-        'bsvj_bkgfitmain_npars4_p4',
-        ])
-    bsvj.run_combine_command(cmd, args.chdir)
+    # per-npar-value results
+    results_npar = {}
+    # n-1 vs. n comparison results (toy case)
+    # format: results[(i,j)] = ((n1,gof1),(n2,gof2))
+    # non-toy case: gof result for each n
+    results = {} if ntoys>0 else []
+    i_winner = None
+    for ipar,npar in enumerate(npar_vals):
+        npar_suff = suff
+        if ftest:
+            npar_name = f'npar{npar}'
+            npar_suff = bsvj.joiner([suff,npar_name])
+        input = bsvj.InputData(regions, norm_type, **jsons, asimov=asimov_bkg)
+        dcfile = input.gen_datacard(nosyst=nosyst, gof_type=gof_type, winners=winners, brute=brute, npar=npar, npar_mc_max=npar_mc_max, tf_from_mc=tf_from_mc, basis=basis, basis_mc=basis_mc, suff=npar_suff, verbose=verbose)
+        if ftest:
+            # following sequence based on https://github.com/andrzejnovak/higgstocharm/blob/master/custom.py
+
+            # per-npar-value operations
+            result_npar = {}
+            result_npar['dc'] = dcfile
+            # remove toy arg for fit to data
+            with bsvj.reset_sys_argv():
+                bsvj.pull_arg('-t', type=int)
+                cmd, outdir = cmd_datacard(dcfile)
+                result_npar['bf'] = bf_datacard(cmd,outdir)
+                goffile = gof_datacard(cmd,outdir,result_npar['bf'])
+                result_npar['gof'] = collect_gof(goffile)
+            results_npar[npar] = result_npar
+
+            # n-1 vs. n comparisons
+            if ntoys>0:
+                if ipar==0: continue
+                # generate toys from n-1
+                cmd1, outdir1 = cmd_datacard(results_npar[npar-1]['dc'])
+                # remake command including -t arg
+                cmd, outdir = cmd_datacard(dcfile)
+                toyfile = toy_datacard(cmd1,outdir1,ntoys)
+                # fit toys to n-1 and n
+                gof1file = gof_datacard(cmd1,outdir1,results_npar[npar-1]['bf'],toyfile)
+                gof1 = {
+                    'toys': collect_gof(gof1file),
+                    'data': results_npar[npar-1]['gof']
+                }
+                gof2file = gof_datacard(cmd,outdir,result_npar['bf'],toyfile)
+                gof2 = {
+                    'toys': collect_gof(gof2file),
+                    'data': result_npar['gof'],
+                }
+                results[(ipar-1,ipar)] = ((npar, gof1), (npar+1, gof2))
+                if not ftest_long:
+                    # shortcircuit toy-based ftest for speed
+                    i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=True)
+                    if i_winner==ipar-1:
+                        break
+                    else:
+                        i_winner = None
+            else:
+                results.append((npar+1, result_npar['gof'][0]))
+
+    # conduct ftest
+    # todo: allow reusing existing result (--cache arg? or --npar -1?)
+    if ftest:
+        npar_suff = f'_npar{npar}'
+        dcname_base = osp.basename(dcfile).replace(npar_suff,'').replace('dc_','').replace('.txt','')
+        if ntoys==0:
+            bsvj.logger.warning("F-test w/o toys may not be accurate")
+        if not i_winner:
+            i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=ntoys>0)
+        # assign i_winner as the "main" datacard
+        outdir = osp.dirname(dcfile)
+        npar_suff = f'_npar{i_winner}'
+        wfiles = glob(osp.join(outdir,f'*{dcname_base}{npar_suff}.*'))
+        for wfile in wfiles:
+            # leave intermediate f-test files for backup folder
+            if osp.basename(wfile).startswith('higgsCombine'): continue
+            # edit workspace location
+            if wfile.endswith('.txt'):
+                bsvj.pysed(wfile,wfile,[(npar_suff,'')])
+            shutil.move(wfile, wfile.replace(npar_suff,''))
+        # put others into a backup folder
+        bakdir = osp.join(outdir,'ftest')
+        if not osp.isdir(bakdir): os.makedirs(bakdir)
+        bfiles = glob(osp.join(outdir,f'*{dcname_base}_npar*.*'))
+        for bfile in bfiles:
+            shutil.move(bfile, osp.join(bakdir,osp.basename(bfile)))
+        # also save results in backup folder for histogramming etc.
+        with open(osp.join(bakdir,f'{dcname_base}_ftest-results.py'), 'w') as resfile:
+            resfile.write(f"winner = {i_winner}\n")
+            resfile.write(f'nbins = {input.n_bins}\n')
+            resfile.write("results = "+repr(results)+"\n")
+
+
+def cmd_datacard(dcfile):
+    # setup base command
+    outdir = osp.dirname(dcfile)
+    dc = bsvj.Datacard.from_txt(dcfile)
+    cmd = bsvj.CombineCommand(dc)
+    cmd.configure_from_command_line()
+    cmd.name += osp.basename(dc.filename).replace('.txt','')
+
+    return cmd, outdir
+
+
+def bf_datacard(cmd, outdir):
+    # run bestfit
+    cmd_fit = bsvj.bestfit(cmd)
+    cmd_fit.kwargs['--cminDefaultMinimizerStrategy'] = 0
+    cmd_fit.kwargs['--robustFit'] = 1
+    bsvj.run_combine_command(cmd_fit, outdir=outdir)
+
+    return cmd_fit.outfile
+
+
+# to compute GoF statistic on datacard
+def gof_datacard(cmd, outdir, bffile, toyfile=None):
+    # run saturated gof
+    cmd_gof = cmd.copy()
+    # use toys if provided
+    if toyfile:
+        cmd_gof.kwargs['--toysFile'] = toyfile
+    cmd_gof.method = 'GoodnessOfFit'
+    cmd_gof.kwargs['--algo'] = 'saturated'
+    cmd_gof.kwargs['--cminDefaultMinimizerStrategy'] = 0
+    cmd_gof.kwargs['--snapshotName'] = 'MultiDimFit'
+    cmd_gof.args.add('--bypassFrequentistFit')
+    cmd_gof.dc.filename = bffile
+    bsvj.run_combine_command(cmd_gof, outdir=outdir)
+
+    return cmd_gof.outfile
+
+
+def toy_datacard(cmd, outdir, ntoys):
+    # run GenerateOnly
+    cmd_gen = bsvj.gen_toys(cmd)
+    bsvj.run_combine_command(cmd_gen, outdir=outdir)
+
+    return cmd_gen.outfile
+
+
+# to process outputs from above for fisher test
+def collect_gof(gof_file):
+    # following https://github.com/andrzejnovak/higgstocharm/blob/master/new_plot_ftests.py
+    out = {}
+    try:
+        file = ROOT.TFile.Open(gof_file)
+        tree = file.Get("limit")
+        for j in range(tree.GetEntries()):
+            tree.GetEntry(j)
+            # convert to nll
+            out[j] = -2.0 * np.log(tree.limit)
+    except:
+        bsvj.logger.warning(f"Skipping {gof_file}")
+        pass
+
+    return out
 
 
 def make_bestfit_and_scan_commands(txtfile, args=None):
-    # this is shared between both commands, so pull it out first
-    range = bsvj.pull_arg('-r', '--range', type=float, default=[-3., 5.], nargs=2).range
     if args is None: args = sys.argv[1:]
     with bsvj.set_args(sys.argv[:1] + args):
         dc = bsvj.Datacard.from_txt(txtfile)
         cmd = bsvj.CombineCommand(dc)
         cmd.name += osp.basename(dc.filename).replace('.txt','')
-        scan = bsvj.scan(cmd, range)
+        scan = bsvj.scan(cmd)
         scan.name += 'Scan'
         scan.configure_from_command_line(scan=True)
-        bestfit = bsvj.bestfit(cmd, range)
+        bestfit = bsvj.bestfit(cmd)
         bestfit.name += 'Bestfit'
         bestfit.configure_from_command_line()
     return bestfit, scan
 
 
 @scripter
-def bestfit(txtfile=None):
-    if txtfile is None:
-        # Allow multiprocessing if multiple datacards are passed on the command line
-        txtfiles = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
-        if len(txtfiles) > 1:
-            # Call this function in a pool instead
-            import multiprocessing as mp
-            with mp.Manager() as manager:
-                pool = mp.Pool(8)
-                pool.map(bestfit, txtfiles)
-                pool.close()
-            return
-        else:
-            txtfile = osp.abspath(txtfiles[0])
+def bestfit():
+    txtfile = bsvj.pull_arg('datacard', type=str).datacard
+    txtfile = osp.abspath(txtfile)
 
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('bestfits_%Y%m%d')).outdir
     outdir = osp.abspath(outdir)
-    os.makedirs(outdir, exist_ok=True)
 
     dc = bsvj.Datacard.from_txt(txtfile)
     cmd = bsvj.CombineCommand(dc)
@@ -229,11 +414,7 @@ def bestfit(txtfile=None):
     cmd = bsvj.bestfit(cmd)
     cmd.raw = ' '.join(sys.argv[1:])
     cmd.name += 'Bestfit_' + osp.basename(txtfile).replace('.txt','')
-    bsvj.run_combine_command(cmd, logfile=cmd.logfile)
-
-    bsvj.logger.info(f'{cmd.outfile} -> {osp.join(outdir, osp.basename(cmd.outfile))}')
-    shutil.move(cmd.outfile, osp.join(outdir, osp.basename(cmd.outfile)))
-    shutil.move(cmd.logfile, osp.join(outdir, osp.basename(cmd.logfile)))
+    bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
 
 
 @scripter
@@ -243,7 +424,6 @@ def gentoys():
     """
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('toys_%Y%m%d')).outdir
-    if not osp.isdir(outdir): os.makedirs(outdir)
     bsvj.logger.info(f'Output will be moved to {outdir}')
 
     for dc_file in datacards:
@@ -253,27 +433,15 @@ def gentoys():
         cmd.name += osp.basename(dc.filename).replace('.txt','')
 
         # Some specific settings for toy generation
-        cmd.method = 'GenerateOnly'
-        cmd.args.add('--saveToys')
-        cmd.args.add('--bypassFrequentistFit')
-        cmd.args.add('--saveWorkspace')
-        # Possibly delete some settings too
-        cmd.kwargs.pop('--algo', None)
-        cmd.track_parameters = set()
+        cmd = bsvj.gen_toys(cmd)
 
-        assert '-t' in cmd.kwargs
-        assert '--expectSignal' in cmd.kwargs
-
-        bsvj.run_combine_command(cmd)
-        bsvj.logger.info(f'Moving {cmd.outfile} -> {osp.join(outdir, osp.basename(cmd.outfile))}')
-        shutil.move(cmd.outfile, osp.join(outdir, osp.basename(cmd.outfile)))
+        bsvj.run_combine_command(cmd, outdir=outdir)
 
 
 @scripter
 def fittoys2():
     infiles = bsvj.pull_arg('infiles', type=str, nargs='+').infiles
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('fittoys_%Y%m%d')).outdir
-    if not osp.isdir(outdir): os.makedirs(outdir)
     bsvj.logger.info(f'Output will be moved to {outdir}')
 
     # Sort datacards and toysfiles
@@ -304,9 +472,7 @@ def fittoys2():
                 + "\n".join(toysfiles)
                 )
 
-        bsvj.run_combine_command(cmd)
-        bsvj.logger.info(f'{cmd.outfile} -> {osp.join(outdir, osp.basename(cmd.outfile))}')
-        shutil.move(cmd.outfile, osp.join(outdir, osp.basename(cmd.outfile)))
+        bsvj.run_combine_command(cmd, outdir=outdir)
 
 
 @scripter
@@ -324,15 +490,13 @@ def fittoys():
     #    --rMin ${rMin}
     #    --rMax ${rMax}
     #    --savePredictionsPerToy
-    #    --bypassFrequentistFit
     #    --X-rtd MINIMIZER_MaxCalls=100000
     #    --setParameters $SetArgFitAll
     #    --freezeParameters $FrzArgFitAll
     #    --trackParameters $TrkArgFitAll"
 
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
-    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('toyfits_%b%d')).outdir
-    if not osp.isdir(outdir): os.makedirs(outdir)
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('toyfits_%Y%m%d')).outdir
 
     for dc_file in datacards:
         dc = bsvj.Datacard.from_txt(dc_file)
@@ -345,7 +509,7 @@ def fittoys():
         cmd.args.add('--toysFrequentist')
         cmd.args.add('--saveToys')
         cmd.args.add('--savePredictionsPerToy')
-        cmd.args.add('--bypassFrequentistFit')
+        cmd.args.add('--noPreFitValue')
         cmd.kwargs['--X-rtd'] = 'MINIMIZER_MaxCalls=100000'
 
         toysFile = bsvj.pull_arg('--toysFile', required=True, type=str).toysFile
@@ -357,17 +521,12 @@ def fittoys():
         assert '-t' in cmd.kwargs
         assert '--expectSignal' in cmd.kwargs
 
-        bsvj.run_combine_command(cmd)
-        os.rename(cmd.outfile, osp.join(outdir, osp.basename(cmd.outfile)))
-
-        fit_diag_file = 'fitDiagnostics{}.root'.format(cmd.name)
-        os.rename(fit_diag_file, osp.join(outdir, fit_diag_file))
+        bsvj.run_combine_command(cmd, outdir=outdir)
 
 @scripter
 def fithessian():
     datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
-    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('hessianfits_%b%d')).outdir
-    if not osp.isdir(outdir): os.makedirs(outdir)
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('hessianfits_%Y%m%d')).outdir
 
     for dc_file in datacards:
         dc = bsvj.Datacard.from_txt(dc_file)
@@ -378,17 +537,15 @@ def fithessian():
         cmd.method = 'FitDiagnostics'
         cmd.kwargs.pop('--algo', None)
         cmd.args.add('--saveWorkspace')
+        cmd.args.add('--saveShapes')
+        cmd.args.add('--noPreFitValue')
+        if '-t' in cmd.kwargs: cmd.args.add('--saveToys')
         cmd.kwargs['--X-rtd'] = ['REMOVE_CONSTANT_ZERO_POINT=1']
-        cmd.args.add('--bypassFrequentistFit')
         cmd.kwargs['--X-rtd'].append('MINIMIZER_MaxCalls=100000')
 
         assert '--expectSignal' in cmd.kwargs
 
-        bsvj.run_combine_command(cmd)
-        os.rename(cmd.outfile, osp.join(outdir, osp.basename(cmd.outfile)))
-
-        fit_diag_file = 'fitDiagnostics{}.root'.format(cmd.name)
-        os.rename(fit_diag_file, osp.join(outdir, fit_diag_file))
+        bsvj.run_combine_command(cmd, outdir=outdir)
 
 @scripter
 def impacts():
@@ -424,7 +581,7 @@ def impacts():
     initial_fit_outfile = cmd.outfile
 
     systs = []
-    for syst in dc.syst_names:
+    for syst in dc.syst_names_independent:
         if 'mcstat' in syst: continue
         if syst in base_cmd.freeze_parameters: continue
         systs.append(syst)
@@ -481,61 +638,20 @@ def impacts():
         )
     bsvj.run_command(plot_impacts_nobkg_cmd)
 
+
 @scripter
-def likelihood_scan(args=None):
+def likelihood_scan():
     """
     Runs a likelihood scan on a datacard
     """
-    if args is None: args = sys.argv
-    with bsvj.set_args(args):
-
-        print(sys.argv)
-
-        outdir = bsvj.pull_arg('-o', '--outdir', type=str).outdir
-        txtfile = bsvj.pull_arg('datacard', type=str).datacard
-        bestfit, scan = make_bestfit_and_scan_commands(txtfile)
-
-        if outdir and not osp.isdir(outdir): os.makedirs(outdir)
-
-        for cmd in [bestfit, scan]:
-            bsvj.run_combine_command(cmd, logfile=cmd.logfile)
-            if outdir is not None:
-                if osp.isfile(cmd.logfile):
-                    os.rename(cmd.logfile, osp.join(outdir, osp.basename(cmd.logfile)))
-                else:
-                    bsvj.logger.error('No logfile %s', cmd.logfile)
-                if osp.isfile(cmd.outfile):
-                    os.rename(cmd.outfile, osp.join(outdir, osp.basename(cmd.outfile)))
-                else:
-                    bsvj.logger.error('No outfile %s', cmd.outfile)
-            else:
-                bsvj.logger.error('No outdir specified')
-
-
-@scripter
-def likelihood_scan_mp():
-    """
-    Like likelihood_scan, but accepts multiple datacards. 
-    """
-    datacards = bsvj.pull_arg('datacards', type=str, nargs='+').datacards
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('scans_%Y%m%d')).outdir
-    if not osp.isdir(outdir): os.makedirs(outdir)
+    txtfile = bsvj.pull_arg('datacard', type=str).datacard
+    bestfit, scan = make_bestfit_and_scan_commands(txtfile)
 
-    # Copy sys.argv per job, setting first argument to the datacard
-    args = sys.argv[:]
-    args.insert(1, datacards[0])
-    args.extend(['--outdir', outdir])
-    jobs = []
-    for txtfile in datacards:
-        args[1] = txtfile
-        jobs.append(args[:])
-
-    import multiprocessing
-    p = multiprocessing.Pool(16)
-    p.map(likelihood_scan, jobs)
-    p.close()
-    p.join()
-    bsvj.logger.info('Finished pool')
+    for cmd in [bestfit, scan]:
+        bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
+        if outdir is None:
+            bsvj.logger.error('No outdir specified')
 
 
 @scripter

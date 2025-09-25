@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from __future__ import print_function
+import os
 import argparse
 import numpy as np
 import ROOT
@@ -125,7 +126,11 @@ if __name__ == '__main__':
     print("Largest eigenvalue of covariance matrix:", cov_eig[-1])
     print("Smallest eigenvalue of covariance matrix:", cov_eig[0])
 
-    std = np.sqrt(np.diag(covar))
+    covar_diag = np.diag(covar)
+    covar_diag_pos = np.abs(covar_diag)
+    if not np.array_equiv(covar_diag, covar_diag_pos):
+        print("Warning: covariance matrix has negative diagonal elements, forcing pos-def")
+    std = np.sqrt(covar_diag_pos)
     print("Largest standard deviation:", std.max(), "at", param[std.argmax()], end='')
     print("Smallest standard deviation:", std.min(), "at", param[std.argmin()], end='')
 
@@ -142,6 +147,11 @@ if __name__ == '__main__':
     for s,p in sorted([(s,param[istd]) for istd,s in enumerate(std)]):
         print(s, "at", p, end='')
 
+    try:
+        cols = os.get_terminal_size().columns
+    except:
+        cols = 1000
+    np.set_printoptions(linewidth=cols)
     print("Correlation matrix:")
     print(" ".join([param[istd].GetName() for istd,s in enumerate(std)]))
     with np.printoptions(precision=3, suppress=True):

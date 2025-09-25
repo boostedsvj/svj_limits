@@ -10,11 +10,12 @@
 #------------------------------------------------------------------------------
 # To run with default values: ./run_bias_or_self_study.sh
 # To run with specific options:
-# ./run_bias_study.sh -d 20240930 -f --sel cutbased --test_type bias --siginj 1.0 --mMed_values "200 300 500"
+# ./run_bias_study.sh -d 20240930 -f --sel cutbased --test_type bias --rnj 1.0 --mMed_values "200 300 500"
 
 # Default values
 hists_dir="hists"
 hists_date="20241115"   # Date of the histograms used to make the data cards
+hists_date_anti=  # Date of the anti-tag CR histograms
 dc_date=$(date +%Y%m%d)     # Today's date for gentoys command
 toys_date=$(date +%Y%m%d)   # Today's date for fittoys command
 toyfits_date=$(date +%b%d)  # Date format for toyfits directory as "Oct29"
@@ -25,7 +26,7 @@ run_only_fits=false         # Default to generate datacards, toys, and fit
 skip_dc=false              # separate option to do just toys and fit
 sel="bdt=0.67"            # Default selection type
 test_type="self"            # Default test type
-siginj="exp"                  # Default signal injected at exp limit strength
+rinj="exp"                  # Default signal injected at exp limit strength
 mMed_values=(200 250 300 350 400 450 500 550)  # Default mMed values
 rmax=5
 
@@ -40,7 +41,8 @@ while [[ "$#" -gt 0 ]]; do
         --dc_date) dc_date="$2"; shift ;;
         --hists_dir) hists_dir="$2"; shift ;;
         --hists_date) hists_date="$2"; shift ;;
-        --siginj) siginj="$2"; shift ;;
+        --hists_date_anti) hists_date_anti="$2"; shift ;;
+        --rinj) rinj="$2"; shift ;;
         --rmax) rmax="$2"; shift ;;
         --mDark) mDark_value="$2"; shift ;;
         --rinv) rinv_value="$2"; shift ;;
@@ -50,8 +52,13 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
+if [ -z "$hists_date_anti" ]; then
+    hists_date_anti=hists_date
+fi
+
 get_signame(){
 sig_name=SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth
+sig_name_anti=SVJ_s-channel_mMed-${mMed}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-anti${sel}_smooth
 }
 
 # Set PDF option based on test_type
@@ -61,8 +68,8 @@ else
     pdf_option="ua2"
 fi
 
-# This is used for naming the 'siginj' directory: 0 means no signal, 1 means signal injected (not sig strength)
-if [ "$siginj" == 0 ]; then
+# This is used for naming the 'rinj' directory: 0 means no signal, 1 means signal injected (not sig strength)
+if [ "$rinj" == 0 ]; then
     inj_dir=0
 else
     inj_dir=1
@@ -70,14 +77,14 @@ fi
 
 # Injected signal stregnth
 declare -A sig_strength # declare associative array (bash >= 4.0)
-if [ "$siginj" == "exp" ]; then
+if [ "$rinj" == "exp" ]; then
   if [ "$sel" == "cutbased" ] ; then
-    sig_strength=( [200]=0.427 [250]=0.377 [300]=0.340 [350]=0.279 [400]=0.364 [450]=0.772 [500]=0.859 [550]=0.897 )
+    sig_strength=( [200]=0.072 [250]=0.072 [300]=0.073 [350]=0.079 [400]=0.098 [450]=0.111 [500]=0.137 [550]=0.153 )
   else
     sig_strength=( [200]=0.267 [250]=0.129 [300]=0.160 [350]=0.184 [400]=0.208 [450]=0.248 [500]=0.262 [550]=0.396 )
   fi
 else
-    sig_strength=( [200]=$siginj [250]=$siginj [300]=$siginj [350]=$siginj [400]=$siginj [450]=$siginj [500]=$siginj [550]=$siginj )
+    sig_strength=( [200]=$rinj [250]=$rinj [300]=$rinj [350]=$rinj [400]=$rinj [450]=$rinj [500]=$rinj [550]=$rinj )
 fi
 
 # Generate the datacards (skip if only running fits)
@@ -87,8 +94,10 @@ if [ "$run_only_fits" == false ] && [ "$skip_dc" == false ]; then
     get_signame
     # Generate datacards for the current mMed value with variable mDark and hists_date
     (set -x; python3 cli_boosted.py gen_datacards \
-      --bkg ${hists_dir}/merged_${hists_date}/bkg_sel-${sel}.json \
-      --sig ${hists_dir}/smooth_${hists_date}/${sig_name}.json)
+      --regions ${sel} anti${sel} \
+      --norm-type crtf \
+      --bkg ${hists_dir}/merged_${hists_date}/bkg_sel-${sel}.json ${hists_dir}/merged_${hists_date_anti}/bkg_sel-anti${sel}.json \
+      --sig ${hists_dir}/smooth_${hists_date}/${sig_name}.json ${hists_dir}/smooth_${hists_date_anti}/${sig_name_anti}.json)
   done
 fi
 
@@ -98,7 +107,7 @@ if [ "$run_only_fits" == false ]; then
   do
     get_signame
 	expect_sig=0
-    if [ "$siginj" != 0 ]; then
+    if [ "$rinj" != 0 ]; then
 	  expect_sig=${sig_strength[$mMed]}
 	fi
     # Run the 'gentoys' command with the current mMed value and variable mDark
@@ -128,7 +137,7 @@ do
 done
 
 # Create the results directory that is expected by the plotting code
-results_dir="${test_type}_test/siginj${inj_dir}"
+results_dir="${test_type}_test/rinj${inj_dir}"
 mkdir -p "$results_dir"
 
 # Copy the ROOT files from the generated toyfits directory to the new results directory

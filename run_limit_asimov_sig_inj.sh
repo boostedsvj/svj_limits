@@ -14,11 +14,12 @@
 # Default values
 hists_dir="hists"
 hists_date="20241115"  # Date of the histograms used for making datacards
+hists_date_anti=  # Date of the anti-tag CR histograms
 dc_date=$(date +%Y%m%d)    # Dynamically set today's date 
 scan_date=$(date +%Y%m%d)
 toy_seed=1001
 sel="bdt=0.67"
-siginj=0.2
+rinj=0.2
 mInj=350
 mDark_value="10"
 rinv_value="0p3"
@@ -37,8 +38,9 @@ while [[ "$#" -gt 0 ]]; do
         --sel) sel="$2"; shift ;;
         --hists_dir) hists_dir="$2"; shift ;;
         --hists_date) hists_date="$2"; shift ;;
+        --hists_date_anti) hists_date_anti="$2"; shift ;;
         --dc_date) dc_date="$2"; shift ;;
-        --siginj) siginj="$2"; shift ;;
+        --rinj) rinj="$2"; shift ;;
         --mInj) mInj="$2"; shift ;;
         --mDark) mDark_value="$2"; shift ;;
         --rinv) rinv_value="$2"; shift ;; 
@@ -48,10 +50,15 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
+if [ -z "$hists_date_anti" ]; then
+    hists_date_anti=hists_date
+fi
+
 get_signame(){
 MASS=$1
 if [ -z "$MASS" ]; then MASS=${mMed}; fi
 sig_name=SVJ_s-channel_mMed-${MASS}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-${sel}_smooth
+sig_name_anti=SVJ_s-channel_mMed-${MASS}_mDark-${mDark_value}_rinv-${rinv_value}_alpha-peak_MADPT300_13TeV-madgraphMLM-pythia8_sel-anti${sel}_smooth
 }
 
 # if you want to generate cards and the asimov toy
@@ -63,8 +70,10 @@ if [ "$run_only_fits" == false ] && [ "$skip_dc" == false ]; then
     get_signame
     # Generate datacards for the current mMed value with variable mDark and hists_date
     (set -x; python3 cli_boosted.py gen_datacards \
-      --bkg ${hists_dir}/merged_${hists_date}/bkg_sel-${sel}.json \
-      --sig ${hists_dir}/smooth_${hists_date}/${sig_name}.json)
+      --regions ${sel} anti${sel} \
+      --norm-type crtf \
+      --bkg ${hists_dir}/merged_${hists_date}/bkg_sel-${sel}.json ${hists_dir}/merged_${hists_date_anti}/bkg_sel-anti${sel}.json \
+      --sig ${hists_dir}/smooth_${hists_date}/${sig_name}.json ${hists_dir}/smooth_${hists_date_anti}/${sig_name_anti}.json)
   done
 fi
 
@@ -74,7 +83,7 @@ if [ "$run_only_fits" == false ]; then
   (set -x; python3 cli_boosted.py gentoys \
     dc_${dc_date}_${sel}/dc_${sig_name}.txt \
     -t -1 \
-    --expectSignal ${siginj} \
+    --expectSignal ${rinj} \
     -s ${toy_seed})
 
   # Likelihood scan for expected limits
@@ -82,7 +91,7 @@ if [ "$run_only_fits" == false ]; then
   if [ "$only_inj" = false ]; then
     (set -x; python3 cli_boosted.py likelihood_scan_mp \
       dc_${dc_date}_${sel}/dc*mDark-${mDark_value}_rinv-${rinv_value}*${sel}*smooth.txt \
-      --range 0.0 2.0 \
+      --range 0.0 1.0 \
       --seed ${toy_seed} \
       --asimov)
   fi
@@ -94,7 +103,7 @@ fi
 get_signame ${mInj}
 (set -x; python3 cli_boosted.py likelihood_scan_mp \
   dc_${dc_date}_${sel}/dc*mDark-${mDark_value}_rinv-${rinv_value}*${sel}*smooth.txt \
-  --range 0.0 2.0 \
+  --range 0.0 1.0 \
   --seed ${toy_seed} \
   --toysFile toys_${dc_date}/higgsCombineObserveddc_${sig_name}.GenerateOnly.mH120.${toy_seed}.root \
   -t -1)

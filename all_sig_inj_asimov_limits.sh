@@ -22,9 +22,9 @@ for mMed in "${mMed_values[@]}"
 do
   # run the full asimov expected limits only once
   if [ "$mMed" == 200 ]; then
-    ./run_limit_asimov_sig_inj.sh --mInj ${mMed}  --siginj ${sig_strength[$mMed]} 
+    ./run_limit_asimov_sig_inj.sh --mInj ${mMed}  --rinj ${sig_strength[$mMed]} 
   # make only the new asimov toy with signal inject as the observed limit (and plot)
   else
-    ./run_limit_asimov_sig_inj.sh --mInj ${mMed}  --siginj ${sig_strength[$mMed]}  --only_inj
+    ./run_limit_asimov_sig_inj.sh --mInj ${mMed}  --rinj ${sig_strength[$mMed]}  --only_inj
   fi
 done
