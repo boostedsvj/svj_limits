@@ -13,9 +13,11 @@ hists_dates = {
     "cutbased": ("20241101", "20250218", "20250206"),
     "cutbased_ddt": ("20250710", "", ""),
     "cutbased_ddt=0.11": ("20250715", "", ""),
-    "cutbased_ddt=0.12": ("20250711", "", ""),
-    "bdt=0.55": ("20250715", "", ""),
-    "bdt=0.75": ("20250711", "", ""),
+    "cutbased_ddt=0.12": ("20250912", "", ""),
+    "rtcutbased_ddt=0.1": ("20250915", "", ""),
+    "bdt=0.55": ("20250912", "", ""),
+    "bdt=0.75": ("20250912", "", ""),
+    "rtbdt=0.75": ("20250912", "", ""),
 }
 def safe_len(val): return -1 if val is None else len(val)
 hists_dates = {key : {"": val[0], "anti": val[0] if safe_len(val[1])==0 else val[1], "antiloose": val[0] if safe_len(val[2])==0 else val[2]} for key,val in hists_dates.items()}
@@ -172,7 +174,7 @@ steps['1'] = StepRunner('datacard generation', [
 ])
 steps['2'] = StepRunner('diagnostics', [
     # run bestfit
-    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range -1 1", cast='mp'),
+    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range -1.616 1.616", cast='mp'),
     # hessian analysis
     Command("python3", "hessian.py", "-w {bf_file}:w -f {bf_file}:fit_mdf -s 0.1"),
     # make plots
@@ -180,6 +182,10 @@ steps['2'] = StepRunner('diagnostics', [
     Command("python3 quick_plot.py", "bkgsrcr", "{region_args2} --sig {regions_sig} -o {dc_dir}/srcr_{sel}.png"),
     # TF fit(s)
     Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.png --basis {tf_basis} --basis-mc {tf_basis} --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
+    # F-test diagnostic plots for individual signal parameters
+    Command("python3 quick_plot.py", "ftest_toys", "--results_dump {dc_dir}/ftest/{signame_dc}_ftest-results.py -o {dc_dir}/ftest/{signame_dc}"),
+    # F-test results vs all signal samples for plotting
+    Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/", cast='single')
     ] + [
     # postfit
     Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.png".format(sel, channel))
@@ -212,6 +218,7 @@ steps['6'] = StepRunner('Asimov injection test', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
 ])
 steps['7'] = StepRunner('Asimov injection plots', [
+    Command("python3 quick_plot.py", "mtdist", "{scan_files} --clean --outfile {scan_dir}/bestfit_{signame_dc}.png"),
     Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
 ])
 steps['8'] = StepRunner('bias fits', [

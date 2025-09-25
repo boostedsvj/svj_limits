@@ -6,6 +6,7 @@ import ROOT # type:ignore
 ROOT.RooMsgService.instance().setSilentMode(True)
 ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.ERROR)
 from time import strftime
+import imp
 import argparse
 
 # Add the directory of this file to the path so the boosted tools can be imported
@@ -14,12 +15,14 @@ from contextlib import contextmanager
 sys.path.append(osp.dirname(osp.abspath(__file__)))
 import svj_ntuple_processing as svj
 import boosted_fits as bsvj
+import run_rhalpha as rhalph
 logger = bsvj.setup_logger('quickplot')
 
 import numpy as np
 import matplotlib as mpl
 mpl.use('Agg') # in order to run in background / no-graphics environments
 import matplotlib.pyplot as plt # type:ignore
+import matplotlib.transforms as transforms
 
 def set_mpl_fontsize(small=22, medium=28, large=32, legend=None):
     plt.rc('font', size=small)          # controls default text sizes
@@ -1087,38 +1090,39 @@ def rreplace(s, old, new, count=1):
     return (s[::-1].replace(old[::-1], new[::-1], count))[::-1]
 
 # plot a given tf and (optional) fit
-def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff=""):
+def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff="", canvas=None):
     if suff:
         outfile = rreplace(outfile,'.',f'_{suff}.',1)
 
-    if fit is not None:
-        figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
-    else:
-        figure = plt.figure(figsize=(12,12))
-        ax = figure.gca()
-
     colors = get_color_cycle()
-    pcolor = next(colors)
-    ax.errorbar(mt['pts'], tf['arr']['vals'], yerr=tf['arr']['errs'], label=label, color=pcolor)
-    ax.set_ylabel(ylabel)
-    xlabel = r'$m_{\mathrm{T}}$ [GeV]'
-    if fit is not None:
+    if canvas is None: # Ploting existing items
+        figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
         pcolor = next(colors)
-        ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"fit ($\\mathrm{{n}} = {fit['npar']+1}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
-        ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
-        leg_args = {'fontsize': 18, 'framealpha': 0.0}
-        if title: leg_args['title'] = title
-        ax.legend(**leg_args)
-        # pulls in lower panel
-        pulls = (tf['arr']['vals'] - fit['tf_fn_vals']) / tf['arr']['errs']
-        ax2.plot(mt['range'], [0.,0.], c='gray')
-        ax2.scatter(mt['pts'], pulls, color=pcolor)
+        ax.errorbar(mt['pts'], tf['arr']['vals'], yerr=tf['arr']['errs'], label=label, color=pcolor)
+        ax.set_ylabel(ylabel)
+        xlabel = r'$m_{\mathrm{T}}$ [GeV]'
+        pcolor = next(colors)
         ax2.set_ylabel(r'(TF - fit) / $\Delta$TF')
         ax2.set_xlabel(xlabel)
     else:
-        ax.set_xlabel(xlabel)
+        figure, (ax, ax2) = canvas
+        _ = next(colors)
+        _ = next(colors)
+        pcolor = next(colors) # Moving the color label
+        print(outfile, "Updating canvas")
+
+    ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"$fit^{{{suff}}}$ ($\\mathrm{{n}} = {fit['npar']+1}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
+    ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
+    leg_args = {'fontsize': 18, 'framealpha': 0.0}
+    if title: leg_args['title'] = title
+    ax.legend(**leg_args)
+    # pulls in lower panel
+    pulls = (tf['arr']['vals'] - fit['tf_fn_vals']) / tf['arr']['errs']
+    ax2.plot(mt['range'], [0.,0.], c='gray')
+    ax2.scatter(mt['pts'], pulls, color=pcolor)
     apply_ranges(ax)
-    plt.savefig(outfile, bbox_inches='tight')
+    figure.savefig(outfile, bbox_inches='tight')
+    return figure, (ax, ax2) # Returning the plot containers so that it can be updated
 
 @scripter
 def bkgtf():
@@ -1162,7 +1166,7 @@ def bkgtf():
         if verbose: print('chi2_mc', fit_mc['chi2'], fit_mc['ndf'])
 
     # plot TF from MC
-    plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mc', title=title)
+    mc_canvas = plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mc', title=title)
 
     # TF from data: everything comes from postfit file
     fit_data = None
@@ -1264,6 +1268,16 @@ def bkgtf():
             # bkg_eff already included in MC TF
             tf_data['bkg_eff'] = 1.0
             suff_data = 'data_res'
+
+            # Postfit MC-only TF w/ uncertainties
+            tf_post = {} # Creating the new ite for plotting
+            tf_post['bkg_eff'] = fit_mc_vals
+            tf_post['th1'] = tf_mc['th1'].Clone() # Key distinction compared with above
+            tf_post['arr'] = bsvj.th1_to_hist(tf_post['th1'])
+            if verbose: print('tf_post_th1', tf_post['arr']['vals'].tolist())
+            fit_post = get_tf_fit(fitresult_mc, 'tf_mc', tf_post['th1'], mt['scaled'], tf_post['bkg_eff'], basis=basis_mc)
+            plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}^{{\\mathrm{{postfit}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title, canvas=mc_canvas)
+            # plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}^{{\\mathrm{{postfit}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title)
         else:
             if verbose: print('tf_data_th1', bsvj.th1_to_hist(tf_data['th1'])['vals'].tolist())
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
@@ -1277,8 +1291,114 @@ def bkgtf():
         escape = lambda x: x.replace('_','\\_')
         plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{escape(suff_data)}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label=label_data, title=title)
 
-    # todo:
-    # postfit MC-only TF w/ uncertainties
+
+@scripter
+def ftest_toys():
+    ftest_dump = bsvj.pull_arg('--results_dump', type=str).results_dump
+    outpre = bsvj.pull_arg('-o', '--outpre', type=str).outpre
+    dump = imp.load_source('ftest_dump', ftest_dump)
+    winner = dump.winner
+    nbins = dump.nbins
+    results = dump.results
+
+    # Running the toys items
+    range_max = len(results)
+    range_i = list(range(range_max))
+    range_j = lambda i: list(range(i+1, range_max+1))
+    range_i, range_j, range_max = bsvj.range_toys(results)
+
+    # Extracting the information
+    ftest_toys = {}
+    ftest_data = {}
+    ftest_pval = {}
+    for i in range_i:
+        for j in range_j:
+            if (i,j) not in results: continue
+            results_dict = bsvj.extract_results_toys(results,i,j)
+            n1, n2 = results_dict["n1"], results_dict["n2"]
+            toys1, toys2 = results_dict["gof1"]["toys"], results_dict["gof2"]["toys"]
+            data1, data2 = results_dict["gof1"]["data"][0], results_dict["gof2"]["data"][0]
+            ftest_toys[(n1,n2)] = [bsvj.fisher_metric(toys1[x], toys2[x], n1, n2, nbins) for x in toys1.keys()]
+            ftest_data[(n1,n2)] = bsvj.fisher_metric(data1, data2, n1, n2, nbins)
+            ftest_pval[(n1,n2)] = bsvj.compute_fisher_toys(results_dict["gof1"], results_dict["gof2"], n1, n2, nbins)
+
+    winner = None
+    for (n1,n2) in ftest_toys.keys(): # Creating the per-parameter comparion f-test plots
+        f_toys = np.array(ftest_toys[(n1,n2)])
+        f_toys = f_toys[f_toys > 0] # Only plotting stuff larger than 0
+        f_data = ftest_data[(n1, n2)]
+        p_val = ftest_pval[(n1,n2)]
+        if p_val > 0.05 and winner is None:
+            winner = n1
+        outfile = f"{outpre}_fstat-{n1}vs{n2}.png"
+        with quick_ax(outfile=outfile) as ax:
+            h_val, bins = np.histogram(f_toys, bins=40) # Getting the bin values required to normalized the F-distribution plot
+            ax.hist(f_toys, bins=40, histtype='step', label="Toys") # Tooys results
+            x = np.linspace(np.min(f_toys), np.max(f_toys), 500) # F-distribution
+            f = np.array([ROOT.TMath.FDist(_x, n2-n1, nbins-n2) for _x in x]) * (len(f_toys) * (bins[1]-bins[0]))
+            ax.plot(x,f,color='r', label=f"F-dist, ndf=({n2-n1}, {nbins-n2})")
+            ax.vlines([f_data], ymin=0, ymax=3, color='b' )
+            ax.plot([],[],color='b', label=f'Observed ({f_data:.4f})')
+            ax.plot([],[],color='r', label=f"p-value: {p_val:.4f}")
+            ax.set_xlabel("F-test statistics")
+            ax.set_ylabel("Number of toys")
+            ax.set_ylim(top=np.max(h_val)*1.5)
+            ax.legend(title=f"F-test for fit orders: ({n1}, {n2})")
+
+    # Plotting the files for the winner evaluation
+    for i,j in [(i,j) for i in range_i for j in range_j]:
+        if (i,j) not in results: continue
+        results_dict = bsvj.extract_results_toys(results,i,j)
+        n1 = results_dict["n1"]
+        n2 = results_dict["n2"]
+        toys1, data1 = list(results_dict["gof1"]["toys"].values()), results_dict["gof1"]["data"][0]
+        toys2, data2 = list(results_dict["gof2"]["toys"].values()), results_dict["gof2"]["data"][0]
+        outfile = f"{outpre}_gof-npar{n1}.png"
+        with quick_ax(outfile=outfile) as ax:
+            h_val, bins = np.histogram(toys1, bins=40) # Getting the bin values required to normalized the F-distribution plot
+            ax.hist(toys1, bins=40, histtype='step', label=f"Toys (n = {n1})") # Toys results
+            ax.hist(toys2, bins=40, histtype='step', label=f"Toys (n = {n2})") # Toys results
+            ax.vlines([data1], ymin=0, ymax=3, color='b' )
+            ax.vlines([data2], ymin=0, ymax=3, color='r' )
+            ax.plot([],[],color='b', label=f'Observed = {data1:.4f} (n={n1})')
+            ax.plot([],[],color='r', label=f'Observed = {data2:.4f} (n={n2})')
+            ax.set_xlabel("Goodness of fit")
+            ax.set_ylabel("Number of toys")
+            ax.set_ylim(top=np.max(h_val)*1.5)
+            ax.legend(title=f"{n1}-parameter fit")
+
+
+@scripter
+def ftest_scan():
+    ftest_dir= bsvj.pull_arg('--results_dir', type=str).results_dir
+    sel = bsvj.pull_arg('--sel', type=str).sel
+    signals = bsvj.pull_arg("--signals", dest="signals", type=str, default="").signals
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str).outdir
+
+    with open(signals,'r') as sfile:
+        signals = [rhalph.Signal(*line.split(), 0) for line in sfile]
+        ftest_dump_list = [f'{ftest_dir}/{rhalph.get_signame(s)}_sel-{sel}_mt_smooth_ftest-results.py' for s in signals]
+
+    # Aggregarating the result into a signal file
+    result = {
+        (sig.mMed, sig.mDark, sig.rinv): imp.load_source('ftest_dump', ftest_dump).winner
+        for sig, ftest_dump in zip(signals, ftest_dump_list)
+        if os.path.exists(ftest_dump)
+    }
+    # Scanning verse mp
+    for mDark in set(sig[1] for sig in result.keys()):
+        with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed_mDark={mDark}.png") as ax:
+            for rinv in sorted(set(sig[2] for sig in result.keys())):
+                plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]==mDark and sig[2] == rinv])
+                if(len(plot_points) == 0): continue
+                shift = float(rinv.replace('p', '.')) * 0.2
+                mMed = plot_points[:,0]
+                npar = plot_points[:, 1] + shift
+                ax.plot(mMed, npar, marker='o', label="$r_{inv}$ = " + rinv.replace("p", "."))
+            ax.set_ylabel('Chosen number of parameters')
+            ax.set_xlabel("$m_{X}$ [GeV]")
+            ax.legend(title="$m_{dark}$ = " + mDark + " GeV")
+
 
 def plot_hist(th1, ax, **kwargs):
     hist = bsvj.th1_to_hist(th1)
