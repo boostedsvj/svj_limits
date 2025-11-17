@@ -2127,8 +2127,8 @@ def parse_dc(dc):
         for proc in dc.rates[bin]:
             rate_value = dc.rates[bin][proc]
             # make the rate -1 for values < 100 so combine will grab the shape value
-            # rather than a potentially problematic int 
-            table.append([bin, proc, proc_nr(proc), int(rate_value) if rate_value >= 100 else -1])
+            # rather than a potentially problematic int
+            table.append([bin, proc, proc_nr(proc), int(rate_value) if (rate_value >= 100) or (proc=="bkg") else -1])
     txt += '\n' + tabelize(transpose(table))
 
     # split up systs by type to avoid tabelization issues
