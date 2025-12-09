@@ -408,13 +408,23 @@ def bestfit():
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('bestfits_%Y%m%d')).outdir
     outdir = osp.abspath(outdir)
 
-    dc = bsvj.Datacard.from_txt(txtfile)
-    cmd = bsvj.CombineCommand(dc)
-    cmd.configure_from_command_line()
-    cmd = bsvj.bestfit(cmd)
-    cmd.raw = ' '.join(sys.argv[1:])
-    cmd.name += 'Bestfit_' + osp.basename(txtfile).replace('.txt','')
-    bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
+    range_auto = bsvj.pull_arg('--range_auto', type=float, nargs=3, default=None).range_auto
+    rmin, rmax, rcount = range_auto if range_auto else (1, 2, 1) # Run at least once if item is not defined
+
+    for r in np.linspace(rmin, rmax, int(rcount)):
+        dc = bsvj.Datacard.from_txt(txtfile)
+        cmd = bsvj.CombineCommand(dc)
+        cmd.configure_from_command_line()
+        cmd = bsvj.bestfit(cmd)
+        if range_auto is not None:
+            cmd.add_range("r", -r, r)
+        cmd.raw = ' '.join(sys.argv[1:])
+        cmd.name += 'Bestfit_' + osp.basename(txtfile).replace('.txt','')
+        status = bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
+        if any(x for x in status if "WARNING: MultiDimFit failed" in x):
+            bsvj.logger.info("Best fit failed, expanding r range")
+        else: # Best fit found, simply break
+            break
 
 
 @scripter
