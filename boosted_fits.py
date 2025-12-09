@@ -1040,7 +1040,7 @@ class InputData(object):
                 bkgfit = simpdf.fitTo(
                     obs,
                     ROOT.RooFit.Extended(True),
-                    ROOT.RooFit.SumW2Error(False), # True was causing huge errors in Chebyshev fits
+                    ROOT.RooFit.SumW2Error(True),
                     ROOT.RooFit.Strategy(0),
                     ROOT.RooFit.Save(),
                     ROOT.RooFit.Minimizer("Minuit2", "migrad"),
