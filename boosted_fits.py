@@ -589,7 +589,7 @@ def PoissonErrorUp(N):
 
 def get_default_systs(mz,mdark,rinv):
     systs = [
-        ['lumi', 'lnN', 1.016, '-'],
+        ['lumi', 'lnN', 1.0073, '-'],
         ['trigger_cr', 'lnN', 1.02, '-'],
         ['trigger_sim', 'lnN', 1.021, '-'],
         ['mZprime','extArg', mz],
