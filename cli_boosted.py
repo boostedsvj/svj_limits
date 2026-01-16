@@ -411,6 +411,12 @@ def bestfit():
     range_auto = bsvj.pull_arg('--range_auto', type=float, nargs=3, default=None).range_auto
     rmin, rmax, rcount = range_auto if range_auto else (1, 2, 1) # Run at least once if item is not defined
 
+    def check_boundary(r, outfile): # Check that the fit results is sufficient enough far away form the boundary
+        file  = ROOT.TFile.Open(outfile)
+        tree = file.Get("limit")
+        tree.GetEntry(0) # Getting the first entry
+        return np.isclose(tree.r, r ) or np.isclose(tree.r, -r)
+
     for r in np.linspace(rmin, rmax, int(rcount)):
         dc = bsvj.Datacard.from_txt(txtfile)
         cmd = bsvj.CombineCommand(dc)
@@ -421,8 +427,11 @@ def bestfit():
         cmd.raw = ' '.join(sys.argv[1:])
         cmd.name += 'Bestfit_' + osp.basename(txtfile).replace('.txt','')
         status = bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
-        if any(x for x in status if "WARNING: MultiDimFit failed" in x):
+        # Detecting if any there is any problem with the fit
+        if any(x for x in status if "WARNING: MultiDimFit failed" in x): # Directly look if there is a report in the combine command output
             bsvj.logger.info("Best fit failed, expanding r range")
+        elif check_boundary(r, cmd.outfile):
+            bsvj.logger.info("Fit is too close to assigned boundary, refitting with extended boundary")
         else: # Best fit found, simply break
             break
 
