@@ -667,10 +667,27 @@ def likelihood_scan():
     txtfile = bsvj.pull_arg('datacard', type=str).datacard
     bestfit, scan = make_bestfit_and_scan_commands(txtfile)
 
-    for cmd in [bestfit, scan]:
-        bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
-        if outdir is None:
-            bsvj.logger.error('No outdir specified')
+    bsvj.run_combine_command(bestfit, logfile=bestfit.logfile, outdir=outdir)
+
+    scan_success = False
+    r_scan_max = 2.0
+    outfile_orig = scan.outfile
+    while not scan_success:
+        scan.add_range("r", 0, r_scan_max)
+        scan.outfile = outfile_orig # Reset the output file (as this will be changed by the run execution)
+        bsvj.run_combine_command(scan, logfile=scan.logfile, outdir=outdir)
+        tfile = ROOT.TFile.Open(scan.outfile)
+        tree = tfile.Get("limit")
+        tree.GetEntry(tree.GetEntries()-1) # Getting last entry
+        max_nll = tree.deltaNLL
+        if max_nll < 1.2:
+            r_scan_max *= 2.
+            bsvj.logger.info(f"Maximum DeltaNLL too small ({max_nll}), extending scan range to ({r_scan_max})")
+        elif max_nll > 2.5:
+            r_scan_max /= 2.
+            bsvj.logger.info(f"Maximum DeltaNLL too large ({max_nll}), shrinking scan range to ({r_scan_max})")
+        else:
+            scan_success = True
 
 
 @scripter
