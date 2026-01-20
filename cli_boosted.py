@@ -680,11 +680,13 @@ def likelihood_scan():
         tree = tfile.Get("limit")
         tree.GetEntry(tree.GetEntries()-1) # Getting last entry
         max_nll = tree.deltaNLL
+        # Assuming the likelihood close to what we have is roughly paraboloic to estimate
+        # how far to extend the range
         if max_nll < 1.2:
-            r_scan_max *= 2.
+            r_scan_max = np.max([2.0*r_scan_max, r_scan_max * (1.2/max_nll)**0.5])
             bsvj.logger.info(f"Maximum DeltaNLL too small ({max_nll}), extending scan range to ({r_scan_max})")
         elif max_nll > 2.5:
-            r_scan_max /= 2.
+            r_scan_max = np.min([0.5*r_scan_max, r_scan_max * (max_nll/2.5)**0.5 ])
             bsvj.logger.info(f"Maximum DeltaNLL too large ({max_nll}), shrinking scan range to ({r_scan_max})")
         else:
             scan_success = True
