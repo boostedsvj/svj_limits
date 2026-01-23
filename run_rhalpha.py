@@ -185,16 +185,20 @@ steps['2'] = StepRunner('diagnostics', [
     # F-test diagnostic plots for individual signal parameters
     Command("python3 quick_plot.py", "ftest_toys", "--results_dump {dc_dir}/ftest/{signame_dc}_ftest-results.py -o {dc_dir}/ftest/{signame_dc}"),
     # F-test results vs all signal samples for plotting
-    Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/", cast='single')
+    # todo: More fit parameter results vs. signal parameter(s)
+    Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/", cast='single'),
     ] + [
     # postfit
     Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.png".format(sel, channel))
         for sel, channel in [("{sel}", "bsvj"), ("{antisel}", "bsvjCR1")]
     ]
-    # todo: plot toy-based f-test distribution
-    # todo: plot f-test results vs. signal parameter(s)
     # todo: move all plots into one folder?
 )
+steps['2a'] = StepRunner('diagnostic_impacts', [
+    # Impact
+    # todo: fix expected signal?
+    Command("python3 cli_boosted.py", "impacts", "{dc_dir}/{dc_name}  --nfits 16 --asimov --normRange 0.1 2.0 --rMin -10 --rMax 10 --robustFit 1 {rinj_arg}", cast='mp')
+])
 steps['3'] = StepRunner('bias toys', [
     Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_name} {bias_toy_args} {rinj_arg}", cast='mp'),
     Command("mv", "", "{bias_toy_file_old} {bias_toy_file}"),
@@ -235,7 +239,7 @@ steps['9'] = StepRunner('bias plots', [
 predefs = {
     'gen_datacard': ['0','1','2'],
     'gen_datacard_alt': ['0','1b','2b'],
-    'likelihood': ['0','1','4','5'],
+    'likelihood': ['0','1','2a','4','5'],
     'asimov_inj': ['0','1','3a','6','7'],
     'self': ['0','1','3','8','9'],
     'bias': ['0','1','1b','3b','8b','9b'],
