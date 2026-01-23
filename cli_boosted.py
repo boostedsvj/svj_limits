@@ -597,7 +597,7 @@ def impacts():
             )
     else:
         bsvj.run_combine_command(cmd, logfile=cmd.logfile)
-    initial_fit_outfile = cmd.outfile
+    initial_fit_outfile = cmd.outfile.replace(f".{cmd.seed}.root", ".root")
 
     systs = []
     for syst in dc.syst_names_independent:
