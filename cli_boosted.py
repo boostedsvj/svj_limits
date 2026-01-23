@@ -577,7 +577,7 @@ def impacts():
     if '--toysFrequentist' in base_cmd.args:
         base_cmd.args.remove('--toysFrequentist')
 
-    workdir = strftime(f'impacts_cli_%Y%m%d_{osp.basename(dc_file).replace(".txt","")}')
+    workdir = os.path.join(strftime(f'impacts_cli_%Y%m%d'), osp.basename(dc_file).replace(".txt",""))
     bsvj.logger.info(f'Executing from {workdir}')
     if not bsvj.DRYMODE:
         os.makedirs(workdir, exist_ok=True)
