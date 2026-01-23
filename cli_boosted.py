@@ -594,7 +594,7 @@ def impacts():
     if osp.isfile(cmd.outfile):
         bsvj.logger.warning(
             f'Initial fit output already exists, not running initial fit command: {cmd}'
-            )
+        )
     else:
         bsvj.run_combine_command(cmd, logfile=cmd.logfile)
     initial_fit_outfile = cmd.outfile.replace(f".{cmd.seed}.root", ".root")
@@ -604,6 +604,9 @@ def impacts():
         if 'mcstat' in syst: continue
         if syst in base_cmd.freeze_parameters: continue
         systs.append(syst)
+    for syst in [x[0] for x in dc.extargs]:
+        if syst.startswith('tf_'):
+            systs.append(syst)
     bsvj.logger.info(f'Doing systematics: {" ".join(systs)}')
 
     # calculate all impacts
@@ -620,7 +623,7 @@ def impacts():
     bsvj.run_combine_command(combinetool_dofit_cmd, logfile=cmd.logfile)
 
     # combine all impacts
-    impact_file = 'impacts.json'
+    impact_file = f'impacts.json'
     combinetool_json_cmd = (
         f'combineTool.py -M Impacts'
         f' -d {initial_fit_outfile} -m 120 -o {impact_file}'
@@ -642,12 +645,12 @@ def impacts():
     impacts_nobkg = deepcopy(impacts_orig)
     impacts_nobkg["params"] = []
     for param in impacts_orig["params"]:
-        if 'bkg' in param["name"].lower():
+        if 'tf_mc' in param["name"].lower():
             continue
         else:
             impacts_nobkg["params"].append(param)
     # dump in the format used by combineTool/Impacts
-    impact_file_nobkg = 'impacts_nobkg.json'
+    impact_file_nobkg = f'impacts_nobkg.json'
     with open(impact_file_nobkg,'w') as ofile:
         json.dump(impacts_nobkg, ofile, sort_keys=True, indent=2, separators=(',', ': '))
     plot_impacts_nobkg_cmd = (
