@@ -194,11 +194,6 @@ steps['2'] = StepRunner('diagnostics', [
     ]
     # todo: move all plots into one folder?
 )
-steps['2a'] = StepRunner('diagnostic_impacts', [
-    # Impact
-    # todo: fix expected signal?
-    Command("python3 cli_boosted.py", "impacts", "{dc_dir}/{dc_name}  --nfits 16 --asimov --normRange 0.1 2.0 --rMin -10 --rMax 10 --robustFit 1 {rinj_arg}", cast='mp')
-])
 steps['3'] = StepRunner('bias toys', [
     Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_name} {bias_toy_args} {rinj_arg}", cast='mp'),
     Command("mv", "", "{bias_toy_file_old} {bias_toy_file}"),
@@ -233,13 +228,17 @@ steps['8'] = StepRunner('bias fits', [
 steps['9'] = StepRunner('bias plots', [
     Command("python3", "plot_bias_or_self_study.py", "--base-dir {bias_results_basedir} --sel {sel} --test {bias_test_type} -s {btoy_seed} --rinj {rinj} --explim {explim} --signals {signals}", cast='single'),
 ])
-# todo: nuisance impacts
+steps['10'] = StepRunner('diagnostic_impacts', [
+    # Impact
+    # todo: fix expected signal?
+    Command("python3 cli_boosted.py", "impacts", "{dc_dir}/{dc_name}  --nfits 16 --asimov --normRange 0.1 2.0 --rMin -10 --rMax 10 --robustFit 1 --expectSignal=0.2", cast='loop') # Explicit signal injection
+])
 
 # special groups of steps
 predefs = {
     'gen_datacard': ['0','1','2'],
     'gen_datacard_alt': ['0','1b','2b'],
-    'likelihood': ['0','1','2a','4','5'],
+    'likelihood': ['0','1','4','5','10'],
     'asimov_inj': ['0','1','3a','6','7'],
     'self': ['0','1','3','8','9'],
     'bias': ['0','1','1b','3b','8b','9b'],
