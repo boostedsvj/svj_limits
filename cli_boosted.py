@@ -623,7 +623,7 @@ def impacts():
     bsvj.run_combine_command(combinetool_dofit_cmd, logfile=cmd.logfile)
 
     # combine all impacts
-    impact_file = f'impacts.json'
+    impact_file = 'impacts.json'
     combinetool_json_cmd = (
         f'combineTool.py -M Impacts'
         f' -d {initial_fit_outfile} -m 120 -o {impact_file}'
