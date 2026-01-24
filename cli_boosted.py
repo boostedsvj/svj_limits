@@ -642,23 +642,25 @@ def impacts():
     # modify impact json to remove bkg systs
     with open(impact_file,'r') as ifile:
         impacts_orig = json.load(ifile)
-    impacts_nobkg = deepcopy(impacts_orig)
-    impacts_nobkg["params"] = []
-    for param in impacts_orig["params"]:
-        if 'tf_mc' in param["name"].lower():
-            continue
-        else:
-            impacts_nobkg["params"].append(param)
-    # dump in the format used by combineTool/Impacts
-    impact_file_nobkg = f'impacts_nobkg.json'
-    with open(impact_file_nobkg,'w') as ofile:
-        json.dump(impacts_nobkg, ofile, sort_keys=True, indent=2, separators=(',', ': '))
-    plot_impacts_nobkg_cmd = (
-        f'plotImpacts.py'
-        f' -i {impact_file_nobkg} --label-size 0.047'
-        f' -o impacts_nobkg'
+    orig_params = impacts_orig["params"]
+
+    def modified_impact_plots(params, suff):
+        new_impacts = deepcopy(impacts_orig)
+        new_impacts["params"] = params
+        new_impact_file = f'impacts_{suff}.json'
+        with open(new_impact_file,'w') as ofile:
+            json.dump(new_impacts, ofile, sort_keys=True, indent=2, separators=(',', ': '))
+        new_impacts_cmd = (
+            f'plotImpacts.py'
+            f' -i {new_impact_file} --label-size 0.047'
+            f' -o impacts_{suff}'
         )
-    bsvj.run_command(plot_impacts_nobkg_cmd)
+        bsvj.run_command(new_impacts_cmd)
+
+    # Running with no background fits (for function fit method)
+    modified_impact_plots([p for p in orig_params if "bkg" not in p["name"].lower()], "_nobkg")
+    # Excluding the tf_data transfer factor fit (as this is much larger than anything else)
+    modified_impact_plots([p for p in orig_params if "tf_data" not in p["name"].lower()], "_excludeTFData")
 
 
 @scripter
