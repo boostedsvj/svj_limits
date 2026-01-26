@@ -694,7 +694,7 @@ def likelihood_scan():
             r_scan_max *= scale_factor
             bsvj.logger.info(f"Maximum DeltaNLL too small ({max_nll}), extending scan range to ({r_scan_max}, scaling by {scale_factor})")
         elif max_nll > 2.5 and r_scan_max > 0.01:
-            scale_factor = np.max([0.5, (max_nll/2.5)**0.5])
+            scale_factor = np.max([0.5, (2.5/max_nll)**0.5])
             r_scan_max *= scale_factor
             bsvj.logger.info(f"Maximum DeltaNLL too large ({max_nll}), shrinking scan range to ({r_scan_max}, scaling by {scale_factor})")
         else:
