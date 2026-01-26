@@ -657,8 +657,8 @@ def impacts():
         )
         bsvj.run_command(new_impacts_cmd)
 
-    # Running with no background fits (for function fit method)
-    modified_impact_plots([p for p in orig_params if "bkg" not in p["name"].lower()], "_nobkg")
+    # Running with no background fits (for function fit method, for rhalphabet, we remove all transfer factor related values
+    modified_impact_plots([p for p in orig_params if "bkg" not in p["name"].lower() and "tf_" not in p["name"].lower()], "_nobkg")
     # Excluding the tf_data transfer factor fit (as this is much larger than anything else)
     modified_impact_plots([p for p in orig_params if "tf_data" not in p["name"].lower()], "_excludeTFData")
 
