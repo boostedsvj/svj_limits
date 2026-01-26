@@ -228,7 +228,7 @@ steps['8'] = StepRunner('bias fits', [
 steps['9'] = StepRunner('bias plots', [
     Command("python3", "plot_bias_or_self_study.py", "--base-dir {bias_results_basedir} --sel {sel} --test {bias_test_type} -s {btoy_seed} --rinj {rinj} --explim {explim} --signals {signals}", cast='single'),
 ])
-steps['10'] = StepRunner('diagnostic_impacts', [
+steps['10'] = StepRunner('impacts', [
     # Impact
     # todo: fix expected signal?
     Command("python3 cli_boosted.py", "impacts", "{dc_dir}/{dc_name}  --nfits 16 --asimov --normRange 0.1 2.0 --rMin -10 --rMax 10 --robustFit 1 --expectSignal=0.2", cast='loop') # Explicit signal injection
