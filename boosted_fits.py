@@ -1830,8 +1830,9 @@ def compute_fisher_toys(gof1, gof2, n1, n2, n_bins):
     def collate(base_dict, alt_dict):
         base_arr, alt_arr = [], []
         for key in base_dict.keys():
-            base_arr.append(base_dict[key])
-            alt_arr.append(alt_dict[key])
+            if key in base_dict and key in alt_dict:
+                base_arr.append(base_dict[key])
+                alt_arr.append(alt_dict[key])
         return np.array(base_arr), np.array(alt_arr)
 
     vfval = np.vectorize(fisher_metric)
