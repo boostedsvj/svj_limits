@@ -377,7 +377,8 @@ def collect_gof(gof_file):
         for j in range(tree.GetEntries()):
             tree.GetEntry(j)
             # convert to nll
-            out[j] = -2.0 * np.log(tree.limit)
+            if tree.limit > 0:
+                out[j] = -2.0 * np.log(tree.limit)
     except:
         bsvj.logger.warning(f"Skipping {gof_file}")
         pass
