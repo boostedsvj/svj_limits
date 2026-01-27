@@ -824,7 +824,7 @@ def cls():
 
         with quick_ax(outfile=outfile) as ax:
 
-            mu = cls.obs.df['mu']
+            mu = cls.obs.mu
             mu_best = cls.obs.bestfit.df['mu']
 
             ax.plot([], [], ' ', label=name_from_combine_rootfile(result['observed'], True))
@@ -1312,7 +1312,11 @@ def ftest_toys():
             n1, n2 = results_dict["n1"], results_dict["n2"]
             toys1, toys2 = results_dict["gof1"]["toys"], results_dict["gof2"]["toys"]
             data1, data2 = results_dict["gof1"]["data"][0], results_dict["gof2"]["data"][0]
-            ftest_toys[(n1,n2)] = [bsvj.fisher_metric(toys1[x], toys2[x], n1, n2, nbins) for x in toys1.keys()]
+            ftest_toys[(n1,n2)] = [
+                bsvj.fisher_metric(toys1[x], toys2[x], n1, n2, nbins)
+                for x in toys1.keys()
+                if x in toys2.keys()
+            ]
             ftest_data[(n1,n2)] = bsvj.fisher_metric(data1, data2, n1, n2, nbins)
             ftest_pval[(n1,n2)] = bsvj.compute_fisher_toys(results_dict["gof1"], results_dict["gof2"], n1, n2, nbins)
 
