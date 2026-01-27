@@ -664,22 +664,16 @@ def get_cls(obs, asimov):
     from scipy.stats import norm # type:ignore
     quantiles = np.array([0.025, 0.16, 0.50, 0.84, 0.975])
 
-    # Keep only scan points where both obs and asimov have a mu
-    keep_obs = np.isin(obs.df['mu'], asimov.df['mu'])
-    keep_asimov = np.isin(asimov.df['mu'], obs.df['mu'])
-    obs = obs[keep_obs]
-    asimov = asimov[keep_asimov]
-
-    # Filter out duplicates
-    obs = obs[np.unique(obs.df['mu'], return_index=True)[1]]
-    asimov = asimov[np.unique(asimov.df['mu'], return_index=True)[1]]
-
-    np.testing.assert_array_equal(obs.df['mu'], asimov.df['mu'])
+    mu_int = np.linspace(
+        np.min([obs.df['mu'], asimov.df['mu']]),
+        np.max([obs.df['mu'], asimov.df['mu']]),
+        len(obs.df['mu'])*2
+    ) # Constructing the interpolation space for mu
 
     # 1007.1727 Section 2.5: Alternative test statistic \tilde{q}_{\mu} for upper limits, Eq. (16)
-    dnll_obs = obs.df['dnll']
+    dnll_obs = np.interp(mu_int, obs.df["mu"], obs.df['dnll'])
     q_obs = []
-    for i, mu in enumerate(obs.df['mu']):
+    for i, mu in enumerate(mu_int):
         if mu < obs.bestfit.df['mu']:
             dnll_obs_min = np.min(dnll_obs[:i+1])
             dnll_obs_constrained = dnll_obs[i] - dnll_obs_min
@@ -687,9 +681,9 @@ def get_cls(obs, asimov):
             dnll_obs_constrained = dnll_obs[i]
         q_obs.append(2.*max(dnll_obs_constrained, 0.))
     q_obs = np.array(q_obs)
-    assert q_obs.shape == (obs.n,)
+    # assert q_obs.shape == (obs.n,)
 
-    q_A = 2. * asimov.df['dnll']
+    q_A = 2. * np.interp(mu_int, asimov.df["mu"], asimov.df['dnll'])
     q_A[q_A < 0.] = 0.  # Set negative values to 0
 
     assert np.all(  ((q_obs >= 0.) & (q_obs <= q_A)) | (q_obs > q_A)  )
@@ -729,11 +723,11 @@ def get_cls(obs, asimov):
 	# and N = ppf(q), so Phi(ppf(q)) = q
     s_exp = { q : (1.-norm.cdf(np.sqrt(q_A) - norm.ppf(q))) / q for q in quantiles}
 
-    return bsvj.AttrDict(s=s, b=b, sb=sb, q_obs=q_obs, q_A=q_A, obs=obs, asimov=asimov, s_exp=s_exp)
+    return bsvj.AttrDict(s=s, b=b, sb=sb, q_obs=q_obs, q_A=q_A, mu=mu_int, obs=obs, asimov=asimov, s_exp=s_exp)
 
 
 def interpolate_95cl_limit(cls):
-    mu = cls.obs.df['mu']
+    mu = cls.mu
     def interpolate(cl, thing):
         select = ((cl < .99) & (cl > .001) & (mu>0))
         if select.sum() == 0:
