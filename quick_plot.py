@@ -665,8 +665,8 @@ def get_cls(obs, asimov):
     quantiles = np.array([0.025, 0.16, 0.50, 0.84, 0.975])
 
     mu_int = np.linspace(
-        np.min([obs.df['mu'], asimov.df['mu']]),
-        np.max([obs.df['mu'], asimov.df['mu']]),
+        np.min([np.min(obs.df['mu']), np.min(asimov.df['mu'])]),
+        np.max([np.max(obs.df['mu']), np.max(asimov.df['mu'])]),
         len(obs.df['mu'])*2
     ) # Constructing the interpolation space for mu
 
