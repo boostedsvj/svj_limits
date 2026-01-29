@@ -823,8 +823,7 @@ def cls():
             )
 
         with quick_ax(outfile=outfile) as ax:
-
-            mu = cls.obs.mu
+            mu = cls.mu
             mu_best = cls.obs.bestfit.df['mu']
 
             ax.plot([], [], ' ', label=name_from_combine_rootfile(result['observed'], True))
