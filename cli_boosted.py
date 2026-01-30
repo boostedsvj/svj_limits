@@ -695,12 +695,12 @@ def likelihood_scan():
         if max_nll < 6.0 and r_scan_max < 100000:
             scale_factor = np.min([10000.0, (10/max_nll)**0.5])
             r_scan_max *= scale_factor
-            max_iter = iter_count + 1
+            iter_count = iter_count + 1
             bsvj.logger.info(f"Maximum DeltaNLL too small ({max_nll}), extending scan range to ({r_scan_max}, scaling by {scale_factor})")
         elif max_nll > 20 and r_scan_max > 0.0001:
             scale_factor = np.max([0.0001, (10/max_nll)**0.5])
             r_scan_max *= scale_factor
-            max_iter = iter_count + 1
+            iter_count = iter_count + 1
             bsvj.logger.info(f"Maximum DeltaNLL too large ({max_nll}), shrinking scan range to ({r_scan_max}, scaling by {scale_factor})")
         else:
             scan_success = True
