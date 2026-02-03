@@ -1327,7 +1327,7 @@ def ftest_toys():
         p_val = ftest_pval[(n1,n2)]
         if p_val > 0.05 and winner is None:
             winner = n1
-        outfile = f"{outpre}_fstat-{n1}vs{n2}.png"
+        outfile = f"{outpre}_fstat-{n1}vs{n2}.pdf"
         with quick_ax(outfile=outfile) as ax:
             h_val, bins = np.histogram(f_toys, bins=40) # Getting the bin values required to normalized the F-distribution plot
             ax.hist(f_toys, bins=40, histtype='step', label="Toys") # Tooys results
@@ -1350,7 +1350,7 @@ def ftest_toys():
         n2 = results_dict["n2"]
         toys1, data1 = list(results_dict["gof1"]["toys"].values()), results_dict["gof1"]["data"][0]
         toys2, data2 = list(results_dict["gof2"]["toys"].values()), results_dict["gof2"]["data"][0]
-        outfile = f"{outpre}_gof-npar{n1}.png"
+        outfile = f"{outpre}_gof-npar{n1}.pdf"
         with quick_ax(outfile=outfile) as ax:
             h_val, bins = np.histogram(toys1, bins=40) # Getting the bin values required to normalized the F-distribution plot
             ax.hist(toys1, bins=40, histtype='step', label=f"Toys (n = {n1})") # Toys results
@@ -1384,7 +1384,7 @@ def ftest_scan():
     }
     # Scanning verse mp
     for mDark in set(sig[1] for sig in result.keys()):
-        with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed_mDark={mDark}.png") as ax:
+        with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed_mDark={mDark}.pdf") as ax:
             for rinv in sorted(set(sig[2] for sig in result.keys())):
                 plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]==mDark and sig[2] == rinv])
                 if(len(plot_points) == 0): continue
