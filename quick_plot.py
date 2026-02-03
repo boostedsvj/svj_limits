@@ -62,7 +62,7 @@ def debug(flag=True):
 
 
 @contextmanager
-def quick_ax(figsize=(12,12), outfile='test.png'):
+def quick_ax(figsize=(12,12), outfile='test.pdf'):
     try:
         fig = plt.figure(figsize=figsize)
         ax = fig.gca()
@@ -280,7 +280,7 @@ def muscan():
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
     correctminimum = bsvj.pull_arg('--correctminimum', action='store_true').correctminimum
     include_dots = bsvj.pull_arg('--include-dots', action='store_true').include_dots
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.pdf').outfile
     clean = bsvj.pull_arg('--clean', action='store_true').clean
 
     with quick_ax(outfile=outfile) as ax:
@@ -354,7 +354,7 @@ def plot_trackedparam(scans, param, outfile, clean, error=False):
 def trackedparam():
     param = bsvj.pull_arg('param', type=str).param
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.pdf').outfile
     clean = bsvj.pull_arg('--clean', action='store_true').clean
     error = bsvj.pull_arg('--error', action='store_true').error
 
@@ -364,7 +364,7 @@ def trackedparam():
 def trackedparams():
     # automatically plot any param whose error is also stored
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='{}.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='{}.pdf').outfile
     clean = bsvj.pull_arg('--clean', action='store_true').clean
 
     scans = get_scans(rootfiles)
@@ -379,7 +379,7 @@ def debugparams():
     # plot params vs. likelihood for specified r value
     # expects input from MultiDimFit w/ --debugRandIteration option
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='debugparams.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='debugparams.pdf').outfile
     r_debug = bsvj.read_arg('-r', '--mu', type=float).mu
     eps_debug = bsvj.read_arg('-e', '--eps', type=float, default=0.0001).eps
     sigma_debug = bsvj.read_arg('-s', '--sigma', type=float, default=4).sigma
@@ -416,7 +416,7 @@ def debugparams():
         canvas.yaxis.set_ticks_position('left')
 
     for name,scan in scans.items():
-        oname = outfile.replace(".png","_"+name.split()[0]+".png")
+        oname = outfile.replace(".pdf","_"+name.split()[0]+".pdf")
         # pick desired r value
         scan = scan[abs(scan.df['mu']-r_debug)<eps_debug]
         # remove extreme outliers
@@ -444,7 +444,7 @@ def mtdist():
 
     rootfile = bsvj.pull_arg('rootfile', type=str).rootfile
     only_sig = bsvj.pull_arg('--onlysig', action='store_true').onlysig
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.pdf').outfile
     bkg_names = bsvj.pull_arg('--bkg', type=str, default=['roomultipdf','bkg'], nargs='*').bkg
     sig_name = bsvj.pull_arg('--sig', type=str, default='sig').sig
     ch_name = bsvj.pull_arg('--channel', type=str, default='bsvj').channel
@@ -803,7 +803,7 @@ def explim():
 @scripter
 def cls():
     limits = LimitObj()
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.pdf').outfile
 
     for key,result in limits.results.items():
         cls = result['cls']
@@ -862,7 +862,7 @@ def cls():
 @scripter
 def brazil():
     limits = LimitObj()
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.pdf').outfile
 
     points = []
     for key,result in limits.results.items():
@@ -963,7 +963,7 @@ def bkgfit():
     pdftype = bsvj.pull_arg('pdftype', type=str, choices=bsvj.known_pdfs()).pdftype
     linscale = bsvj.pull_arg('--lin', action='store_true').lin
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.pdf').outfile
     gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=bsvj.choices('gof')).gof_type
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
 
@@ -1124,7 +1124,7 @@ def bkgtf():
     """
     jsons = bsvj.get_jsons()
     regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.pdf').outfile
     fit_mc_file = bsvj.read_arg('--fit-mc', type=str, default=None).fit_mc
     fit_data_file = bsvj.read_arg('--fit-data', type=str, default=None).fit_data
     basis = bsvj.pull_arg('--basis', default='Bernstein').basis
@@ -1415,7 +1415,7 @@ def bkgsrcr():
     """
     jsons = bsvj.get_jsons()
     regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.pdf').outfile
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
 
     input = bsvj.InputData(regions, "rhalpha", **jsons, asimov=asimov)
