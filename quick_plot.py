@@ -1264,8 +1264,8 @@ def bkgtf():
             suff_data = 'data_res'
 
             # Postfit MC-only TF w/ uncertainties
-            tf_post = {} # Creating the new ite for plotting
-            tf_post['bkg_eff'] = fit_mc_vals
+            tf_post = {} # Creating the new item for plotting
+            tf_post['bkg_eff'] = tf_mc['bkg_eff']
             tf_post['th1'] = tf_mc['th1'].Clone() # Key distinction compared with above
             tf_post['arr'] = bsvj.th1_to_hist(tf_post['th1'])
             if verbose: print('tf_post_th1', tf_post['arr']['vals'].tolist())
