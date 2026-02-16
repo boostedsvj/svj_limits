@@ -1066,18 +1066,28 @@ def get_objs(file_and_objs):
     else: return [f.Get(oname) for oname in fsplit[1:]]
 
 # common operations to evaluate tf fit
-def get_tf_fit(fitresult, tf_name, tf_th1, mtscaled, bkg_eff=1.0, basis='Bernstein'):
+def get_tf_fn_npar(fitresult, tf_name, basis='Bernstein'):
     import rhalphalib as rl
     npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])-1
     tf_fn = rl.BasisPoly(tf_name, (npar,), ["mt"], basis=basis)
     tf_fn.update_from_roofit(fitresult)
-    tf_fn_vals, tf_fn_band = tf_fn(mtscaled, nominal=True, errorband=True)
+    return tf_fn, npar
+
+def get_comb_fn_npar(fitresult, tf_name, *fns):
+    import rhalphalib as rl
+    comb_fn = rl.ProductBasisPoly(tf_name, fns)
+    comb_npar = comb_fn.parameters.size
+    comb_fn.update_from_roofit(fitresult, independent=True)
+    return comb_fn, comb_npar
+
+def get_tf_fit(tf_fn, npar, tf_th1, mtscaled, bkg_eff=1.0, independent=False):
+    tf_fn_vals, tf_fn_band = tf_fn(mtscaled, nominal=True, errorband=True, independent=independent)
     # multiply bkg_eff into final values
     tf_fn_vals = bkg_eff * tf_fn_vals
     tf_fn_band = (bkg_eff * tf_fn_band[0], bkg_eff * tf_fn_band[1])
     chi2 = bsvj.get_tf_chi2(tf_th1, tf_fn_vals)
     ndf = len(tf_fn_vals) - npar - 1
-    return {'tf_fn': tf_fn, 'tf_fn_vals': tf_fn_vals, 'tf_fn_band': tf_fn_band, 'chi2': chi2, 'ndf': ndf, 'npar': npar, 'fitresult': fitresult}
+    return {'tf_fn': tf_fn, 'tf_fn_vals': tf_fn_vals, 'tf_fn_band': tf_fn_band, 'chi2': chi2, 'ndf': ndf, 'npar': npar}
 
 # replace in string starting from last match
 def rreplace(s, old, new, count=1):
@@ -1152,10 +1162,14 @@ def bkgtf():
     if verbose: print('tf_mc_th1', tf_mc['arr']['vals'].tolist())
 
     # polynomial fit from workspace
+    fn_mc = None
+    npar_mc = 0
     fit_mc = None
     if fit_mc_file is not None:
         fitresult_mc = get_objs(fit_mc_file)
-        fit_mc = get_tf_fit(fitresult_mc, 'tf_mc', tf_mc['th1'], mt['scaled'], tf_mc['bkg_eff'], basis=basis_mc)
+        fn_mc, npar_mc = get_tf_fn_npar(fitresult_mc, 'tf_mc', basis=basis_mc)
+        fit_mc = get_tf_fit(fn_mc, npar_mc, tf_mc['th1'], mt['scaled'], tf_mc['bkg_eff'])
+        fit_mc["fitresult"] = fitresult_mc
         if verbose: print('fit_mc', fit_mc['tf_fn_vals'].tolist())
         if verbose: print('chi2_mc', fit_mc['chi2'], fit_mc['ndf'])
 
@@ -1215,6 +1229,7 @@ def bkgtf():
         if verbose: print('data_bkg_eff', tf_data['bkg_eff'])
         tf_data['th1'] = bsvj.get_tf_th1(postfit_regions)
         label_data = r"$B_{\mathrm{fit}}" if closure else "$\mathrm{Data} - S_{\mathrm{fit}}$ "+"($\mu_{{\mathrm{{fit}}}}={0:.2f}$)".format(mu)
+        fn_data, npar_data = get_tf_fn_npar(fitresult_data, 'tf_data', basis=basis)
 
         # comparison of FD and MDF
         if verbose:
@@ -1226,30 +1241,31 @@ def bkgtf():
         if verbose: print('fit_mc_nuis',fit_mc_nuis.tolist())
         if fit_mc and len(fit_mc_nuis)>0:
             # reconstruct MC TF fit from decorrelated parameters
+            import rhalphalib as rl
             paramfile = fit_mc_file.split(':')[0].replace("/bkgfit_","/mctf_").replace(".root",".npy")
             fit_mc_nominal = np.load(paramfile)
             if verbose: print('fit_mc_nominal',fit_mc_nominal.tolist())
             decofile = paramfile.replace("/mctf_","/deco_")
-            decoVector = np.load(decofile)
-            if verbose: print('decoVector',decoVector.tolist())
-            fit_mc_parvalues = np.full(fit_mc_nominal.shape, None)
-            for i in range(fit_mc_nominal.size):
-                coef = decoVector[:, i]
-                order = np.argsort(np.abs(coef))
-                fit_mc_parvalues[i] = np.sum(coef[order] * fit_mc_nuis[order]) + fit_mc_nominal[i]
-            if verbose: print('fit_mc_parvalues',fit_mc_parvalues.tolist())
-            fit_mc['tf_fn'].set_parvalues(fit_mc_parvalues)
-            fit_mc_vals = tf_mc['bkg_eff'] * fit_mc['tf_fn'](mt['scaled'], nominal=True)
+            decoTransform = np.load(decofile)
+            if verbose: print('decoTransform',decoTransform.tolist())
+            decoVector = rl.DecorrelatedNuisanceVector('tf_mc_deco', fit_mc_nominal, decoTransform)
+            fn_mc.parameters = decoVector.correlated_params.reshape(fn_mc.parameters.shape)
+            # for some reason, intermediate is always set to False in BasisPoly.parameters setter
+            # but this breaks formula evaluation for dependent parameters
+            for par in fn_mc.parameters: par.intermediate = True
+            if verbose: print('correlated_str',decoVector.correlated_str)
+            fit_mc_vals = tf_mc['bkg_eff'] * fn_mc(mt['scaled'], nominal=True)
             if verbose: print('fit_mc_vals', fit_mc_vals.tolist())
 
             # plot combined TF without dividing out MC
-            # todo: propagate all uncertainties (currently just data TF uncertainties)
             tf_comb = {}
-            tf_comb['bkg_eff'] = fit_mc_vals # bkg_eff multiplies tf_fn_vals in get_tf_fit(), so include entire MC TF in this case
+            tf_comb['bkg_eff'] = tf_mc['bkg_eff']
             tf_comb['th1'] = tf_data['th1'].Clone()
             tf_comb['arr'] = bsvj.th1_to_hist(tf_comb['th1'])
             if verbose: print('tf_comb_th1', tf_comb['arr']['vals'].tolist())
-            fit_comb = get_tf_fit(fitresult_data, 'tf_data', tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'], basis=basis)
+            fn_comb, npar_comb = get_comb_fn_npar(fitresult_data, 'tf_comb', fn_mc, fn_data)
+            fit_comb = get_tf_fit(fn_comb, npar_comb, tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'], independent=True)
+            fit_comb['fitresult'] = fitresult_data
             if verbose: print('fit_comb', fit_comb['tf_fn_vals'].tolist())
             if verbose: print('chi2_comb', fit_comb['chi2'], fit_comb['ndf'])
             plot_tf(outfile, mt, tf_comb, fit_comb, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{comb}}}}$ ({regions[0]} / {regions[1]})', suff='comb', label=label_data, title=title)
@@ -1269,18 +1285,19 @@ def bkgtf():
             tf_post['th1'] = tf_mc['th1'].Clone() # Key distinction compared with above
             tf_post['arr'] = bsvj.th1_to_hist(tf_post['th1'])
             if verbose: print('tf_post_th1', tf_post['arr']['vals'].tolist())
-            fit_post = get_tf_fit(fitresult_mc, 'tf_mc', tf_post['th1'], mt['scaled'], tf_post['bkg_eff'], basis=basis_mc)
+            fit_post = get_tf_fit(fn_mc, npar_mc, tf_post['th1'], mt['scaled'], tf_post['bkg_eff'])
+            fit_post['fitresult'] = fitresult_mc
             if verbose: print('fit_post', fit_post['tf_fn_vals'].tolist())
             if verbose: print('chi2_post', fit_post['chi2'], fit_post['ndf'])
             plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}^{{\\mathrm{{postfit}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title, canvas=mc_canvas)
-            # plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}^{{\\mathrm{{postfit}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title)
         else:
             if verbose: print('tf_data_th1', bsvj.th1_to_hist(tf_data['th1'])['vals'].tolist())
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
             suff_data = 'data'
 
         tf_data['arr'] = bsvj.th1_to_hist(tf_data['th1'])
-        fit_data = get_tf_fit(fitresult_data, 'tf_data', tf_data['th1'], mt['scaled'], tf_data['bkg_eff'], basis=basis)
+        fit_data = get_tf_fit(fn_data, npar_data, tf_data['th1'], mt['scaled'], tf_data['bkg_eff'])
+        fit_data['fitresult'] = fitresult_data
         if verbose: print('fit_data', fit_data['tf_fn_vals'].tolist())
         if verbose: print('chi2_data', fit_data['chi2'], fit_data['ndf'])
 
