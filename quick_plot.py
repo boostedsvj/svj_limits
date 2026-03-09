@@ -1077,11 +1077,11 @@ def get_comb_fn_npar(fitresult, tf_name, *fns):
     import rhalphalib as rl
     comb_fn = rl.ProductBasisPoly(tf_name, fns)
     comb_npar = comb_fn.parameters.size
-    comb_fn.update_from_roofit(fitresult, independent=True)
+    comb_fn.update_from_roofit(fitresult)
     return comb_fn, comb_npar
 
-def get_tf_fit(tf_fn, npar, tf_th1, mtscaled, bkg_eff=1.0, independent=False):
-    tf_fn_vals, tf_fn_band = tf_fn(mtscaled, nominal=True, errorband=True, independent=independent)
+def get_tf_fit(tf_fn, npar, tf_th1, mtscaled, bkg_eff=1.0);
+    tf_fn_vals, tf_fn_band = tf_fn(mtscaled, nominal=True, errorband=True)
     # multiply bkg_eff into final values
     tf_fn_vals = bkg_eff * tf_fn_vals
     tf_fn_band = (bkg_eff * tf_fn_band[0], bkg_eff * tf_fn_band[1])
@@ -1264,7 +1264,7 @@ def bkgtf():
             tf_comb['arr'] = bsvj.th1_to_hist(tf_comb['th1'])
             if verbose: print('tf_comb_th1', tf_comb['arr']['vals'].tolist())
             fn_comb, npar_comb = get_comb_fn_npar(fitresult_data, 'tf_comb', fn_mc, fn_data)
-            fit_comb = get_tf_fit(fn_comb, npar_comb, tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'], independent=True)
+            fit_comb = get_tf_fit(fn_comb, npar_comb, tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'])
             fit_comb['fitresult'] = fitresult_data
             if verbose: print('fit_comb', fit_comb['tf_fn_vals'].tolist())
             if verbose: print('chi2_comb', fit_comb['chi2'], fit_comb['ndf'])
