@@ -377,7 +377,8 @@ def collect_gof(gof_file):
         for j in range(tree.GetEntries()):
             tree.GetEntry(j)
             # convert to nll
-            out[j] = -2.0 * np.log(tree.limit)
+            if tree.limit > 0:
+                out[j] = -2.0 * np.log(tree.limit)
     except:
         bsvj.logger.warning(f"Skipping {gof_file}")
         pass
@@ -408,13 +409,32 @@ def bestfit():
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('bestfits_%Y%m%d')).outdir
     outdir = osp.abspath(outdir)
 
-    dc = bsvj.Datacard.from_txt(txtfile)
-    cmd = bsvj.CombineCommand(dc)
-    cmd.configure_from_command_line()
-    cmd = bsvj.bestfit(cmd)
-    cmd.raw = ' '.join(sys.argv[1:])
-    cmd.name += 'Bestfit_' + osp.basename(txtfile).replace('.txt','')
-    bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
+    range_auto = bsvj.pull_arg('--range_auto', type=float, nargs=3, default=None).range_auto
+    rmin, rmax, rcount = range_auto if range_auto else (1, 2, 1) # Run at least once if item is not defined
+
+    def check_boundary(r, outfile): # Check that the fit results is sufficient enough far away form the boundary
+        file  = ROOT.TFile.Open(outfile)
+        tree = file.Get("limit")
+        tree.GetEntry(0) # Getting the first entry
+        return np.isclose(tree.r, r ) or np.isclose(tree.r, -r)
+
+    for r in np.linspace(rmin, rmax, int(rcount)):
+        dc = bsvj.Datacard.from_txt(txtfile)
+        cmd = bsvj.CombineCommand(dc)
+        cmd.configure_from_command_line()
+        cmd = bsvj.bestfit(cmd)
+        if range_auto is not None:
+            cmd.add_range("r", -r, r)
+        cmd.raw = ' '.join(sys.argv[1:])
+        cmd.name += 'Bestfit_' + osp.basename(txtfile).replace('.txt','')
+        status = bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
+        # Detecting if any there is any problem with the fit
+        if any(x for x in status if "WARNING: MultiDimFit failed" in x): # Directly look if there is a report in the combine command output
+            bsvj.logger.info("Best fit failed, expanding r range")
+        elif check_boundary(r, cmd.outfile):
+            bsvj.logger.info("Fit is too close to assigned boundary, refitting with extended boundary")
+        else: # Best fit found, simply break
+            break
 
 
 @scripter
@@ -558,7 +578,7 @@ def impacts():
     if '--toysFrequentist' in base_cmd.args:
         base_cmd.args.remove('--toysFrequentist')
 
-    workdir = strftime(f'impacts_cli_%Y%m%d_{osp.basename(dc_file).replace(".txt","")}')
+    workdir = os.path.join(strftime(f'impacts_cli_%Y%m%d'), osp.basename(dc_file).replace(".txt",""))
     bsvj.logger.info(f'Executing from {workdir}')
     if not bsvj.DRYMODE:
         os.makedirs(workdir, exist_ok=True)
@@ -575,16 +595,19 @@ def impacts():
     if osp.isfile(cmd.outfile):
         bsvj.logger.warning(
             f'Initial fit output already exists, not running initial fit command: {cmd}'
-            )
+        )
     else:
         bsvj.run_combine_command(cmd, logfile=cmd.logfile)
-    initial_fit_outfile = cmd.outfile
+    initial_fit_outfile = cmd.outfile.replace(f".{cmd.seed}.root", ".root")
 
     systs = []
     for syst in dc.syst_names_independent:
         if 'mcstat' in syst: continue
         if syst in base_cmd.freeze_parameters: continue
         systs.append(syst)
+    for syst in [x[0] for x in dc.extargs]:
+        if syst.startswith('tf_'):
+            systs.append(syst)
     bsvj.logger.info(f'Doing systematics: {" ".join(systs)}')
 
     # calculate all impacts
@@ -620,23 +643,25 @@ def impacts():
     # modify impact json to remove bkg systs
     with open(impact_file,'r') as ifile:
         impacts_orig = json.load(ifile)
-    impacts_nobkg = deepcopy(impacts_orig)
-    impacts_nobkg["params"] = []
-    for param in impacts_orig["params"]:
-        if 'bkg' in param["name"].lower():
-            continue
-        else:
-            impacts_nobkg["params"].append(param)
-    # dump in the format used by combineTool/Impacts
-    impact_file_nobkg = 'impacts_nobkg.json'
-    with open(impact_file_nobkg,'w') as ofile:
-        json.dump(impacts_nobkg, ofile, sort_keys=True, indent=2, separators=(',', ': '))
-    plot_impacts_nobkg_cmd = (
-        f'plotImpacts.py'
-        f' -i {impact_file_nobkg} --label-size 0.047'
-        f' -o impacts_nobkg'
+    orig_params = impacts_orig["params"]
+
+    def modified_impact_plots(params, suff):
+        new_impacts = deepcopy(impacts_orig)
+        new_impacts["params"] = params
+        new_impact_file = f'impacts_{suff}.json'
+        with open(new_impact_file,'w') as ofile:
+            json.dump(new_impacts, ofile, sort_keys=True, indent=2, separators=(',', ': '))
+        new_impacts_cmd = (
+            f'plotImpacts.py'
+            f' -i {new_impact_file} --label-size 0.047'
+            f' -o impacts_{suff}'
         )
-    bsvj.run_command(plot_impacts_nobkg_cmd)
+        bsvj.run_command(new_impacts_cmd)
+
+    # Running with no background fits (for function fit method, for rhalphabet, we remove all transfer factor related values
+    modified_impact_plots([p for p in orig_params if "bkg" not in p["name"].lower() and "tf_" not in p["name"].lower()], "_nobkg")
+    # Excluding the tf_data transfer factor fit (as this is much larger than anything else)
+    modified_impact_plots([p for p in orig_params if "tf_data" not in p["name"].lower()], "_excludeTFData")
 
 
 @scripter
@@ -648,10 +673,37 @@ def likelihood_scan():
     txtfile = bsvj.pull_arg('datacard', type=str).datacard
     bestfit, scan = make_bestfit_and_scan_commands(txtfile)
 
-    for cmd in [bestfit, scan]:
-        bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
-        if outdir is None:
-            bsvj.logger.error('No outdir specified')
+    bsvj.run_combine_command(bestfit, logfile=bestfit.logfile, outdir=outdir)
+
+    scan_success = False
+    r_scan_max = 2.0
+    outfile_orig = scan.outfile
+    iter_count = 0
+    max_iter = 10
+    while not scan_success and iter_count < max_iter:
+        scan.add_range("r", 0, r_scan_max)
+        scan.outfile = outfile_orig # Reset the output file (as this will be changed by the run execution)
+        bsvj.run_combine_command(scan, logfile=scan.logfile, outdir=outdir)
+        tfile = ROOT.TFile.Open(scan.outfile)
+        tree = tfile.Get("limit")
+        max_nll = 0.001
+        for i in range(tree.GetEntries()):
+            tree.GetEntry(i)
+            max_nll = np.max([tree.deltaNLL, max_nll])
+        # Assuming the likelihood close to what we have is roughly paraboloic to estimate
+        # how far to extend the range
+        if max_nll < 6.0 and r_scan_max < 100000:
+            scale_factor = np.min([10000.0, (10/max_nll)**0.5])
+            r_scan_max *= scale_factor
+            iter_count = iter_count + 1
+            bsvj.logger.info(f"Maximum DeltaNLL too small ({max_nll}), extending scan range to ({r_scan_max}, scaling by {scale_factor})")
+        elif max_nll > 20 and r_scan_max > 0.0001:
+            scale_factor = np.max([0.0001, (10/max_nll)**0.5])
+            r_scan_max *= scale_factor
+            iter_count = iter_count + 1
+            bsvj.logger.info(f"Maximum DeltaNLL too large ({max_nll}), shrinking scan range to ({r_scan_max}, scaling by {scale_factor})")
+        else:
+            scan_success = True
 
 
 @scripter

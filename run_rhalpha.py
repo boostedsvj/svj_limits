@@ -14,10 +14,10 @@ hists_dates = {
     "cutbased_ddt": ("20250710", "", ""),
     "cutbased_ddt=0.11": ("20250715", "", ""),
     "cutbased_ddt=0.12": ("20250912", "", ""),
-    "rtcutbased_ddt=0.1": ("20250915", "", ""),
+    "rtcutbased_ddt=0.1": ("20251117", "", ""),
     "bdt=0.55": ("20250912", "", ""),
     "bdt=0.75": ("20250912", "", ""),
-    "rtbdt=0.75": ("20250912", "", ""),
+    "rtbdt=0.6": ("20251117", "", ""),
 }
 def safe_len(val): return -1 if val is None else len(val)
 hists_dates = {key : {"": val[0], "anti": val[0] if safe_len(val[1])==0 else val[1], "antiloose": val[0] if safe_len(val[2])==0 else val[2]} for key,val in hists_dates.items()}
@@ -174,25 +174,24 @@ steps['1'] = StepRunner('datacard generation', [
 ])
 steps['2'] = StepRunner('diagnostics', [
     # run bestfit
-    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range -1.616 1.616", cast='mp'),
+    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range_auto 1 20 20", cast='mp'),
     # hessian analysis
     Command("python3", "hessian.py", "-w {bf_file}:w -f {bf_file}:fit_mdf -s 0.1"),
     # make plots
     # SR vs. CR distributions
-    Command("python3 quick_plot.py", "bkgsrcr", "{region_args2} --sig {regions_sig} -o {dc_dir}/srcr_{sel}.png"),
+    Command("python3 quick_plot.py", "bkgsrcr", "{region_args2} --sig {regions_sig} -o {dc_dir}/srcr_{sel}.pdf"),
     # TF fit(s)
-    Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.png --basis {tf_basis} --basis-mc {tf_basis} --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
+    Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.pdf --basis {tf_basis} --basis-mc {tf_basis} --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
     # F-test diagnostic plots for individual signal parameters
     Command("python3 quick_plot.py", "ftest_toys", "--results_dump {dc_dir}/ftest/{signame_dc}_ftest-results.py -o {dc_dir}/ftest/{signame_dc}"),
     # F-test results vs all signal samples for plotting
-    Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/", cast='single')
+    # todo: More fit parameter results vs. signal parameter(s)
+    Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/", cast='single'),
     ] + [
     # postfit
-    Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.png".format(sel, channel))
+    Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.pdf".format(sel, channel))
         for sel, channel in [("{sel}", "bsvj"), ("{antisel}", "bsvjCR1")]
     ]
-    # todo: plot toy-based f-test distribution
-    # todo: plot f-test results vs. signal parameter(s)
     # todo: move all plots into one folder?
 )
 steps['3'] = StepRunner('bias toys', [
@@ -210,16 +209,16 @@ steps['4'] = StepRunner('likelihood scan', [
 ])
 # todo: add "observed" likelihood command (using pseudodata/toy)
 steps['5'] = StepRunner('likelihood plots', [
-    Command("python3 quick_plot.py", "muscan", "{scan_files} -o {scan_dir}/muscan_{signame_dc}.png"),
-    Command("python3 quick_plot.py", "cls", "{scan_files} -o {scan_dir}/cls_{signame_dc}.png"),
-    Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.png"),
+    Command("python3 quick_plot.py", "muscan", "{scan_files} -o {scan_dir}/muscan_{signame_dc}.pdf"),
+    Command("python3 quick_plot.py", "cls", "{scan_files} -o {scan_dir}/cls_{signame_dc}.pdf"),
+    Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.pdf"),
 ])
 steps['6'] = StepRunner('Asimov injection test', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
 ])
 steps['7'] = StepRunner('Asimov injection plots', [
-    Command("python3 quick_plot.py", "mtdist", "{scan_files} --clean --outfile {scan_dir}/bestfit_{signame_dc}.png"),
-    Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
+    Command("python3 quick_plot.py", "mtdist", "{scan_files} --clean --outfile {scan_dir}/bestfit_{signame_dc}.pdf"),
+    Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.pdf", cast='single'),
 ])
 steps['8'] = StepRunner('bias fits', [
     Command("python3 cli_boosted.py", "fittoys", "{dc_dir}/{dc_name_main} {bias_fit_args} {bias_sig_args}", cast='mp'),
@@ -229,13 +228,17 @@ steps['8'] = StepRunner('bias fits', [
 steps['9'] = StepRunner('bias plots', [
     Command("python3", "plot_bias_or_self_study.py", "--base-dir {bias_results_basedir} --sel {sel} --test {bias_test_type} -s {btoy_seed} --rinj {rinj} --explim {explim} --signals {signals}", cast='single'),
 ])
-# todo: nuisance impacts
+steps['10'] = StepRunner('impacts', [
+    # Impact
+    # todo: fix expected signal?
+    Command("python3 cli_boosted.py", "impacts", "{dc_dir}/{dc_name}  --nfits 16 --asimov --normRange 0.1 2.0 --rMin -10 --rMax 10 --robustFit 1 --expectSignal=0.2", cast='loop') # Explicit signal injection
+])
 
 # special groups of steps
 predefs = {
     'gen_datacard': ['0','1','2'],
     'gen_datacard_alt': ['0','1b','2b'],
-    'likelihood': ['0','1','4','5'],
+    'likelihood': ['0','1','4','5','10'],
     'asimov_inj': ['0','1','3a','6','7'],
     'self': ['0','1','3','8','9'],
     'bias': ['0','1','1b','3b','8b','9b'],

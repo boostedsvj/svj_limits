@@ -62,7 +62,7 @@ def debug(flag=True):
 
 
 @contextmanager
-def quick_ax(figsize=(12,12), outfile='test.png'):
+def quick_ax(figsize=(12,12), outfile='test.pdf'):
     try:
         fig = plt.figure(figsize=figsize)
         ax = fig.gca()
@@ -280,7 +280,7 @@ def muscan():
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
     correctminimum = bsvj.pull_arg('--correctminimum', action='store_true').correctminimum
     include_dots = bsvj.pull_arg('--include-dots', action='store_true').include_dots
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.pdf').outfile
     clean = bsvj.pull_arg('--clean', action='store_true').clean
 
     with quick_ax(outfile=outfile) as ax:
@@ -354,7 +354,7 @@ def plot_trackedparam(scans, param, outfile, clean, error=False):
 def trackedparam():
     param = bsvj.pull_arg('param', type=str).param
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.pdf').outfile
     clean = bsvj.pull_arg('--clean', action='store_true').clean
     error = bsvj.pull_arg('--error', action='store_true').error
 
@@ -364,7 +364,7 @@ def trackedparam():
 def trackedparams():
     # automatically plot any param whose error is also stored
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='{}.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='{}.pdf').outfile
     clean = bsvj.pull_arg('--clean', action='store_true').clean
 
     scans = get_scans(rootfiles)
@@ -379,7 +379,7 @@ def debugparams():
     # plot params vs. likelihood for specified r value
     # expects input from MultiDimFit w/ --debugRandIteration option
     rootfiles = bsvj.pull_arg('rootfiles', type=str, nargs='+').rootfiles
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='debugparams.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='debugparams.pdf').outfile
     r_debug = bsvj.read_arg('-r', '--mu', type=float).mu
     eps_debug = bsvj.read_arg('-e', '--eps', type=float, default=0.0001).eps
     sigma_debug = bsvj.read_arg('-s', '--sigma', type=float, default=4).sigma
@@ -416,7 +416,7 @@ def debugparams():
         canvas.yaxis.set_ticks_position('left')
 
     for name,scan in scans.items():
-        oname = outfile.replace(".png","_"+name.split()[0]+".png")
+        oname = outfile.replace(".pdf","_"+name.split()[0]+".pdf")
         # pick desired r value
         scan = scan[abs(scan.df['mu']-r_debug)<eps_debug]
         # remove extreme outliers
@@ -444,7 +444,7 @@ def mtdist():
 
     rootfile = bsvj.pull_arg('rootfile', type=str).rootfile
     only_sig = bsvj.pull_arg('--onlysig', action='store_true').onlysig
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='muscan.pdf').outfile
     bkg_names = bsvj.pull_arg('--bkg', type=str, default=['roomultipdf','bkg'], nargs='*').bkg
     sig_name = bsvj.pull_arg('--sig', type=str, default='sig').sig
     ch_name = bsvj.pull_arg('--channel', type=str, default='bsvj').channel
@@ -664,22 +664,16 @@ def get_cls(obs, asimov):
     from scipy.stats import norm # type:ignore
     quantiles = np.array([0.025, 0.16, 0.50, 0.84, 0.975])
 
-    # Keep only scan points where both obs and asimov have a mu
-    keep_obs = np.isin(obs.df['mu'], asimov.df['mu'])
-    keep_asimov = np.isin(asimov.df['mu'], obs.df['mu'])
-    obs = obs[keep_obs]
-    asimov = asimov[keep_asimov]
-
-    # Filter out duplicates
-    obs = obs[np.unique(obs.df['mu'], return_index=True)[1]]
-    asimov = asimov[np.unique(asimov.df['mu'], return_index=True)[1]]
-
-    np.testing.assert_array_equal(obs.df['mu'], asimov.df['mu'])
+    mu_int = np.linspace(
+        np.min([np.min(obs.df['mu']), np.min(asimov.df['mu'])]),
+        np.max([np.max(obs.df['mu']), np.max(asimov.df['mu'])]),
+        len(obs.df['mu'])*2
+    ) # Constructing the interpolation space for mu
 
     # 1007.1727 Section 2.5: Alternative test statistic \tilde{q}_{\mu} for upper limits, Eq. (16)
-    dnll_obs = obs.df['dnll']
+    dnll_obs = np.interp(mu_int, obs.df["mu"], obs.df['dnll'])
     q_obs = []
-    for i, mu in enumerate(obs.df['mu']):
+    for i, mu in enumerate(mu_int):
         if mu < obs.bestfit.df['mu']:
             dnll_obs_min = np.min(dnll_obs[:i+1])
             dnll_obs_constrained = dnll_obs[i] - dnll_obs_min
@@ -687,9 +681,9 @@ def get_cls(obs, asimov):
             dnll_obs_constrained = dnll_obs[i]
         q_obs.append(2.*max(dnll_obs_constrained, 0.))
     q_obs = np.array(q_obs)
-    assert q_obs.shape == (obs.n,)
+    # assert q_obs.shape == (obs.n,)
 
-    q_A = 2. * asimov.df['dnll']
+    q_A = 2. * np.interp(mu_int, asimov.df["mu"], asimov.df['dnll'])
     q_A[q_A < 0.] = 0.  # Set negative values to 0
 
     assert np.all(  ((q_obs >= 0.) & (q_obs <= q_A)) | (q_obs > q_A)  )
@@ -729,11 +723,11 @@ def get_cls(obs, asimov):
 	# and N = ppf(q), so Phi(ppf(q)) = q
     s_exp = { q : (1.-norm.cdf(np.sqrt(q_A) - norm.ppf(q))) / q for q in quantiles}
 
-    return bsvj.AttrDict(s=s, b=b, sb=sb, q_obs=q_obs, q_A=q_A, obs=obs, asimov=asimov, s_exp=s_exp)
+    return bsvj.AttrDict(s=s, b=b, sb=sb, q_obs=q_obs, q_A=q_A, mu=mu_int, obs=obs, asimov=asimov, s_exp=s_exp)
 
 
 def interpolate_95cl_limit(cls):
-    mu = cls.obs.df['mu']
+    mu = cls.mu
     def interpolate(cl, thing):
         select = ((cl < .99) & (cl > .001) & (mu>0))
         if select.sum() == 0:
@@ -809,7 +803,7 @@ def explim():
 @scripter
 def cls():
     limits = LimitObj()
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.pdf').outfile
 
     for key,result in limits.results.items():
         cls = result['cls']
@@ -829,8 +823,7 @@ def cls():
             )
 
         with quick_ax(outfile=outfile) as ax:
-
-            mu = cls.obs.df['mu']
+            mu = cls.mu
             mu_best = cls.obs.bestfit.df['mu']
 
             ax.plot([], [], ' ', label=name_from_combine_rootfile(result['observed'], True))
@@ -869,7 +862,7 @@ def cls():
 @scripter
 def brazil():
     limits = LimitObj()
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.pdf').outfile
 
     points = []
     for key,result in limits.results.items():
@@ -970,7 +963,7 @@ def bkgfit():
     pdftype = bsvj.pull_arg('pdftype', type=str, choices=bsvj.known_pdfs()).pdftype
     linscale = bsvj.pull_arg('--lin', action='store_true').lin
     scipyonly = bsvj.pull_arg('--scipyonly', action='store_true').scipyonly
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='test.pdf').outfile
     gof_type = bsvj.pull_arg('--gof-type', type=str, default='rss', choices=bsvj.choices('gof')).gof_type
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
 
@@ -1131,7 +1124,7 @@ def bkgtf():
     """
     jsons = bsvj.get_jsons()
     regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.pdf').outfile
     fit_mc_file = bsvj.read_arg('--fit-mc', type=str, default=None).fit_mc
     fit_data_file = bsvj.read_arg('--fit-data', type=str, default=None).fit_data
     basis = bsvj.pull_arg('--basis', default='Bernstein').basis
@@ -1318,7 +1311,11 @@ def ftest_toys():
             n1, n2 = results_dict["n1"], results_dict["n2"]
             toys1, toys2 = results_dict["gof1"]["toys"], results_dict["gof2"]["toys"]
             data1, data2 = results_dict["gof1"]["data"][0], results_dict["gof2"]["data"][0]
-            ftest_toys[(n1,n2)] = [bsvj.fisher_metric(toys1[x], toys2[x], n1, n2, nbins) for x in toys1.keys()]
+            ftest_toys[(n1,n2)] = [
+                bsvj.fisher_metric(toys1[x], toys2[x], n1, n2, nbins)
+                for x in toys1.keys()
+                if x in toys2.keys()
+            ]
             ftest_data[(n1,n2)] = bsvj.fisher_metric(data1, data2, n1, n2, nbins)
             ftest_pval[(n1,n2)] = bsvj.compute_fisher_toys(results_dict["gof1"], results_dict["gof2"], n1, n2, nbins)
 
@@ -1330,7 +1327,7 @@ def ftest_toys():
         p_val = ftest_pval[(n1,n2)]
         if p_val > 0.05 and winner is None:
             winner = n1
-        outfile = f"{outpre}_fstat-{n1}vs{n2}.png"
+        outfile = f"{outpre}_fstat-{n1}vs{n2}.pdf"
         with quick_ax(outfile=outfile) as ax:
             h_val, bins = np.histogram(f_toys, bins=40) # Getting the bin values required to normalized the F-distribution plot
             ax.hist(f_toys, bins=40, histtype='step', label="Toys") # Tooys results
@@ -1353,7 +1350,7 @@ def ftest_toys():
         n2 = results_dict["n2"]
         toys1, data1 = list(results_dict["gof1"]["toys"].values()), results_dict["gof1"]["data"][0]
         toys2, data2 = list(results_dict["gof2"]["toys"].values()), results_dict["gof2"]["data"][0]
-        outfile = f"{outpre}_gof-npar{n1}.png"
+        outfile = f"{outpre}_gof-npar{n1}.pdf"
         with quick_ax(outfile=outfile) as ax:
             h_val, bins = np.histogram(toys1, bins=40) # Getting the bin values required to normalized the F-distribution plot
             ax.hist(toys1, bins=40, histtype='step', label=f"Toys (n = {n1})") # Toys results
@@ -1387,7 +1384,7 @@ def ftest_scan():
     }
     # Scanning verse mp
     for mDark in set(sig[1] for sig in result.keys()):
-        with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed_mDark={mDark}.png") as ax:
+        with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed_mDark={mDark}.pdf") as ax:
             for rinv in sorted(set(sig[2] for sig in result.keys())):
                 plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]==mDark and sig[2] == rinv])
                 if(len(plot_points) == 0): continue
@@ -1418,7 +1415,7 @@ def bkgsrcr():
     """
     jsons = bsvj.get_jsons()
     regions = bsvj.pull_arg('--regions', type=str, nargs='+').regions
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.png').outfile
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='tf.pdf').outfile
     asimov = bsvj.pull_arg('--asimov', default=False, action="store_true").asimov
 
     input = bsvj.InputData(regions, "rhalpha", **jsons, asimov=asimov)

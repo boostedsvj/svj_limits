@@ -30,7 +30,7 @@ for key,result in limits.results.items():
         qobj.trackedParam_mZprime = key[0]
         qobj.trackedParam_mDark = key[1]
         qobj.trackedParam_rinv = key[2]
-        qobj.trackedParam_xsec = bsvj.get_xs(mz)
+        qobj.trackedParam_xsec = bsvj.get_xs(qobj.trackedParam_mZprime)
         tree.Fill()
 file.Write()
 file.Close()

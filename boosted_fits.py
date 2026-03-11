@@ -1040,7 +1040,7 @@ class InputData(object):
                 bkgfit = simpdf.fitTo(
                     obs,
                     ROOT.RooFit.Extended(True),
-                    ROOT.RooFit.SumW2Error(False), # True was causing huge errors in Chebyshev fits
+                    ROOT.RooFit.SumW2Error(True),
                     ROOT.RooFit.Strategy(0),
                     ROOT.RooFit.Save(),
                     ROOT.RooFit.Minimizer("Minuit2", "migrad"),
@@ -1830,8 +1830,9 @@ def compute_fisher_toys(gof1, gof2, n1, n2, n_bins):
     def collate(base_dict, alt_dict):
         base_arr, alt_arr = [], []
         for key in base_dict.keys():
-            base_arr.append(base_dict[key])
-            alt_arr.append(alt_dict[key])
+            if key in base_dict and key in alt_dict:
+                base_arr.append(base_dict[key])
+                alt_arr.append(alt_dict[key])
         return np.array(base_arr), np.array(alt_arr)
 
     vfval = np.vectorize(fisher_metric)
@@ -2127,8 +2128,8 @@ def parse_dc(dc):
         for proc in dc.rates[bin]:
             rate_value = dc.rates[bin][proc]
             # make the rate -1 for values < 100 so combine will grab the shape value
-            # rather than a potentially problematic int 
-            table.append([bin, proc, proc_nr(proc), int(rate_value) if rate_value >= 100 else -1])
+            # rather than a potentially problematic int
+            table.append([bin, proc, proc_nr(proc), int(rate_value) if (rate_value >= 100) or (proc=="bkg") else -1])
     txt += '\n' + tabelize(transpose(table))
 
     # split up systs by type to avoid tabelization issues
