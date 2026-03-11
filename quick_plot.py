@@ -1073,14 +1073,14 @@ def get_tf_fn_npar(fitresult, tf_name, basis='Bernstein'):
     tf_fn.update_from_roofit(fitresult)
     return tf_fn, npar
 
-def get_comb_fn_npar(fitresult, tf_name, *fns):
+def get_comb_fn_npar(fitresult, tf_name, fns, transforms=None, deco_names=None):
     import rhalphalib as rl
     comb_fn = rl.ProductBasisPoly(tf_name, fns)
     comb_npar = comb_fn.parameters.size
-    comb_fn.update_from_roofit(fitresult)
+    comb_fn.update_from_roofit(fitresult, transforms, deco_names)
     return comb_fn, comb_npar
 
-def get_tf_fit(tf_fn, npar, tf_th1, mtscaled, bkg_eff=1.0);
+def get_tf_fit(tf_fn, npar, tf_th1, mtscaled, bkg_eff=1.0):
     tf_fn_vals, tf_fn_band = tf_fn(mtscaled, nominal=True, errorband=True)
     # multiply bkg_eff into final values
     tf_fn_vals = bkg_eff * tf_fn_vals
@@ -1240,22 +1240,12 @@ def bkgtf():
         fit_mc_nuis = np.array([f.getVal() for f in fitresult_data.floatParsFinal() if 'tf_mc' in f.GetName()])
         if verbose: print('fit_mc_nuis',fit_mc_nuis.tolist())
         if fit_mc and len(fit_mc_nuis)>0:
-            # reconstruct MC TF fit from decorrelated parameters
+            # use this to reconstruct MC TF fit from decorrelated parameters
             import rhalphalib as rl
-            paramfile = fit_mc_file.split(':')[0].replace("/bkgfit_","/mctf_").replace(".root",".npy")
-            fit_mc_nominal = np.load(paramfile)
-            if verbose: print('fit_mc_nominal',fit_mc_nominal.tolist())
-            decofile = paramfile.replace("/mctf_","/deco_")
+            if verbose: print('fn_mc vals',[p.value for p in fn_mc.flat_parameters])
+            decofile = fit_mc_file.split(':')[0].replace("/bkgfit_","/deco_").replace(".root",".npy")
             decoTransform = np.load(decofile)
             if verbose: print('decoTransform',decoTransform.tolist())
-            decoVector = rl.DecorrelatedNuisanceVector('tf_mc_deco', fit_mc_nominal, decoTransform)
-            fn_mc.parameters = decoVector.correlated_params.reshape(fn_mc.parameters.shape)
-            # for some reason, intermediate is always set to False in BasisPoly.parameters setter
-            # but this breaks formula evaluation for dependent parameters
-            for par in fn_mc.parameters: par.intermediate = True
-            if verbose: print('correlated_str',decoVector.correlated_str)
-            fit_mc_vals = tf_mc['bkg_eff'] * fn_mc(mt['scaled'], nominal=True)
-            if verbose: print('fit_mc_vals', fit_mc_vals.tolist())
 
             # plot combined TF without dividing out MC
             tf_comb = {}
@@ -1263,13 +1253,16 @@ def bkgtf():
             tf_comb['th1'] = tf_data['th1'].Clone()
             tf_comb['arr'] = bsvj.th1_to_hist(tf_comb['th1'])
             if verbose: print('tf_comb_th1', tf_comb['arr']['vals'].tolist())
-            fn_comb, npar_comb = get_comb_fn_npar(fitresult_data, 'tf_comb', fn_mc, fn_data)
+            fn_comb, npar_comb = get_comb_fn_npar(fitresult_data, 'tf_comb', [fn_mc, fn_data], {'tf_mc': decoTransform}, {'tf_mc': 'tf_mc_deco'})
             fit_comb = get_tf_fit(fn_comb, npar_comb, tf_comb['th1'], mt['scaled'], tf_comb['bkg_eff'])
             fit_comb['fitresult'] = fitresult_data
             if verbose: print('fit_comb', fit_comb['tf_fn_vals'].tolist())
             if verbose: print('chi2_comb', fit_comb['chi2'], fit_comb['ndf'])
             plot_tf(outfile, mt, tf_comb, fit_comb, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{comb}}}}$ ({regions[0]} / {regions[1]})', suff='comb', label=label_data, title=title)
 
+            # get updated values (after loading combined fit above)
+            fit_mc_vals = tf_mc['bkg_eff'] * fn_mc(mt['scaled'], nominal=True)
+            if verbose: print('fit_mc_vals', fit_mc_vals.tolist())
             # divide out values
             for i in range(tf_data['th1'].GetNbinsX()):
                 tf_data['th1'].SetBinContent(i+1, tf_data['th1'].GetBinContent(i+1)/fit_mc_vals[i])

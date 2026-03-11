@@ -1094,8 +1094,6 @@ class InputData(object):
 
             # save MC TF details for later use in plotting
             bkgmodel.readRooFitResult(bkgfit)
-            paramfile = self.wsfile.replace("/dc_","/mctf_").replace(".root","")
-            np.save(paramfile, [par.value for par in tf_mc.parameters.flatten()])
             param_names = [p.name for p in tf_mc.parameters.reshape(-1)]
             decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names)
             # modify nuisance ranges

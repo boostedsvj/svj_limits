@@ -238,7 +238,8 @@ def test_rhalphabet(tmpdir):
         paramfile = os.path.join(str(tmpdir), "svjModel_mctf")
         np.save(paramfile, [par.value for par in tf_mc.parameters.flatten()])
         param_names = [p.name for p in tf_mc.parameters.reshape(-1)]
-        decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names)
+        decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names, sort=False)
+        print(decoVector.correlated_str)
         decofile = os.path.join(str(tmpdir), "svjModel_deco")
         np.save(decofile, decoVector._transform)
         tf_mc.parameters = decoVector.correlated_params.reshape(tf_mc.parameters.shape)
