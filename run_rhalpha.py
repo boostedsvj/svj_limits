@@ -174,14 +174,14 @@ steps['1'] = StepRunner('datacard generation', [
 ])
 steps['2'] = StepRunner('diagnostics', [
     # run bestfit
-    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range_auto 1 10 10", cast='mp'),
+    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range_auto 1 20 20", cast='mp'),
     # hessian analysis
     Command("python3", "hessian.py", "-w {bf_file}:w -f {bf_file}:fit_mdf -s 0.1"),
     # make plots
     # SR vs. CR distributions
-    Command("python3 quick_plot.py", "bkgsrcr", "{region_args2} --sig {regions_sig} -o {dc_dir}/srcr_{sel}.png"),
+    Command("python3 quick_plot.py", "bkgsrcr", "{region_args2} --sig {regions_sig} -o {dc_dir}/srcr_{sel}.pdf"),
     # TF fit(s)
-    Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.png --basis {tf_basis} --basis-mc {tf_basis} --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
+    Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.pdf --basis {tf_basis} --basis-mc {tf_basis} --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
     # F-test diagnostic plots for individual signal parameters
     Command("python3 quick_plot.py", "ftest_toys", "--results_dump {dc_dir}/ftest/{signame_dc}_ftest-results.py -o {dc_dir}/ftest/{signame_dc}"),
     # F-test results vs all signal samples for plotting
@@ -189,7 +189,7 @@ steps['2'] = StepRunner('diagnostics', [
     Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/", cast='single'),
     ] + [
     # postfit
-    Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.png".format(sel, channel))
+    Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.pdf".format(sel, channel))
         for sel, channel in [("{sel}", "bsvj"), ("{antisel}", "bsvjCR1")]
     ]
     # todo: move all plots into one folder?
@@ -209,16 +209,16 @@ steps['4'] = StepRunner('likelihood scan', [
 ])
 # todo: add "observed" likelihood command (using pseudodata/toy)
 steps['5'] = StepRunner('likelihood plots', [
-    Command("python3 quick_plot.py", "muscan", "{scan_files} -o {scan_dir}/muscan_{signame_dc}.png"),
-    Command("python3 quick_plot.py", "cls", "{scan_files} -o {scan_dir}/cls_{signame_dc}.png"),
-    Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.png"),
+    Command("python3 quick_plot.py", "muscan", "{scan_files} -o {scan_dir}/muscan_{signame_dc}.pdf"),
+    Command("python3 quick_plot.py", "cls", "{scan_files} -o {scan_dir}/cls_{signame_dc}.pdf"),
+    Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.pdf"),
 ])
 steps['6'] = StepRunner('Asimov injection test', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
 ])
 steps['7'] = StepRunner('Asimov injection plots', [
-    Command("python3 quick_plot.py", "mtdist", "{scan_files} --clean --outfile {scan_dir}/bestfit_{signame_dc}.png"),
-    Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.png", cast='single'),
+    Command("python3 quick_plot.py", "mtdist", "{scan_files} --clean --outfile {scan_dir}/bestfit_{signame_dc}.pdf"),
+    Command("python3 quick_plot.py", "brazil", "{all_scan_files} -o {scan_dir}/asimov__inj_{scan_inj_name_short}__sel-{sel}.pdf", cast='single'),
 ])
 steps['8'] = StepRunner('bias fits', [
     Command("python3 cli_boosted.py", "fittoys", "{dc_dir}/{dc_name_main} {bias_fit_args} {bias_sig_args}", cast='mp'),
