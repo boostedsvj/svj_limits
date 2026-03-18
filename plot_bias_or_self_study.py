@@ -98,6 +98,7 @@ def main():
     # Plot mean for both r_inj = 0 and r_inj = 1
     inj_label = ["0", "Expected"]
     xvals = [signal.mMed_val() for signal in signals]
+    print(results[inj_type]["mean"])
     for inj_type in results:
         plt.errorbar(xvals, results[inj_type]["mean"], yerr=results[inj_type]["emean"], color=color_cycle[inj_type], marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=${inj_label[inj_type]}')
     plt.legend()

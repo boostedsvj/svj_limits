@@ -677,6 +677,7 @@ def likelihood_scan():
 
     scan_success = False
     r_scan_max = 2.0
+    scan_count = 0 
     outfile_orig = scan.outfile
     while not scan_success:
         scan.add_range("r", 0, r_scan_max)
@@ -690,13 +691,15 @@ def likelihood_scan():
             max_nll = np.max([tree.deltaNLL, max_nll])
         # Assuming the likelihood close to what we have is roughly paraboloic to estimate
         # how far to extend the range
-        if max_nll < 1.2 and r_scan_max < 10000:
-            scale_factor = np.max([1000.0, (1.2/max_nll)**0.5])
+        if max_nll < 30.0 and r_scan_max < 100000 and scan_count < 100:
+            scale_factor = np.min([10000.0, (10/max_nll)**0.5])
             r_scan_max *= scale_factor
+            scan_count = scan_count + 1 
             bsvj.logger.info(f"Maximum DeltaNLL too small ({max_nll}), extending scan range to ({r_scan_max}, scaling by {scale_factor})")
-        elif max_nll > 2.5 and r_scan_max > 0.0001:
-            scale_factor = np.max([0.001, (2.5/max_nll)**0.5])
+        elif max_nll > 300 and r_scan_max > 0.0001 and scan_count < 100:
+            scale_factor = np.max([0.0001, (10/max_nll)**0.5])
             r_scan_max *= scale_factor
+            scan_count = scan_count + 1 
             bsvj.logger.info(f"Maximum DeltaNLL too large ({max_nll}), shrinking scan range to ({r_scan_max}, scaling by {scale_factor})")
         else:
             scan_success = True

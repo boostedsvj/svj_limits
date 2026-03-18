@@ -14,10 +14,13 @@ hists_dates = {
     "cutbased_ddt": ("20250710", "", ""),
     "cutbased_ddt=0.11": ("20250715", "", ""),
     "cutbased_ddt=0.12": ("20250912", "", ""),
-    "rtcutbased_ddt=0.1": ("20251117", "", ""),
+    "rtcutbased_ddt=0.1": ("20260108", "", ""),
     "bdt=0.55": ("20250912", "", ""),
     "bdt=0.75": ("20250912", "", ""),
     "rtbdt=0.6": ("20251117", "", ""),
+    "rtbdt=0.52": ("20260108", "", ""),
+    "rtbdt=0.62": ("20260306", "", ""),
+    "rtbdt=0.72": ("20260209", "", ""),
 }
 def safe_len(val): return -1 if val is None else len(val)
 hists_dates = {key : {"": val[0], "anti": val[0] if safe_len(val[1])==0 else val[1], "antiloose": val[0] if safe_len(val[2])==0 else val[2]} for key,val in hists_dates.items()}
@@ -377,7 +380,7 @@ def derive_args(args_orig, signals, alt=False):
     return args
 
 if __name__=="__main__":
-    default_signal = ["350","10","0p3"]
+    default_signal = ["250","10","0p3"]
 
     desc = [
         "\n".join(["Steps:"]+[f"{key}. {val.name}" for key,val in sorted(steps.items(), key=lambda item: nat_sort(item[0]))]),
