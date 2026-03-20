@@ -8,6 +8,7 @@ ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.ERROR)
 from time import strftime
 import imp
 import argparse
+import json
 
 # Add the directory of this file to the path so the boosted tools can be imported
 import sys, os, os.path as osp, pprint, re, traceback, copy, fnmatch, shutil
@@ -776,24 +777,26 @@ class LimitObj:
         for observed, asimov in zip(*organize_rootfiles(self.rootfiles)):
             meta = svj.metadata_from_path(asimov)
             key = (meta['mz'], meta['mdark'], meta['rinv'])
+            try:
+                obs, asi = extract_scans([observed, asimov], correct_minimum=True)
+                if self.clean:
+                    obs = clean_scan(obs)
+                    asi = clean_scan(asi)
 
-            obs, asi = extract_scans([observed, asimov], correct_minimum=True)
-            if self.clean:
-                obs = clean_scan(obs)
-                asi = clean_scan(asi)
-
-            result = {}
-            result['cls'] = get_cls(obs, asi)
-            result['limit'] = interpolate_95cl_limit(result['cls'])
-            result['observed'] = observed
-            result['asimov'] = asimov
-            self.results[key] = result
+                result = {}
+                result['cls'] = get_cls(obs, asi)
+                result['limit'] = interpolate_95cl_limit(result['cls'])
+                result['observed'] = observed
+                result['asimov'] = asimov
+                self.results[key] = result
+            except Exception as err:
+               logger.warning(f"Problem with files, ({observed}, {asimov}), skipping these files for now")
+               logger.warning(f"Original error: {err}")
 
 
 @scripter
 def explim():
     limits = LimitObj()
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='explim.txt').outfile
 
     with open(outfile, 'w') as ofile:
         for key,result in limits.results.items():
@@ -823,7 +826,8 @@ def cls():
             )
 
         with quick_ax(outfile=outfile) as ax:
-            mu = cls.mu
+
+            mu = cls.obs.mu
             mu_best = cls.obs.bestfit.df['mu']
 
             ax.plot([], [], ' ', label=name_from_combine_rootfile(result['observed'], True))
@@ -1057,6 +1061,217 @@ def bkgfit():
     plt.savefig(outfile, bbox_inches='tight')
     if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
 
+@scripter
+def bestfit_to_json():
+    """Extrating best fit result to a JSON file for plotting"""
+    import warnings
+    warnings.filterwarnings('ignore', r'The value of the smallest subnormal')
+    import rhalphalib as rl
+
+    # Items for the best fit result
+    jsons = bsvj.get_jsons()
+    bestfit_root = bsvj.pull_arg("--bestfit_root", type=str).bestfit_root
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='bestfit_results.json').outfile
+    bkg_type = bsvj.read_arg("--bkg_type", type=str, default="bkg").bkg_type
+    sig_name = bsvj.pull_arg('--sig', type=str, default='sig').sig
+    ch_name = bsvj.pull_arg('--channel', type=str, default='bsvj').channel
+    sel_name = bsvj.pull_arg('--sel', type=str, default=None).sel
+    cr_prefix = bsvj.pull_arg("--cr_prefix", type=str, default="antiloose").cr_prefix
+    tf_basis = bsvj.pull_arg('--tf-basis', default='Bernstein').tf_basis
+    tf_basis_mc = bsvj.pull_arg('--tf-basis-mc', default='Bernstein').tf_basis_mc
+    tf_mc_root = bsvj.pull_arg("--tf-mc-root", type=str).tf_mc_root
+    ftest_dump = bsvj.pull_arg("--ftest_dump",  type=str).ftest_dump
+
+
+    dump = imp.load_source('ftest_dump', ftest_dump)
+    gof_winner = dump.winner
+    gof_results = dump.results
+
+    # Getting the main workspace items
+    with bsvj.open_root(bestfit_root) as f:
+        ws = bsvj.get_ws(f)
+        toy = get_toy(f)
+
+    # Item of object that
+    output_collection = {
+        "mt_binning": None,
+        "is_toy": None,
+        "prefit" : {},
+        "postfit": {},
+    } # Item to construct for the final item
+
+    # Common variablse that are used
+    mt = ws.var("mt")
+    mt_binning = bsvj.binning_from_roorealvar(mt)
+    mt_bin_centers = (mt_binning[:-1] + mt_binning[1:])/2
+    mt_scaled = (mt_bin_centers - np.min(mt_bin_centers))/(np.max(mt_bin_centers) - np.min(mt_bin_centers))
+    mu_prefit = ws.var("r").getVal()
+    region_list = [sel_name, cr_prefix+sel_name]
+    hist_container = bsvj.InputData(region_list, "rhalpha", **jsons, asimov=False)
+
+    # Since everything should be using the same binning, we will only be storing this once
+    output_collection["mt_binning"] = mt_binning.tolist()
+
+    # Helper functions to cast Objects into plain dictionaries
+    def hist_to_dict(h):
+        if not hasattr(h, "GetNbinsX"):
+            return {
+                "vals": h["vals"].tolist(),
+                "errs": [x.to_list() for x in h["errs"]] if isinstance(h["errs"], tuple) else h["errs"].tolist()
+            }
+        return hist_to_dict(bsvj.th1_to_hist(h))
+
+    def tf_fit_to_dict(tf_fit):
+        return {
+             "vals": tf_fit["tf_fn_vals"].tolist(),
+             "errs": [x.tolist() for x in tf_fit["tf_fn_band"]],
+             **{k:tf_fit[k] for k in ["chi2", "ndf", "npar"]}
+        }
+
+    def get_pdf(ws, pdf_name): # helper to break out of RooMultiPdf
+        pdf = ws.pdf(pdf_name)
+        return pdf if not hasattr(pdf,'getCurrentPdf') else pdf.getCurrentPdf()
+
+    def get_pdf_vals(pdf, norm_name): # Getting the PDF values with normalization as seen in workspace
+        return  ws.function(norm_name).getVal() * bsvj.pdf_values(pdf, mt_bin_centers)
+
+    def get_pdf_errs(pdf, norm_name):
+        return ws.function(norm_name).getVal() * bsvj.pdf_errors(pdf, fitresult_data, mt_bin_centers), # returns 0, so errors not propagated
+
+    # Extracting the data histograms
+    data = ws.data('data_obs') if toy is None else toy
+    output_collection["is_toy"] = toy is not None
+    fitresult_data = get_objs(bestfit_root+ ":fit_mdf")
+
+    def _extract_datahist(region):
+        channel = region.bin_name
+        data_set = ws.data('data_obs')
+        data_values = bsvj.roodataset_values(data_set,channel=channel,vars=region.mtvar)
+        return bsvj.Histogram({
+            'vals': data_values[1],
+            'errs': [bsvj.PoissonErrorUp(v) for v in data_values[1]], # not automatically populated in roodataset
+            'binning': hist_container.mt_array,
+            'metadata': {}
+        }).th1(f'data_{channel}')
+
+    data_hists = { # This needs to be stored now for post-fit evaluations
+        region.name: _extract_datahist(region) for region in hist_container.regions
+    }
+    for region in hist_container.regions:
+        output_collection[f"data_{region.name}"] = hist_to_dict(data_hists[region.name])
+
+    tf_mc_bkg_eff = hist_container.regions[0].bkg_datahist.sum(False) / hist_container.regions[1].bkg_datahist.sum(False)
+    tf_mc_th1 = bsvj.get_tf_th1(hist_container.regions)
+    fitresult_mc = get_objs(tf_mc_root)
+    fn_mc, npar_mc = get_tf_fn_npar(fitresult_mc, 'tf_mc', basis=tf_basis_mc)
+    fit_mc = get_tf_fit(fn_mc, npar_mc, tf_mc_th1, mt_scaled, tf_mc_bkg_eff)
+
+    output_collection["prefit"]["tf_mc"] = { # Format to save
+        "hist": hist_to_dict(tf_mc_th1),
+        "fit_func" : tf_fit_to_dict(fit_mc)
+    }
+
+    # Extracting the prefit results
+    for region in hist_container.regions:
+        ch_name = region.bin_name
+        bkg_name_shape = f'shapeBkg_{bkg_type}_{ch_name}'
+        bkg_name_norm = f'n_exp_final_bin{ch_name}_proc_{bkg_type}'
+
+        # Get the prefit background histogram
+        bkg_pdf = get_pdf(ws,bkg_name_shape)
+        output_collection["prefit"][f"bkg_{region.name}"] = {"vals": get_pdf_vals(bkg_pdf, bkg_name_norm).tolist()}
+
+        # signal info
+        sig_name_shape = f'shapeSig_{ch_name}_sig_morph'
+        sig_name_norm = f'n_exp_bin{ch_name}_proc_{sig_name}'
+
+        ws.var('r').setVal(1.0) # Setting fit value to fix initial signal shape normalization
+        sig_pdf = ws.pdf(sig_name_shape)
+        sig_prefit_vals = get_pdf_vals(sig_pdf, sig_name_norm)
+        output_collection["prefit"][f"sig_{region.name}"] = { "vals": sig_prefit_vals.tolist() }
+
+    # __________________________________
+    # Load snapshot - everything is final fit values from this point onward
+    snapshot = "fit_s" if "FitDiagnostics" in bestfit_root else "MultiDimFit"
+    ws.loadSnapshot(snapshot)
+
+    # Saving hte postfit mu value
+    output_collection["postfit"]["mu"] =  ws.var('r').getVal()
+
+    for region in hist_container.regions:
+        ch_name = region.bin_name
+        bkg_name_shape = f'shapeBkg_{bkg_type}_{ch_name}'
+        bkg_name_norm = f'n_exp_final_bin{ch_name}_proc_{bkg_type}'
+
+        # Get the postfit background PDF
+        bkg_pdf = get_pdf(ws,bkg_name_shape)
+        output_collection["postfit"][f"bkg_{region.name}"] = {
+            "vals": get_pdf_vals(bkg_pdf, bkg_name_norm).tolist(),
+            "errs": get_pdf_errs(bkg_pdf, bkg_name_norm)[0].tolist()
+        }
+
+        # Get postfit signal PDFs
+        sig_name_shape = f'shapeSig_{ch_name}_sig_morph'
+        sig_name_norm = f'n_exp_bin{ch_name}_proc_{sig_name}'
+
+        sig_pdf = ws.pdf(sig_name_shape)
+        print(get_pdf_errs(sig_pdf, sig_name_norm))
+        sig_th1 = bsvj.Histogram({
+            'vals': get_pdf_vals(sig_pdf, sig_name_norm),
+            'errs': get_pdf_errs(sig_pdf, sig_name_norm)[0], # This returns all 0s
+            'binning': hist_container.mt_array,
+            'metadata': {},
+        }).th1(f'sig_{ch_name}')
+        data_hists[region.name].Add(sig_th1, -1) # Subtracting the best fit signal from the data
+        output_collection["postfit"][f"sig_{region.name}"] = hist_to_dict(sig_th1)
+
+    tf_data_bkg_eff = list(data_hists.values())[0].Integral() / list(data_hists.values())[1].Integral()
+    tf_data_th1 = bsvj.get_tf_th1(list(data_hists.values()))
+    fn_data, npar_data = get_tf_fn_npar(fitresult_data, 'tf_data', basis=tf_basis)
+    fit_data = get_tf_fit(fn_data, npar_data, tf_data_th1, mt_scaled, tf_data_bkg_eff)
+    output_collection["postfit"]["tf_data"] = { # Format to save
+        "hist": hist_to_dict(tf_data_th1),
+        "fit_func" : tf_fit_to_dict(fit_data)
+    }
+
+    # Getting post-fit MC results
+    fit_mc_nuis = np.array([f.getVal() for f in fitresult_data.floatParsFinal() if 'tf_mc' in f.GetName()])
+    decofile = tf_mc_root.split(':')[0].replace("/bkgfit_","/deco_").replace(".root",".npy")
+    decoTransform = np.load(decofile)
+    # plot combined TF without dividing out MC
+    tf_comb = {}
+    tf_comb_bkg_eff = tf_mc_bkg_eff
+    tf_comb_th1 = tf_data_th1.Clone()
+    fn_comb, npar_comb = get_comb_fn_npar(fitresult_data, 'tf_comb', [fn_mc, fn_data], {'tf_mc': decoTransform}, {'tf_mc': 'tf_mc_deco'})
+    fit_comb = get_tf_fit(fn_comb, npar_comb, tf_comb_th1, mt_scaled, tf_comb_bkg_eff)
+    output_collection["postfit"]["tf_comb"] = { # Format to save
+        "hist": hist_to_dict(tf_comb_th1),
+        "fit_func" : tf_fit_to_dict(fit_comb)
+    }
+
+    # get updated values (after loading combined fit above)
+    fit_mc_vals = tf_mc_bkg_eff * fn_mc(mt_scaled, nominal=True)
+    # divide out values
+    for i in range(tf_data_th1.GetNbinsX()):
+        tf_data_th1.SetBinContent(i+1, tf_data_th1.GetBinContent(i+1)/fit_mc_vals[i])
+        tf_data_th1.SetBinError(i+1, tf_data_th1.GetBinError(i+1)/fit_mc_vals[i])
+    tf_data_bkg_eff = 1.0
+
+    tf_post = {} # Creating the new item for plotting
+    tf_post_bkg_eff = tf_mc_bkg_eff
+    tf_post_th1 = tf_mc_th1.Clone() # Key distinction compared with above
+    fit_post = get_tf_fit(fn_mc, npar_mc, tf_post_th1, mt_scaled, tf_post_bkg_eff)
+    output_collection["postfit"]["tf_mc_post"] = { # Format to save
+        "hist": hist_to_dict(tf_post_th1),
+        "fit_func" : tf_fit_to_dict(fit_post)
+    }
+    gof_results = gof_results[next(x for x in gof_results if x[0]== gof_winner)][0][1]
+    output_collection["postfit"]["gof"] = next(x for x in gof_results["data"].values())
+
+    with open(outfile, "w") as f:
+        json.dump(output_collection, f, indent=4)
+
+
 def get_objs(file_and_objs):
     fsplit = file_and_objs.split(':')
     fname = fsplit[0]
@@ -1067,8 +1282,8 @@ def get_objs(file_and_objs):
 # common operations to evaluate tf fit
 def get_tf_fn_npar(fitresult, tf_name, basis='Bernstein'):
     import rhalphalib as rl
-    npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])-1
-    tf_fn = rl.BasisPoly(tf_name, (npar,), ["mt"], basis=basis)
+    npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])
+    tf_fn = rl.BasisPoly(tf_name, (npar-1,), ["mt"], basis=basis)
     tf_fn.update_from_roofit(fitresult)
     return tf_fn, npar
 
