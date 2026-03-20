@@ -1649,10 +1649,14 @@ def bkgsrcr():
 
     with quick_ax(outfile=outfile) as ax:
         colors = get_color_cycle()
-        pcolor = next(colors)
-        plot_hist(input.regions[1].bkg_th1, ax, where='post', label=regions[1], alpha=0.2, color=pcolor)
-        pcolor = next(colors)
-        plot_hist(input.regions[0].bkg_th1, ax, where='post', label=regions[0], alpha=0.2, color=pcolor)
+        for region_idx in [1, 0]:
+            pcolor = next(colors)
+            plot_hist(input.regions[region_idx].bkg_th1, ax, where='post', label=regions[region_idx], alpha=0.2, color=pcolor)
+            for label, key in [("QCD", "qcd"), (r"$t\bar{t}$ + jets" , "ttjets"), ("W+Jets", "wjets"), ("Z+Jets", "zjets")]:
+                bkg_hist = json.load(open(jsons["bkgfiles"][region_idx], "r"), cls=bsvj.Decoder)
+                fraction = bkg_hist[key].vals.sum() / bkg_hist["bkg"].vals.sum()
+                ax.plot([],[], label=f"{label} ({fraction*100:.2f})%", color='none')
+
         ax.legend(fontsize=18, framealpha=0.0)
         ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
         ax.set_ylabel(f'Number of events')
