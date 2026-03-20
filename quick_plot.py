@@ -1329,7 +1329,7 @@ def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff="
         pcolor = next(colors) # Moving the color label
         print(outfile, "Updating canvas")
 
-    ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"$fit^{{{suff}}}$ ($\\mathrm{{n}} = {fit['npar']+1}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
+    ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"$fit^{{{suff}}}$ ($\\mathrm{{n}} = {fit['npar']}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
     ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
     leg_args = {'fontsize': 18, 'framealpha': 0.0}
     if title: leg_args['title'] = title
