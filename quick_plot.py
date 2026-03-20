@@ -8,6 +8,7 @@ ROOT.RooMsgService.instance().setGlobalKillBelow(ROOT.RooFit.ERROR)
 from time import strftime
 import imp
 import argparse
+import json
 
 # Add the directory of this file to the path so the boosted tools can be imported
 import sys, os, os.path as osp, pprint, re, traceback, copy, fnmatch, shutil
@@ -459,12 +460,17 @@ def mtdist():
         ws = bsvj.get_ws(f)
         toy = get_toy(f)
 
+    # Dictionary to store items for detailed styling
+    mt_json = {}
+
     mt = ws.var('mt')
     mt_binning = bsvj.binning_from_roorealvar(mt)
     mt_bin_centers = .5*(mt_binning[1:]+mt_binning[:-1])
     mt_bin_widths = mt_binning[1:] - mt_binning[:-1]
+    mt_json["mt_binning"] =  mt_binning.tolist()
 
     mu_prefit = ws.var('r').getVal()
+    mt_json["mu_prefit"] = mu_prefit
 
     # Get the data histogram
     data = ws.data('data_obs')
@@ -474,8 +480,9 @@ def mtdist():
         data = toy
         data_label = 'Data (toy)'
     y_data = bsvj.roodataset_values(data,channel=ch_name)[1]
+    mt_json["is_toy"] = toy is not None
+    mt_json["data_vals"] = y_data.tolist()
 
-    # Get histogram from generated toy
     errs_data = np.sqrt(y_data)
     logger.info(f'Prefit data # entries = {y_data.sum():.2f}, should match with datacard')
 
@@ -498,6 +505,7 @@ def mtdist():
     y_bkg_init = bsvj.pdf_values(bkg_pdf, mt_bin_centers)
     bkg_norm_init = ws.function(bkg_name_norm).getVal()
     y_bkg_init *= bkg_norm_init
+    mt_json["bkg_prefit_vals"] = y_bkg_init.tolist()
     logger.info(f'Prefit bkg norm = {y_bkg_init.sum():.2f}, should match with datacard')
 
     # calculate chi square for prefit bkg fit
@@ -508,6 +516,7 @@ def mtdist():
     chi2_prefit_vf = bsvj.get_chi2_viaframe(mt, _wrapped_prefit, data)
     chi2_prefit = chi2_prefit_vf['chi2']
     ndf_prefit = chi2_prefit_vf['ndf']
+    # We don't need to store goodness of fit for downline
 
     # signal info
     sig_name_shape = f'shapeSig_{ch_name}_{sig_name}'
@@ -534,6 +543,7 @@ def mtdist():
         sig = ws.embeddedData(sig_name_shape)
         y_sig = bsvj.roodataset_values(sig,channel=ch_name)[1]
     logger.info(f'Prefit signal norm = {y_sig.sum():.2f}, should match with datacard')
+    mt_json["sig_prefit_vals"] = y_sig.tolist()
 
     # __________________________________
     # Load snapshot - everything is final fit values from this point onward
@@ -543,13 +553,14 @@ def mtdist():
 
     # Best fit mu value
     mu = ws.var('r').getVal()
-
+    mt_json["mu_postfit"] = mu
     # Final-fit bkg
     bkg_pdf_final = get_pdf(ws,bkg_name_shape)
     y_bkg = bsvj.pdf_values(bkg_pdf_final, mt_bin_centers)
     bkg_norm = ws.function(bkg_name_norm).getVal()
     y_bkg *= bkg_norm
     logger.info(f'Initial bkg norm: {bkg_norm_init:.2f}; Final bkg norm: {bkg_norm:.2f}')
+    mt_json["bkg_postfit_vals"] = y_bkg.tolist()
 
     # Compute bkg + mu * sig
     if has_systematics:
@@ -559,12 +570,12 @@ def mtdist():
         logger.info(f'Initial signal norm: {norm_init:.2f}; Postfit signal norm: {norm:.2f}')
         # mu should be already included for post fit signal, right?
         y_sig_postfit = norm * bsvj.pdf_values(sig_final, mt_bin_centers)
-        y_sb = y_bkg + y_sig_postfit
     else:
         # No shape changes, just multiply signal by signal strength
         sig_final = sig
         y_sig_postfit = mu*y_sig
-        y_sb = y_bkg + y_sig_postfit
+    y_sb = y_bkg + y_sig_postfit
+    mt_json["sig_postfit_vals"] = y_sig_postfit.tolist()
 
     # calculate chi square for s+b
     _wrapped_postfit = bsvj.PDF()
@@ -656,6 +667,8 @@ def mtdist():
     apply_ranges(ax)
 
     plt.savefig(outfile, bbox_inches='tight')
+    with open(outfile.replace(".pdf", "") + ".json" , "w") as outjson:
+        json.dump(mt_json, outjson)
     if not(BATCH_MODE) and cmd_exists('imgcat'): os.system('imgcat ' + outfile)
 
 
@@ -776,24 +789,26 @@ class LimitObj:
         for observed, asimov in zip(*organize_rootfiles(self.rootfiles)):
             meta = svj.metadata_from_path(asimov)
             key = (meta['mz'], meta['mdark'], meta['rinv'])
+            try:
+                obs, asi = extract_scans([observed, asimov], correct_minimum=True)
+                if self.clean:
+                    obs = clean_scan(obs)
+                    asi = clean_scan(asi)
 
-            obs, asi = extract_scans([observed, asimov], correct_minimum=True)
-            if self.clean:
-                obs = clean_scan(obs)
-                asi = clean_scan(asi)
-
-            result = {}
-            result['cls'] = get_cls(obs, asi)
-            result['limit'] = interpolate_95cl_limit(result['cls'])
-            result['observed'] = observed
-            result['asimov'] = asimov
-            self.results[key] = result
+                result = {}
+                result['cls'] = get_cls(obs, asi)
+                result['limit'] = interpolate_95cl_limit(result['cls'])
+                result['observed'] = observed
+                result['asimov'] = asimov
+                self.results[key] = result
+            except Exception as err:
+               logger.warning(f"Problem with files, ({observed}, {asimov}), skipping these files for now")
+               logger.warning(f"Original error: {err}")
 
 
 @scripter
 def explim():
     limits = LimitObj()
-    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='explim.txt').outfile
 
     with open(outfile, 'w') as ofile:
         for key,result in limits.results.items():
@@ -823,7 +838,8 @@ def cls():
             )
 
         with quick_ax(outfile=outfile) as ax:
-            mu = cls.mu
+
+            mu = cls.obs.mu
             mu_best = cls.obs.bestfit.df['mu']
 
             ax.plot([], [], ' ', label=name_from_combine_rootfile(result['observed'], True))
@@ -1067,8 +1083,8 @@ def get_objs(file_and_objs):
 # common operations to evaluate tf fit
 def get_tf_fn_npar(fitresult, tf_name, basis='Bernstein'):
     import rhalphalib as rl
-    npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])-1
-    tf_fn = rl.BasisPoly(tf_name, (npar,), ["mt"], basis=basis)
+    npar = len([f for f in fitresult.floatParsFinal() if tf_name in f.GetName()])
+    tf_fn = rl.BasisPoly(tf_name, (npar-1,), ["mt"], basis=basis)
     tf_fn.update_from_roofit(fitresult)
     return tf_fn, npar
 
@@ -1114,7 +1130,7 @@ def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff="
         pcolor = next(colors) # Moving the color label
         print(outfile, "Updating canvas")
 
-    ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"$fit^{{{suff}}}$ ($\\mathrm{{n}} = {fit['npar']+1}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
+    ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"$fit^{{{suff}}}$ ($\\mathrm{{n}} = {fit['npar']}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
     ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
     leg_args = {'fontsize': 18, 'framealpha': 0.0}
     if title: leg_args['title'] = title
@@ -1126,6 +1142,14 @@ def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff="
     apply_ranges(ax)
     figure.savefig(outfile, bbox_inches='tight')
     return figure, (ax, ax2) # Returning the plot containers so that it can be updated
+
+def tf_to_json(mt, tf, fit):
+    return {
+        "mt_points": mt["pts"].tolist(),
+        "hist": { "vals": tf["arr"]["vals"].tolist(), "errs": tf["arr"]["errs"].tolist() },
+        "func": { "vals": fit["tf_fn_vals"].tolist(), "errs": [x.tolist() for x in fit["tf_fn_band"]] },
+        **{key: fit[key] for key in ["npar", "chi2", "ndf"]}
+    }
 
 @scripter
 def bkgtf():
@@ -1151,6 +1175,9 @@ def bkgtf():
     mt['scaled'] = (mt['pts'] - min(mt['pts']))/(max(mt['pts']) - min(mt['pts']))
     mt['range'] = [input.mt_array[0], input.mt_array[-1]]
 
+    # Container for TF results to be used later
+    tf_json = {}
+
     # TF from MC
     tf_mc = {}
     tf_mc['bkg_eff'] = input.regions[0].bkg_datahist.sum(False) / input.regions[1].bkg_datahist.sum(False)
@@ -1174,6 +1201,7 @@ def bkgtf():
 
     # plot TF from MC
     mc_canvas = plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mc', title=title)
+    tf_json["mc_prefit"] = tf_to_json(mt, tf_mc, fit_mc)
 
     # TF from data: everything comes from postfit file
     fit_data = None
@@ -1258,6 +1286,7 @@ def bkgtf():
             if verbose: print('fit_comb', fit_comb['tf_fn_vals'].tolist())
             if verbose: print('chi2_comb', fit_comb['chi2'], fit_comb['ndf'])
             plot_tf(outfile, mt, tf_comb, fit_comb, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{comb}}}}$ ({regions[0]} / {regions[1]})', suff='comb', label=label_data, title=title)
+            tf_json["comb"] = tf_to_json(mt, tf_comb, fit_comb)
 
             # get updated values (after loading combined fit above)
             fit_mc_vals = tf_mc['bkg_eff'] * fn_mc(mt['scaled'], nominal=True)
@@ -1282,6 +1311,7 @@ def bkgtf():
             if verbose: print('fit_post', fit_post['tf_fn_vals'].tolist())
             if verbose: print('chi2_post', fit_post['chi2'], fit_post['ndf'])
             plot_tf(outfile, mt, tf_post, fit_post, ylabel=f'$TF_{{\\mathrm{{MC}}}}^{{\\mathrm{{postfit}}}}$ ({regions[0]} / {regions[1]})', suff='mcpost', title=title, canvas=mc_canvas)
+            tf_json["data_res"] = tf_to_json(mt, tf_post, fit_post)
         else:
             if verbose: print('tf_data_th1', bsvj.th1_to_hist(tf_data['th1'])['vals'].tolist())
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
@@ -1295,7 +1325,9 @@ def bkgtf():
 
         escape = lambda x: x.replace('_','\\_')
         plot_tf(outfile, mt, tf_data, fit_data, ylabel=f'$\\mathrm{{TF}}_{{\\mathrm{{{escape(suff_data)}}}}}$ ({regions[0]} / {regions[1]})', suff=suff_data, label=label_data, title=title)
-
+        tf_json["mc_postfit"] = tf_to_json(mt, tf_data, fit_data)
+    with open(outfile.replace(".pdf", "") + ".json", "w") as outjson:
+        json.dump(tf_json, outjson)
 
 @scripter
 def ftest_toys():
@@ -1434,10 +1466,14 @@ def bkgsrcr():
 
     with quick_ax(outfile=outfile) as ax:
         colors = get_color_cycle()
-        pcolor = next(colors)
-        plot_hist(input.regions[1].bkg_th1, ax, where='post', label=regions[1], alpha=0.2, color=pcolor)
-        pcolor = next(colors)
-        plot_hist(input.regions[0].bkg_th1, ax, where='post', label=regions[0], alpha=0.2, color=pcolor)
+        for region_idx in [1, 0]:
+            pcolor = next(colors)
+            plot_hist(input.regions[region_idx].bkg_th1, ax, where='post', label=regions[region_idx], alpha=0.2, color=pcolor)
+            for label, key in [("QCD", "qcd"), (r"$t\bar{t}$ + jets" , "ttjets"), ("W+Jets", "wjets"), ("Z+Jets", "zjets")]:
+                bkg_hist = json.load(open(jsons["bkgfiles"][region_idx], "r"), cls=bsvj.Decoder)
+                fraction = bkg_hist[key].vals.sum() / bkg_hist["bkg"].vals.sum()
+                ax.plot([],[], label=f"{label} ({fraction*100:.2f})%", color='none')
+
         ax.legend(fontsize=18, framealpha=0.0)
         ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
         ax.set_ylabel(f'Number of events')
