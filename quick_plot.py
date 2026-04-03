@@ -452,6 +452,7 @@ def mtdist():
     sel_name = bsvj.pull_arg('--sel', type=str, default=None).sel
     title = bsvj.pull_arg('--title', type=str, default=None).title
     show_chi2 = bsvj.pull_arg('--chi2', action='store_true').chi2
+    ftest_dump = bsvj.pull_arg('--ftest', type=str, default=None).ftest
 
     from scipy.interpolate import make_interp_spline # type:ignore
 
@@ -512,11 +513,23 @@ def mtdist():
     _wrapped_prefit = bsvj.PDF()
     _wrapped_prefit.pdf = bkg_pdf
     _wrapped_prefit.n_pars = bkg_pdf.getParameters(data).getSize()
-    print(_wrapped_prefit.n_pars)
     chi2_prefit_vf = bsvj.get_chi2_viaframe(mt, _wrapped_prefit, data)
     chi2_prefit = chi2_prefit_vf['chi2']
     ndf_prefit = chi2_prefit_vf['ndf']
-    # We don't need to store goodness of fit for downline
+
+    # Extracting the statuarated goodness of fit from ftest result if it is provided
+    if ftest_dump:
+        dump = imp.load_source('ftest_dump', ftest_dump)
+        winner = dump.winner
+        nbins = dump.nbins
+        results = dump.results
+        if isinstance(results, list): # Simplified result
+            gof_sat = np.exp(-next(x[1] for x in results if x[0]==winner + 1)/2)
+        else:
+            print(winner, list(results.keys()))
+            gof_sat = np.exp(-next(v[0][1]['data'][0] for k,v in results.items() if k[0] == winner)/2)
+        mt_json["gof_sat"] = gof_sat # Required for plotting
+        mt_json["ftest_winner"] = winner
 
     # signal info
     sig_name_shape = f'shapeSig_{ch_name}_{sig_name}'
@@ -646,6 +659,10 @@ def mtdist():
         ax.step(mt_binning[:-1], y_sig, where='post', label=r'$S_{\mathrm{prefit}}$ ($\mu=1$)', c=petroff["orange"], linestyle='--')
         ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
         # do not check range
+
+        # Adding saturated goodness of fit if dump file was provided
+        if ftest_dump:
+            ax.plot([], [], label="Sat. GOF = " + f"{gof_sat:.1f}/{2*(len(mt_binning)-1) - winner - 1}", c='none')
 
     if title is None:
         title = name_from_combine_rootfile(rootfile, sel=(sel_name is None))
@@ -1315,7 +1332,6 @@ def bkgtf():
         else:
             if verbose: print('tf_data_th1', bsvj.th1_to_hist(tf_data['th1'])['vals'].tolist())
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
-            suff_data = 'data'
 
         tf_data['arr'] = bsvj.th1_to_hist(tf_data['th1'])
         fit_data = get_tf_fit(fn_data, npar_data, tf_data['th1'], mt['scaled'], tf_data['bkg_eff'])
