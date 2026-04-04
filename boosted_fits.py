@@ -306,7 +306,7 @@ class Histogram:
 
 def build_histograms_in_dict_tree(d, parent=None, key=None):
     """
-    Traverses a dict-of-dicts, and converts everything that looks like a 
+    Traverses a dict-of-dicts, and converts everything that looks like a
     histogram to a Histogram object.
     """
     n_histograms = 0
@@ -1040,7 +1040,7 @@ class InputData(object):
                 bkgfit = simpdf.fitTo(
                     obs,
                     ROOT.RooFit.Extended(True),
-                    ROOT.RooFit.SumW2Error(True),
+                    ROOT.RooFit.SumW2Error(True), # True was causing huge errors in Chebyshev fits
                     ROOT.RooFit.Strategy(0),
                     ROOT.RooFit.Save(),
                     ROOT.RooFit.Minimizer("Minuit2", "migrad"),
@@ -1556,7 +1556,7 @@ def pdf_factory(pdf_type, n_pars, mt, bkg_th1, name=None, mt_scale='1000', trige
     """
     Main factory entry point to generate a single RooParametricShapeBinPDF on a TH1.
 
-    If `trigeff` equals 2016, 2017, or 2018, the bkg trigger efficiency as a 
+    If `trigeff` equals 2016, 2017, or 2018, the bkg trigger efficiency as a
     function of mT_AK15_subl is prefixed to the expression.
     """
     if pdf_type not in known_pdfs(): raise Exception('Unknown pdf_type %s' % pdf_type)
@@ -1622,7 +1622,7 @@ def get_variables(rooabsarg):
 
 def set_pdf_to_fitresult(pdf, res):
     """
-    Sets the parameters of a pdf to the fit result. 
+    Sets the parameters of a pdf to the fit result.
     """
     def set_par(par, value):
         par.setRange(value-10., value+10.)
@@ -1840,7 +1840,7 @@ def compute_fisher_toys(gof1, gof2, n1, n2, n_bins):
     f_data = vfval(col_data[0], col_data[1], n1, n2, n_bins)
     f_toys = vfval(col_toys[0], col_toys[1], n1, n2, n_bins)
     f_toys = f_toys[f_toys > 0]
-    cl = 1.-float(len(f_toys[f_toys > f_data]))/len(f_toys)
+    cl = float(len(f_toys[f_toys > f_data]))/len(f_toys)
     return cl
 
 
