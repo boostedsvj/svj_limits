@@ -826,6 +826,7 @@ class LimitObj:
 @scripter
 def explim():
     limits = LimitObj()
+    outfile = bsvj.read_arg('-o', '--outfile', type=str, default='explim.txt').outfile
 
     with open(outfile, 'w') as ofile:
         for key,result in limits.results.items():
