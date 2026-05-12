@@ -10,8 +10,12 @@ import numpy as np
 import itertools, re, logging, os, os.path as osp, copy, subprocess, json
 from collections import OrderedDict, defaultdict
 from time import strftime
-
+import warnings
 PY3 = sys.version_info.major == 3
+
+# Suppressing numpy smallest subnormal warnings
+warnings.filterwarnings('ignore', "The value of the smallest subnormal for <class 'numpy.float32'> type is zero.")
+warnings.filterwarnings('ignore', "The value of the smallest subnormal for <class 'numpy.float64'> type is zero.")
 
 def encode(s):
     """For python 2/3 compatibility"""
