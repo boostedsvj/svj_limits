@@ -348,6 +348,10 @@ def derive_args(args_orig, signals, alt=False):
     args.data_toy_args = f"-s {args.dtoy_seed} --expectSignal 0 -t 1"
     args.data_toy_file = f"toys_{args.dtoy_date}/higgsCombineObserveddc_bkg.GenerateOnly.mH120.{args.dtoy_seed}.root"
     args.region_args2 = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg} --data {args.data_toy_file} {args.data_toy_file}"
+    if args.data_hists_dir is not None:
+        data_sr=f"{args.data_hists_dir}/data_sel-{args.sel}{args.hists_name}.json"
+        data_cr=f"{args.data_hists_dir}/data_sel-{args.antisel}{args.hists_name_anti}.json"
+        args.region_args2 = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg} --data {data_sr} {data_cr}"
 
     args.bf_dir = f"bestfits_{args.dc_date}"
 
@@ -408,6 +412,8 @@ if __name__=="__main__":
     group_co.add_argument("--hists-dir", type=str, default="hists", help="histogram directory")
     group_co.add_argument("--hists-date", type=str, default=None, help="date for signal region histograms")
     group_co.add_argument("--hists-date-anti", type=str, default=None, help="date for anti-signal region histograms")
+    group_co.add_argument("--data-hists-dir", type=str, default=None, help="histogram directory of data, will fall back to using MC toys if not specified")
+
     group_co.add_argument("--dtoy-date", type=str, default=today, help="date for pseudodata toy folder (if skipping step 0)")
     group_co.add_argument("--dtoy-seed", type=int, default=1001, help="random seed for pseudodata toy generation")
     group_co.add_argument("--dc-date", type=str, default=today, help="date for dc folder (if skipping step 1)")
