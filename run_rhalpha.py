@@ -174,7 +174,7 @@ steps['1'] = StepRunner('datacard generation', [
 ])
 steps['2'] = StepRunner('diagnostics', [
     # run bestfit
-    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range_auto 1 20 20", cast='mp'),
+    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range_auto 1 10 10", cast='mp'),
     # hessian analysis
     Command("python3", "hessian.py", "-w {bf_file}:w -f {bf_file}:fit_mdf -s 0.1"),
     # make plots
@@ -203,7 +203,7 @@ steps['3a'] = StepRunner('Asimov toy', [
     Command("mv", "", "{scan_toy_file_old} {scan_toy_file}", cast='single'),
 ])
 steps['4'] = StepRunner('likelihood scan', [
-    Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_args}", cast='mp'),
+    Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_args} --auto_nll 6 20", cast='mp'),
     # dump expected limit signal strengths into a file
     Command("python3 quick_plot.py", "explim", "{all_scan_files} -o {explim_name}", cast='single'),
 ])
@@ -214,7 +214,7 @@ steps['5'] = StepRunner('likelihood plots', [
     Command("python3 quick_plot.py", "trackedparams", "{scan_files} -o {scan_dir}/{{}}_{signame_dc}.pdf"),
 ])
 steps['6'] = StepRunner('Asimov injection test', [
-    Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}", cast='mp'),
+    Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_inj_args}  --auto_nll 6 20", cast='mp'),
 ])
 steps['7'] = StepRunner('Asimov injection plots', [
     Command("python3 quick_plot.py", "mtdist", "{scan_files} --clean --outfile {scan_dir}/bestfit_{signame_dc}.pdf"),
