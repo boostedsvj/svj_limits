@@ -670,18 +670,30 @@ def likelihood_scan():
     Runs a likelihood scan on a datacard
     """
     outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('scans_%Y%m%d')).outdir
+    auto_nll = bsvj.pull_arg('--auto_nll', type=float, default=None, nargs="*", help="Automatically scale r_scan range such that the maximum nll lands within the given range").auto_nll
+    r_max = bsvj.pull_arg('--r_max', type=float, default=None, help="Running a fix r scan from 0 to given max value").r_max
     txtfile = bsvj.pull_arg('datacard', type=str).datacard
     bestfit, scan = make_bestfit_and_scan_commands(txtfile)
 
     bsvj.run_combine_command(bestfit, logfile=bestfit.logfile, outdir=outdir)
 
+    if r_max is not None:
+        scan.add_range("r", 0, r_max)
+        bsvj.run_combine_command(scan, logfile=scan.logfile, outdir=outdir)
+        return # Early exit as no iteration is required
+
+    if auto_nll is not None:
+        assert len(auto_nll)==2, "Auto NLL must specicfy the lower and upper bound of maximum NLL"
+    nll_lower, nll_upper = auto_nll
+    nll_center = (nll_lower + nll_upper)/2
+
     scan_success = False
-    r_scan_max = 2.0
+    r_current = 2.0
+    r_min, r_max = 0.01, 10000
+    scan_count = 0
     outfile_orig = scan.outfile
-    iter_count = 0
-    max_iter = 10
-    while not scan_success and iter_count < max_iter:
-        scan.add_range("r", 0, r_scan_max)
+    while not scan_success:
+        scan.add_range("r", 0, r_current)
         scan.outfile = outfile_orig # Reset the output file (as this will be changed by the run execution)
         bsvj.run_combine_command(scan, logfile=scan.logfile, outdir=outdir)
         tfile = ROOT.TFile.Open(scan.outfile)
@@ -692,16 +704,16 @@ def likelihood_scan():
             max_nll = np.max([tree.deltaNLL, max_nll])
         # Assuming the likelihood close to what we have is roughly paraboloic to estimate
         # how far to extend the range
-        if max_nll < 6.0 and r_scan_max < 100000:
-            scale_factor = np.min([10000.0, (10/max_nll)**0.5])
-            r_scan_max *= scale_factor
-            iter_count = iter_count + 1
-            bsvj.logger.info(f"Maximum DeltaNLL too small ({max_nll}), extending scan range to ({r_scan_max}, scaling by {scale_factor})")
-        elif max_nll > 20 and r_scan_max > 0.0001:
-            scale_factor = np.max([0.0001, (10/max_nll)**0.5])
-            r_scan_max *= scale_factor
-            iter_count = iter_count + 1
-            bsvj.logger.info(f"Maximum DeltaNLL too large ({max_nll}), shrinking scan range to ({r_scan_max}, scaling by {scale_factor})")
+        if max_nll < nll_lower and r_current < r_max and scan_count < 20:
+            scale_factor = np.min([r_max, (nll_center/max_nll)**0.5])
+            r_current *= scale_factor
+            scan_count = scan_count + 1
+            bsvj.logger.info(f"Maximum DeltaNLL too small ({max_nll}), extending scan range to ({r_current}, scaling by {scale_factor})")
+        elif max_nll > nll_upper and r_current > r_min and scan_count < 20:
+            scale_factor = np.max([r_min, (nll_center/max_nll)**0.5])
+            r_current *= scale_factor
+            scan_count = scan_count + 1
+            bsvj.logger.info(f"Maximum DeltaNLL too large ({max_nll}), shrinking scan range to ({r_current}, scaling by {scale_factor})")
         else:
             scan_success = True
 
