@@ -358,7 +358,7 @@ def derive_args(args_orig, signals, alt=False):
     args.bias_fits_dir = f"toyfits_{args.bfit_date}"
     args.bias_test_type = "bias" if alt else "self"
     args.bias_results_rinj = "1" if args.rinj!=0 else "0"
-    args.bias_results_basedir = f"{args.bias_test_type}_test"
+    args.bias_results_basedir = f"{args.bias_test_type}_test_{args.dc_date}"
     args.bias_results_dir = f"{args.bias_results_basedir}/rinj{args.bias_results_rinj}"
 
     args.scan_dir = f"scans_{args.scan_date}"
