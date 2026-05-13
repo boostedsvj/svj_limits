@@ -1431,11 +1431,15 @@ def ftest_scan():
     ftest_dir= bsvj.pull_arg('--results_dir', type=str).results_dir
     sel = bsvj.pull_arg('--sel', type=str).sel
     signals = bsvj.pull_arg("--signals", dest="signals", type=str, default="").signals
+    suff = bsvj.pull_arg("--suff", type=str, default="").suff
     outdir = bsvj.pull_arg('-o', '--outdir', type=str).outdir
+
+    if suff != "":
+        suff = "_" + suff
 
     with open(signals,'r') as sfile:
         signals = [rhalph.Signal(*line.split(), 0) for line in sfile]
-        ftest_dump_list = [f'{ftest_dir}/{rhalph.get_signame(s)}_sel-{sel}_mt_smooth_ftest-results.py' for s in signals]
+        ftest_dump_list = [f'{ftest_dir}/{rhalph.get_signame(s)}_sel-{sel}_mt_smooth{suff}_ftest-results.py' for s in signals]
 
     # Aggregarating the result into a signal file
     result = {
@@ -1445,7 +1449,7 @@ def ftest_scan():
     }
     # Scanning verse mp
     for mDark in set(sig[1] for sig in result.keys()):
-        with quick_ax(outfile=f"{outdir}/{sel}_ftest_scan_vs_mMed_mDark={mDark}.pdf") as ax:
+        with quick_ax(outfile=f"{outdir}/{sel}{suff}_ftest_scan_vs_mMed_mDark={mDark}.pdf") as ax:
             for rinv in sorted(set(sig[2] for sig in result.keys())):
                 plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]==mDark and sig[2] == rinv])
                 if(len(plot_points) == 0): continue

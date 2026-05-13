@@ -186,7 +186,7 @@ steps['2'] = StepRunner('diagnostics', [
     Command("python3 quick_plot.py", "ftest_toys", "--results_dump {dc_dir}/ftest/{signame_dc}_ftest-results.py -o {dc_dir}/ftest/{signame_dc}"),
     # F-test results vs all signal samples for plotting
     # todo: More fit parameter results vs. signal parameter(s)
-    Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/", cast='single'),
+    Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/ --suff {suff}", cast='single'),
     ] + [
     # postfit
     Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.pdf".format(sel, channel))
@@ -275,11 +275,11 @@ def fill_signal_args(_args, signal):
     args.bias_toy_file = args.bias_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
 
     args.bias_sig_args = f"--toysFile {args.bias_toy_file} --expectSignal 0"
-    args.bias_fit_file = f"toyfits_{args.bfit_date}/higgsCombineObserveddc_{args.signame}.FitDiagnostics.mH120.{args.btoy_seed}.root"
+    args.bias_fit_file = f"toyfits_{args.bfit_date}/higgsCombineObserveddc_{args.signame_dc}.FitDiagnostics.mH120.{args.btoy_seed}.root"
 
-    args._scan_toy_file_old = f"toys_{args.stoy_date}/higgsCombineAsimovdc_{args.signame}.GenerateOnly.mH120.{args.stoy_seed}.root"
+    args._scan_toy_file_old = f"toys_{args.stoy_date}/higgsCombineAsimovdc_{args.signame_dc}.GenerateOnly.mH120.{args.stoy_seed}.root"
     args._scan_toy_file = args._scan_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
-    args.scan_files = f"{args.scan_dir}/higgsCombinedc_{args.signame}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
+    args.scan_files = f"{args.scan_dir}/higgsCombinedc_{args.signame_dc}ScanObserved.MultiDimFit.mH120.{args.stoy_seed}.root"
     args.scan_files += f" {args.scan_files.replace('Observed','Asimov')}"
 
     return args
