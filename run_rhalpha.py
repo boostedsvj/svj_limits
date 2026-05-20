@@ -189,7 +189,7 @@ steps['2'] = StepRunner('diagnostics', [
     Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/ --suff {suff}", cast='single'),
     ] + [
     # postfit
-    Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.pdf".format(sel, channel))
+    Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.pdf --ftest {{dc_dir}}/ftest/{{signame_dc}}_ftest-results.py".format(sel, channel))
         for sel, channel in [("{sel}", "bsvj"), ("{antisel}", "bsvjCR1")]
     ]
     # todo: move all plots into one folder?
