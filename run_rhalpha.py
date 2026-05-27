@@ -178,6 +178,8 @@ steps['1'] = StepRunner('datacard generation', [
 steps['2'] = StepRunner('diagnostics', [
     # run bestfit
     Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range_auto 1 10 10", cast='mp'),
+    # run b-only fit
+    Command("python3 cli_boosted.py", "bonlyfit", "{dc_dir}/{dc_name}", cast='mp'),
     # hessian analysis
     Command("python3", "hessian.py", "-w {bf_file}:w -f {bf_file}:fit_mdf -s 0.1"),
     # make plots
@@ -193,6 +195,9 @@ steps['2'] = StepRunner('diagnostics', [
     ] + [
     # postfit
     Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.pdf --ftest {{dc_dir}}/ftest/{{signame_dc}}_ftest-results.py".format(sel, channel))
+        for sel, channel in [("{sel}", "bsvj"), ("{antisel}", "bsvjCR1")]
+    ] + [
+    Command("python3 quick_plot.py", "mtdist", "{{bof_file}} --sel {0} --channel {1} --outfile {{bof_dir}}/bonlyfit_{1}_{{signame_dc}}.pdf".format(sel, channel))
         for sel, channel in [("{sel}", "bsvj"), ("{antisel}", "bsvjCR1")]
     ]
     # todo: move all plots into one folder?
@@ -269,6 +274,7 @@ def fill_signal_args(_args, signal):
     args.dc_toy_name = f"dc_{args.signame_dtoy}.txt"
 
     args.bf_file = f"{args.bf_dir}/higgsCombineObservedBestfit_dc_{args.signame_dc}.MultiDimFit.mH120.root"
+    args.bof_file = f"{args.bof_dir}/higgsCombineObservedbonlyfit_dc_{args.signame_dc}.MultiDimFit.mH120.root"
     args.fit_mc_arg = f"--fit-mc {args.dc_dir}/bkgfit_{args.signame_dc}.root:bkgfit" if args.tf_mc else ""
 
     args.rinj_arg = f"--expectSignal {get_rinj(args.rinj,signal)}"
@@ -357,6 +363,7 @@ def derive_args(args_orig, signals, alt=False):
         args.region_args2 = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg} --data {data_sr} {data_cr}"
 
     args.bf_dir = f"bestfits_{args.dc_date}"
+    args.bof_dir = f"bonlyfits_{args.dc_date}"
 
     args.bias_fits_dir = f"toyfits_{args.bfit_date}"
     args.bias_test_type = "bias" if alt else "self"

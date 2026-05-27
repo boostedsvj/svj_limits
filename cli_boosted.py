@@ -436,6 +436,24 @@ def bestfit():
         else: # Best fit found, simply break
             break
 
+@scripter
+def bonlyfit():
+    txtfile = bsvj.pull_arg('datacard', type=str).datacard
+    txtfile = osp.abspath(txtfile)
+
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str, default=strftime('bonlyfits_%Y%m%d')).outdir
+    outdir = osp.abspath(outdir)
+
+    dc = bsvj.Datacard.from_txt(txtfile)
+    cmd = bsvj.CombineCommand(dc)
+    cmd.configure_from_command_line()
+    cmd = bsvj.bestfit(cmd)
+    cmd.set_parameter("r", 0)
+    cmd.add_range("r", -0, 0)
+    cmd.raw = ' '.join(sys.argv[1:])
+    cmd.name += 'bonlyfit_' + osp.basename(txtfile).replace('.txt','')
+    bsvj.run_combine_command(cmd, logfile=cmd.logfile, outdir=outdir)
+
 
 @scripter
 def gentoys():
