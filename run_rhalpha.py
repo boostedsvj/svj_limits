@@ -178,8 +178,6 @@ steps['1'] = StepRunner('datacard generation', [
 steps['2'] = StepRunner('diagnostics', [
     # run bestfit
     Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range_auto 1 10 10", cast='mp'),
-    # run b-only fit
-    Command("python3 cli_boosted.py", "bonlyfit", "{dc_dir}/{dc_name}", cast='mp'),
     # hessian analysis
     Command("python3", "hessian.py", "-w {bf_file}:w -f {bf_file}:fit_mdf -s 0.1"),
     # make plots
@@ -195,9 +193,6 @@ steps['2'] = StepRunner('diagnostics', [
     ] + [
     # postfit
     Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.pdf --ftest {{dc_dir}}/ftest/{{signame_dc}}_ftest-results.py".format(sel, channel))
-        for sel, channel in [("{sel}", "bsvj"), ("{antisel}", "bsvjCR1")]
-    ] + [
-    Command("python3 quick_plot.py", "mtdist", "{{bof_file}} --sel {0} --channel {1} --outfile {{bof_dir}}/bonlyfit_{1}_{{signame_dc}}.pdf".format(sel, channel))
         for sel, channel in [("{sel}", "bsvj"), ("{antisel}", "bsvjCR1")]
     ]
     # todo: move all plots into one folder?
@@ -241,7 +236,18 @@ steps['10'] = StepRunner('impacts', [
     # todo: fix expected signal?
     Command("python3 cli_boosted.py", "impacts", "{dc_dir}/{dc_name}  --nfits 16 --asimov --normRange 0.1 2.0 --rMin -10 --rMax 10 --robustFit 1 --expectSignal=0.2", cast='loop') # Explicit signal injection
 ])
-
+steps['11'] = StepRunner('bkgonly',
+    # Running background only items
+    [
+        Command("python3 cli_boosted.py", "gen_datacards", "--norm-type rhalpha {region_args2} --sig {regions_sig} {dc_args} --range 0 0", cast='mp'),
+        Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range 0 0 1", cast='mp'),
+        Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.pdf --basis {tf_basis} --basis-mc {tf_basis} --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
+        Command("python3 quick_plot.py", "ftest_toys", "--results_dump {dc_dir}/ftest/{signame_dc}_ftest-results.py -o {dc_dir}/ftest/{signame_dc}"),
+    ] + [
+        Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bonlyfit_{1}_{{signame_dc}}.pdf --ftest {{dc_dir}}/ftest/{{signame_dc}}_ftest-results.py".format(sel, channel))
+        for sel, channel in [("{sel}", "bsvj"), ("{antisel}", "bsvjCR1")]
+    ]
+)
 # special groups of steps
 predefs = {
     'gen_datacard': ['0','1','2'],
@@ -250,6 +256,7 @@ predefs = {
     'asimov_inj': ['0','1','3a','6','7'],
     'self': ['0','1','3','8','9'],
     'bias': ['0','1','1b','3b','8b','9b'],
+    'bkgonly': ['11']
 }
 
 def fill_signal_args(_args, signal):
@@ -274,7 +281,6 @@ def fill_signal_args(_args, signal):
     args.dc_toy_name = f"dc_{args.signame_dtoy}.txt"
 
     args.bf_file = f"{args.bf_dir}/higgsCombineObservedBestfit_dc_{args.signame_dc}.MultiDimFit.mH120.root"
-    args.bof_file = f"{args.bof_dir}/higgsCombineObservedbonlyfit_dc_{args.signame_dc}.MultiDimFit.mH120.root"
     args.fit_mc_arg = f"--fit-mc {args.dc_dir}/bkgfit_{args.signame_dc}.root:bkgfit" if args.tf_mc else ""
 
     args.rinj_arg = f"--expectSignal {get_rinj(args.rinj,signal)}"
@@ -363,7 +369,6 @@ def derive_args(args_orig, signals, alt=False):
         args.region_args2 = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg} --data {data_sr} {data_cr}"
 
     args.bf_dir = f"bestfits_{args.dc_date}"
-    args.bof_dir = f"bonlyfits_{args.dc_date}"
 
     args.bias_fits_dir = f"toyfits_{args.bfit_date}"
     args.bias_test_type = "bias" if alt else "self"
