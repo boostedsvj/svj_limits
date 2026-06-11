@@ -681,8 +681,7 @@ def likelihood_scan():
         scan.add_range("r", 0, r_max)
         bsvj.run_combine_command(scan, logfile=scan.logfile, outdir=outdir)
         return # Early exit as no iteration is required
-
-    if auto_nll is not None:
+    elif auto_nll is not None:
         assert len(auto_nll)==2, "Auto NLL must specicfy the lower and upper bound of maximum NLL"
     nll_lower, nll_upper = auto_nll
     nll_center = (nll_lower + nll_upper)/2

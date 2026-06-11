@@ -527,7 +527,10 @@ def mtdist():
             gof_sat = np.exp(-next(x[1] for x in results if x[0]==winner + 1)/2)
         else:
             print(winner, list(results.keys()))
-            gof_sat = np.exp(-next(v[0][1]['data'][0] for k,v in results.items() if k[0] == winner)/2)
+            try: 
+                gof_sat = np.exp(-next(v[0][1]['data'][0] for k,v in results.items() if k[0] == winner)/2)
+            except StopIteration: # If winner is the highest order
+                gof_sat = np.exp(-next(v[0][1]['data'][0] for k,v in results.items() if k[1] == winner)/2)
         mt_json["gof_sat"] = gof_sat # Required for plotting
         mt_json["ftest_winner"] = winner
 
@@ -612,7 +615,7 @@ def mtdist():
     petroff = {cname:color for cname,color in zip(cnames,colors)}
 
     if only_sig:
-        ax.step(mt_binning[:-1], y_sig, where='post', c=petroff["orange"], label=r'$S_{prefit}$')
+        # ax.step(mt_binning[:-1], y_sig, where='post', c=petroff["orange"], label=r'$S_{prefit}$')
         ax.step(mt_binning[:-1], y_sig_postfit, where='post', c=petroff["red"], label=f'$S_{{fit}}$ ($\mu={mu:.3f}$)')
         ax.step(mt_binning[:-1], y_sig_postfit/mu, where='post', c=petroff["purple"], label=r'$S_{fit}$ ($\mu=1$)')
         ax2.plot([mt_binning[0], mt_binning[-1]], [1,1], c='black')
@@ -656,8 +659,8 @@ def mtdist():
         _ = ax2.step(mt_binning[:-1], (y_data - y_bkg_init) / np.sqrt(y_data), where='post', c=petroff["gray"], linestyle='--')
         checker(_)
 
-        ax.step(mt_binning[:-1], y_sig, where='post', label=r'$S_{\mathrm{prefit}}$ ($\mu=1$)', c=petroff["orange"], linestyle='--')
-        ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
+        #ax.step(mt_binning[:-1], y_sig, where='post', label=r'$S_{\mathrm{prefit}}$ ($\mu=1$)', c=petroff["orange"], linestyle='--')
+        # ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
         # do not check range
 
         # Adding saturated goodness of fit if dump file was provided
@@ -856,10 +859,8 @@ def cls():
             )
 
         with quick_ax(outfile=outfile) as ax:
-
-            mu = cls.obs.mu
+            mu = cls["mu"]
             mu_best = cls.obs.bestfit.df['mu']
-
             ax.plot([], [], ' ', label=name_from_combine_rootfile(result['observed'], True))
             ax.plot([mu[0], mu[-1]], [.05, .05], label='95%', c='purple')
             ax.plot(mu, cls.s, label='s', c='black')
@@ -978,7 +979,7 @@ def brazil():
         #ax.text(1.5,0.7,'95% CL upper limits (cut-based)',fontsize=10)
         #ax.text(1.5,0.5, r'$m_{dark}$=10 GeV, $r_{inv}$=0.3',fontsize=10)
         ax.set_xlabel(r'$m_{\mathrm{Z}^{\prime}}$ [GeV]')
-        ax.set_ylim(0.1,50)
+        ax.set_ylim(0.1,500)
         ax.grid(True)
         #ax.set_ylabel(r'$\mu$')
         ax.set_ylabel(r'$\sigma B$ [pb]')
