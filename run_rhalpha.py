@@ -316,6 +316,7 @@ def derive_args(args_orig, signals, alt=False):
     args.hists_date_anti = args.hists_date_anti or hists_dates[args.sel][args.anti]
     args.ftest = not args.npar_data
     args.npar_data = args.npar_data or args.npar_data_max
+    if args.fit_date is None: args.fit_date = args.dc_date
 
     # assemble arguments
     args.ftoy_args = f"-s {args.ftoy_seed} --expectSignal 0"
@@ -368,7 +369,7 @@ def derive_args(args_orig, signals, alt=False):
         data_cr=f"{args.data_hists_dir}/data_sel-{args.antisel}{args.hists_name_anti}.json"
         args.region_args2 = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg} --data {data_sr} {data_cr}"
 
-    args.bf_dir = f"bestfits_{args.dc_date}"
+    args.bf_dir = f"bestfits_{args.fit_date}"
 
     args.bias_fits_dir = f"toyfits_{args.bfit_date}"
     args.bias_test_type = "bias" if alt else "self"
@@ -432,6 +433,7 @@ if __name__=="__main__":
     group_co.add_argument("--dtoy-date", type=str, default=today, help="date for pseudodata toy folder (if skipping step 0)")
     group_co.add_argument("--dtoy-seed", type=int, default=1001, help="random seed for pseudodata toy generation")
     group_co.add_argument("--dc-date", type=str, default=today, help="date for dc folder (if skipping step 1)")
+    group_co.add_argument("--fit-date", type=str, default=None, help="date for bestfit folder (if running step 2 separately)")
     group_si = parser.add_argument_group("signal")
     group_sx = group_si.add_mutually_exclusive_group()
     group_sx.add_argument("--signal", dest="signals", metavar=("mMed","mDark","rinv"), type=str, default=default_signal[:], nargs=3, help="signal parameters")
