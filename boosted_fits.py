@@ -706,6 +706,9 @@ class InputRegion(object):
                     self.data_th1 = self.data['data'].th1('data', rebin, mtname)
                 else:
                     self.data_th1 = self.bkg_th1
+                    rng = np.random.default_rng(seed=123456)
+                    for i in range(0, self.data_th1.GetNbinsX()+1):
+                        self.data_th1.SetBinContent(i, rng.poisson(self.data_th1.GetBinContent(i)))
                 self.data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(self.mtvar), self.data_th1, 1.)
         self.bkg_datahist = ROOT.RooDataHist("bkg", "bkg", ROOT.RooArgList(self.mtvar), self.bkg_th1, 1.)
 
