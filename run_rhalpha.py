@@ -239,8 +239,8 @@ steps['10'] = StepRunner('impacts', [
 steps['11'] = StepRunner('bkgonly',
     # Running background only items
     [
-        Command("python3 cli_boosted.py", "gen_datacards", "--norm-type rhalpha {region_args2} --sig {regions_sig} {dc_args} --range 0 0", cast='mp'),
-        Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range 0 0 1", cast='mp'),
+        Command("python3 cli_boosted.py", "gen_datacards", "--norm-type rhalpha {region_args2} --sig {regions_sig} {dc_args} --range 0 0", cast='single'),
+        Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range 0 0 1", cast='single'),
         Command("python3 quick_plot.py", "bkgtf", "{region_args2} --sig {regions_sig} -o {dc_dir}/tf_{signame_dc}.pdf --basis {tf_basis} --basis-mc {tf_basis} --fit-data {bf_file}:fit_mdf:w {fit_mc_arg}"),
         Command("python3 quick_plot.py", "ftest_toys", "--results_dump {dc_dir}/ftest/{signame_dc}_ftest-results.py -o {dc_dir}/ftest/{signame_dc}"),
     ] + [
