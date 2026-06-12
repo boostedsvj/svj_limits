@@ -15,7 +15,8 @@ def obj_print(obj, parg):
             obj.get(i)
             w = obj.weight()
             err = r.TMath.Sqrt(obj.weightSquared())
-            fprint(f"  fSumw[{i}]={w}, error={err}")
+            err_alt = obj.weightError()
+            fprint(f"  fSumw[{i}]={w}, sqrt(sumw2)={err}, error={err_alt}")
 
 def main(filename, workspace, snapshot, verbose):
     file = r.TFile.Open(filename)
