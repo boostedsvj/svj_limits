@@ -1459,6 +1459,43 @@ def ftest_scan():
             ax.legend(title="$m_{dark}$ = " + mDark + " GeV")
 
 
+@scripter
+def span_scan():
+    hists_dir= bsvj.pull_arg('--hists-dir', type=str).hists_dir
+    sel = bsvj.pull_arg('--sel', type=str).sel
+    signals = bsvj.pull_arg("--signals", dest="signals", type=str, default="").signals
+    suff = bsvj.pull_arg("--suff", type=str, default="").suff
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str).outdir
+
+    if suff != "":
+        suff = "_" + suff
+
+    with open(signals,'r') as sfile:
+        signals = [rhalph.Signal(*line.split(), 0) for line in sfile]
+        json_list = [f'{hists_dir}/{rhalph.get_signame(s)}_sel-{sel}_mt_smooth{suff}.json' for s in signals]
+
+    # Aggregating the results
+    result = {
+        (sig.mMed, sig.mDark, sig.rinv): json.load(open(infile,'r'), cls=bsvj.Decoder)['central'].metadata['span']
+        for sig, infile in zip(signals, json_list)
+        if os.path.exists(infile)
+    }
+    # Scanning verse mp
+    for mDark in set(sig[1] for sig in result.keys()):
+        with quick_ax(outfile=f"{outdir}/{sel}{suff}_span_scan_vs_mMed_mDark={mDark}.pdf") as ax:
+            for rinv in sorted(set(sig[2] for sig in result.keys())):
+                plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]==mDark and sig[2] == rinv])
+                if(len(plot_points) == 0): continue
+                #shift = float(rinv.replace('p', '.')) * 0.2
+                shift = 0
+                mMed = plot_points[:,0]
+                npar = plot_points[:, 1] + shift
+                ax.plot(mMed, npar, marker='o', label="$r_{inv}$ = " + rinv.replace("p", "."))
+            ax.set_ylabel('Smoothing span')
+            ax.set_xlabel("$m_{X}$ [GeV]")
+            ax.legend(title="$m_{dark}$ = " + mDark + " GeV")
+
+
 def plot_hist(th1, ax, **kwargs):
     hist = bsvj.th1_to_hist(th1)
     def get_kwargs(orig, keys):
