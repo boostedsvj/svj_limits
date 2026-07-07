@@ -171,6 +171,7 @@ steps['0'] = StepRunner('pseudodata', [
     Command("python3 cli_boosted.py", "gen_datacards", "--norm-type crsimple --suff {data_toy_suff} {region_args1} --sig {regions_sig}", cast='single'),
     Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_toy_name} {data_toy_args}", cast='single'),
     Command("mv", "", "{data_toy_file_old} {data_toy_file}", cast='single'),
+    Command("cp", "", "{data_toy_file} {data_toy_file_anti}", cast='single'),
 ])
 steps['1'] = StepRunner('datacard generation', [
     Command("python3 cli_boosted.py", "gen_datacards", "--norm-type rhalpha {region_args2} --sig {regions_sig} {dc_args}", cast='mp'),
@@ -277,7 +278,7 @@ def fill_signal_args(_args, signal):
     args.dc_name_main = args.dc_name.replace('_alt','')
 
     args.signame_dtoy = f"{args.signame}_{args.data_toy_suff}"
-    args.data_toy_file_old = args.data_toy_file.replace("_bkg.",f"_{args.signame_dtoy}.")
+    args.data_toy_file_old = args.data_toy_file.replace(f"_{args.bkgname}.",f"_{args.signame_dtoy}.")
     args.dc_toy_name = f"dc_{args.signame_dtoy}.txt"
 
     args.bf_file = f"{args.bf_dir}/higgsCombineObservedBestfit_dc_{args.signame_dc}.MultiDimFit.mH120.root"
@@ -316,6 +317,7 @@ def derive_args(args_orig, signals, alt=False):
     args.hists_date_anti = args.hists_date_anti or hists_dates[args.sel][args.anti]
     args.ftest = not args.npar_data
     args.npar_data = args.npar_data or args.npar_data_max
+    if args.fit_date is None: args.fit_date = args.dc_date
 
     # assemble arguments
     args.ftoy_args = f"-s {args.ftoy_seed} --expectSignal 0"
@@ -361,14 +363,15 @@ def derive_args(args_orig, signals, alt=False):
 
     args.data_toy_suff = join_none("_",[args.suff,"simple"])
     args.data_toy_args = f"-s {args.dtoy_seed} --expectSignal 0 -t 1"
-    args.data_toy_file = f"toys_{args.dtoy_date}/higgsCombineObserveddc_bkg.GenerateOnly.mH120.{args.dtoy_seed}.root"
-    args.region_args2 = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg} --data {args.data_toy_file} {args.data_toy_file}"
+    args.data_toy_file = f"toys_{args.dtoy_date}/higgsCombineObserveddc_{args.bkgname}.GenerateOnly.mH120.{args.dtoy_seed}.root"
+    args.data_toy_file_anti = f"toys_{args.dtoy_date}/higgsCombineObserveddc_{args.antibkgname}.GenerateOnly.mH120.{args.dtoy_seed}.root"
+    args.region_args2 = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg} --data {args.data_toy_file} {args.data_toy_file_anti}"
     if args.data_hists_dir is not None:
         data_sr=f"{args.data_hists_dir}/data_sel-{args.sel}{args.hists_name}.json"
         data_cr=f"{args.data_hists_dir}/data_sel-{args.antisel}{args.hists_name_anti}.json"
         args.region_args2 = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg} --data {data_sr} {data_cr}"
 
-    args.bf_dir = f"bestfits_{args.dc_date}"
+    args.bf_dir = f"bestfits_{args.fit_date}"
 
     args.bias_fits_dir = f"toyfits_{args.bfit_date}"
     args.bias_test_type = "bias" if alt else "self"
@@ -432,6 +435,7 @@ if __name__=="__main__":
     group_co.add_argument("--dtoy-date", type=str, default=today, help="date for pseudodata toy folder (if skipping step 0)")
     group_co.add_argument("--dtoy-seed", type=int, default=1001, help="random seed for pseudodata toy generation")
     group_co.add_argument("--dc-date", type=str, default=today, help="date for dc folder (if skipping step 1)")
+    group_co.add_argument("--fit-date", type=str, default=None, help="date for bestfit folder (if running step 2 separately)")
     group_si = parser.add_argument_group("signal")
     group_sx = group_si.add_mutually_exclusive_group()
     group_sx.add_argument("--signal", dest="signals", metavar=("mMed","mDark","rinv"), type=str, default=default_signal[:], nargs=3, help="signal parameters")

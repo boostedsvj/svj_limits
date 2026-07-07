@@ -74,7 +74,7 @@ def compute_hessian(args):
     rooAssign(params, fit.constPars())
     rooAssign(params, fit.floatParsFinal())
 
-    floatparams = [p for p in params if fit.floatParsFinal().find(p)]
+    floatparams = [p for p in params if fit.floatParsFinal().find(p) and p.getError()!=0]
     npar = len(floatparams)
     hess = np.zeros(shape=(npar, npar))
     for ix in range(npar):
@@ -154,5 +154,5 @@ if __name__ == '__main__':
     np.set_printoptions(linewidth=cols)
     print("Correlation matrix:")
     print(" ".join([param[istd].GetName() for istd,s in enumerate(std)]))
-    with np.printoptions(precision=3, suppress=True):
+    with np.printoptions(precision=3, suppress=True, threshold=np.inf):
         print(corr)

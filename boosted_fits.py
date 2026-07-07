@@ -591,6 +591,12 @@ def PoissonErrorUp(N):
     return U-N
 
 
+def PoissonErrorDn(N):
+    alpha = 1 - 0.6827 #1 sigma interval
+    L = 0 if N==0 else ROOT.Math.gamma_quantile(alpha/2,N,1.)
+    return N-L
+
+
 def get_default_systs(mz,mdark,rinv):
     systs = [
         ['lumi', 'lnN', 1.0073, '-'],
@@ -622,11 +628,21 @@ def get_tf_chi2(tf_th1, tf_vals):
     return(chi2)
 
 
+def set_poisson_error(dh):
+    for i in range(dh.numEntries()):
+        row = dh.get(i)
+        content = dh.weight(row)
+        dh.set(row, content, PoissonErrorDn(content), PoissonErrorUp(content))
+    return dh
+
 def datahist_from_toy(toy, bin, name, vars=None):
     reduced = toy.reduce(f"CMS_channel==CMS_channel::{bin}")
     if vars:
         reduced = reduced.reduce(ROOT.RooArgList(vars))
-    return reduced.binnedClone(name)
+    result = reduced.binnedClone(name)
+    # set correct errors
+    result = set_poisson_error(result)
+    return result
 
 
 class InputRegion(object):
@@ -696,7 +712,8 @@ class InputRegion(object):
             self.bkg_th1 = self.data_datahist.createHistogram("mt")
             # RooFit sets err = w when creating weighted histograms
             for i in range(self.bkg_th1.GetNbinsX()):
-                self.bkg_th1.SetBinError(i+1,PoissonErrorUp(self.bkg_th1.GetBinContent(i+1)))
+                bval = self.bkg_th1.GetBinContent(i+1)
+                self.bkg_th1.SetBinError(i+1, 0.5*(PoissonErrorDn(bval)+PoissonErrorUp(bval)))
         else:
             self.bkg_th1 = self.bkg['bkg'].th1('bkg', rebin, mtname)
             if toy_data:
@@ -839,7 +856,13 @@ class InputRegion(object):
         def systs_for_para(pdf):
             for par in pdf.parameters:
                 if any([par.name==syst[0] for syst in dc.systs]): continue
-                dc.systs.append([par.name, 'extArg', f'{wsfile}:{ws.GetName()}'])
+                if par.hasPrior():
+                    if par.combinePrior=="param":
+                        dc.systs.append([par.name, 'param', 0, 1])
+                    else:
+                        raise RuntimeError(f"Datacard conversion not implemented yet for {par.combinePrior}")
+                else:
+                    dc.systs.append([par.name, 'extArg', f'{wsfile}:{ws.GetName()}'])
         if self.bkg_type=="multipdf":
             for p in self.bkg_pdf.pdfs:
                 systs_for_pdf(p)

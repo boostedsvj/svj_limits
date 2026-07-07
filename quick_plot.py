@@ -481,10 +481,10 @@ def mtdist():
         data = toy
         data_label = 'Data (toy)'
     y_data = bsvj.roodataset_values(data,channel=ch_name)[1]
+    # roofit refuses to give correct Poisson errors from a roodataset
+    errs_data = np.array([0.5*(bsvj.PoissonErrorDn(y) + bsvj.PoissonErrorUp(y)) for y in y_data])
     mt_json["is_toy"] = toy is not None
     mt_json["data_vals"] = y_data.tolist()
-
-    errs_data = np.sqrt(y_data)
     logger.info(f'Prefit data # entries = {y_data.sum():.2f}, should match with datacard')
 
     # helper to break out of RooMultiPdf
@@ -644,24 +644,20 @@ def mtdist():
         spl = make_interp_spline(mt_bin_centers, y_bkg, k=3)  # type of this is BSpline
         y_bkg_fine = spl(mt_fine)
         ax.plot(mt_fine, y_bkg_fine, label=r'$B_{\mathrm{fit}}$', c=petroff["blue"])
-        _ = ax2.step(mt_binning[:-1], (y_data - y_bkg) / np.sqrt(y_data), where='post', c=petroff["blue"])
+        _ = ax2.step(mt_binning[:-1], (y_data - y_bkg) / errs_data, where='post', c=petroff["blue"])
         checker(_)
 
         ax.step(mt_binning[:-1], np.abs(y_sig_postfit), where='post', label=r'$S_{{\mathrm{{fit}}}}$ ($\mu_{{\mathrm{{fit}}}}={0:.2f}$)'.format(mu), c=petroff["red"])
-        _ = ax2.step(mt_binning[:-1], y_sig_postfit / np.sqrt(y_data), where='post', c=petroff["red"])
+        _ = ax2.step(mt_binning[:-1], y_sig_postfit / errs_data, where='post', c=petroff["red"])
         checker(_)
 
         ax.step(mt_binning[:-1], y_sb, where='post', c=petroff["mauve"], label=r'$B_{\mathrm{fit}}+S_{\mathrm{fit}}$'+(f' [{chi2_sb:.1f}/{ndf_sb}]' if show_chi2 else ''))
-        _ = ax2.step(mt_binning[:-1], (y_data - y_sb) / np.sqrt(y_data), where='post', c=petroff["mauve"])
+        _ = ax2.step(mt_binning[:-1], (y_data - y_sb) / errs_data, where='post', c=petroff["mauve"])
         checker(_)
 
         ax.step(mt_binning[:-1], y_bkg_init, where='post', c=petroff["gray"], linestyle='--', label=r'$B_{\mathrm{prefit}}$'+(f' [{chi2_prefit:.1f}/{ndf_prefit}]' if show_chi2 else ''))
-        _ = ax2.step(mt_binning[:-1], (y_data - y_bkg_init) / np.sqrt(y_data), where='post', c=petroff["gray"], linestyle='--')
+        _ = ax2.step(mt_binning[:-1], (y_data - y_bkg_init) / errs_data, where='post', c=petroff["gray"], linestyle='--')
         checker(_)
-
-        #ax.step(mt_binning[:-1], y_sig, where='post', label=r'$S_{\mathrm{prefit}}$ ($\mu=1$)', c=petroff["orange"], linestyle='--')
-        # ax2.step(mt_binning[:-1], y_sig / np.sqrt(y_data), where='post', c=petroff["orange"], linestyle='--')
-        # do not check range
 
         # Adding saturated goodness of fit if dump file was provided
         if ftest_dump:
@@ -675,7 +671,7 @@ def mtdist():
     ax.set_ylabel('$N_{\mathrm{events}}$')
     ax2.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
     ax.set_yscale('log')
-    ax2.set_ylabel('(data - fit) / $\sqrt{\mathrm{data}}$')
+    ax2.set_ylabel('(data - fit) / $\sigma{\mathrm{data}}$')
     if only_sig: ax2.set_ylabel('postfit / prefit')
 
     # axis ranges
