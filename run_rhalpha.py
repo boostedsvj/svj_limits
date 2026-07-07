@@ -281,7 +281,7 @@ def fill_signal_args(_args, signal):
 
     args.regions_sig = f"{args.sig} {args.antisig}"
     args.signame_dc = join_none("_",[args.signame, args.suff])
-    args.signame_main = args.signame_dc.replace('_altpd','') if '_altpd' in args.signame_dc else args.signame_dc.replace('_alt', '' ) if '_alt' in args.signame_dc else args.signame_dc
+    args.signame_main = args.signame_dc.replace('_pdalt','') if '_pdalt' in args.signame_dc else args.signame_dc.replace('_alt', '' ) if '_alt' in args.signame_dc else args.signame_dc
     args.dc_name = f"dc_{args.signame_dc}.txt"
     args.dc_name_main = f"dc_{args.signame_main}.txt"
 
@@ -310,15 +310,15 @@ def fill_signal_args(_args, signal):
 
 # todo:
 # option to swap out all pseudodata-related toy args for real data args
-def derive_args(args_orig, signals, alt=False, bias=False):
+def derive_args(args_orig, signals, alt=False, pseudoalt=False):
     args = deepcopy(args_orig)
 
     # swap to alt versions for bias study
     if alt:
         args.tf_basis = allowed_basis[1] if args.tf_basis==allowed_basis[0] else allowed_basis[0]
         args.suff = join_none("_", [args.suff, 'alt'])
-    if bias:
-        args.suff = join_none("_", [args.suff, 'altpd'])
+    if pseudoalt:
+        args.suff = join_none("_", [args.suff, 'pdalt'])
 
     # derived values
     args.anti = "antiloose" if args.antiloose else "anti"
@@ -385,7 +385,7 @@ def derive_args(args_orig, signals, alt=False, bias=False):
 
     args.bias_toy_suff = join_none("_", [args.suff, "altpd"])
     args.bias_fits_dir = f"toyfits_{args.bfit_date}"
-    args.bias_test_type = "bias" if (alt or bias) else "self"
+    args.bias_test_type = "bias" if (alt or pseudoalt) else "self"
     args.bias_results_rinj = "1" if args.rinj!=0 else "0"
     args.bias_results_basedir = f"{args.bias_test_type}_test_{args.dc_date}"
     args.bias_results_dir = f"{args.bias_results_basedir}/rinj{args.bias_results_rinj}"
@@ -496,7 +496,7 @@ if __name__=="__main__":
     # execute requested steps in order
     for step in args.steps:
         alt = step.endswith('b')
-        bias = step.endswith('p')
+        psuedoalt = step.endswith('p')
         step = step[:-1] if step not in steps else step # Stripping modification postfix
-        args_step = derive_args(args, signals, alt=alt, bias=bias)
+        args_step = derive_args(args, signals, alt=alt, pseudoalt=psuedoalt)
         steps[step].run(args_step, signals, args.dryrun)
