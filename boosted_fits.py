@@ -10,8 +10,12 @@ import numpy as np
 import itertools, re, logging, os, os.path as osp, copy, subprocess, json
 from collections import OrderedDict, defaultdict
 from time import strftime
-
+import warnings
 PY3 = sys.version_info.major == 3
+
+# Suppressing numpy smallest subnormal warnings
+warnings.filterwarnings('ignore', "The value of the smallest subnormal for <class 'numpy.float32'> type is zero.")
+warnings.filterwarnings('ignore', "The value of the smallest subnormal for <class 'numpy.float64'> type is zero.")
 
 def encode(s):
     """For python 2/3 compatibility"""
@@ -306,7 +310,7 @@ class Histogram:
 
 def build_histograms_in_dict_tree(d, parent=None, key=None):
     """
-    Traverses a dict-of-dicts, and converts everything that looks like a 
+    Traverses a dict-of-dicts, and converts everything that looks like a
     histogram to a Histogram object.
     """
     n_histograms = 0
@@ -587,6 +591,12 @@ def PoissonErrorUp(N):
     return U-N
 
 
+def PoissonErrorDn(N):
+    alpha = 1 - 0.6827 #1 sigma interval
+    L = 0 if N==0 else ROOT.Math.gamma_quantile(alpha/2,N,1.)
+    return N-L
+
+
 def get_default_systs(mz,mdark,rinv):
     systs = [
         ['lumi', 'lnN', 1.0073, '-'],
@@ -618,11 +628,21 @@ def get_tf_chi2(tf_th1, tf_vals):
     return(chi2)
 
 
+def set_poisson_error(dh):
+    for i in range(dh.numEntries()):
+        row = dh.get(i)
+        content = dh.weight(row)
+        dh.set(row, content, PoissonErrorDn(content), PoissonErrorUp(content))
+    return dh
+
 def datahist_from_toy(toy, bin, name, vars=None):
     reduced = toy.reduce(f"CMS_channel==CMS_channel::{bin}")
     if vars:
         reduced = reduced.reduce(ROOT.RooArgList(vars))
-    return reduced.binnedClone(name)
+    result = reduced.binnedClone(name)
+    # set correct errors
+    result = set_poisson_error(result)
+    return result
 
 
 class InputRegion(object):
@@ -692,7 +712,8 @@ class InputRegion(object):
             self.bkg_th1 = self.data_datahist.createHistogram("mt")
             # RooFit sets err = w when creating weighted histograms
             for i in range(self.bkg_th1.GetNbinsX()):
-                self.bkg_th1.SetBinError(i+1,PoissonErrorUp(self.bkg_th1.GetBinContent(i+1)))
+                bval = self.bkg_th1.GetBinContent(i+1)
+                self.bkg_th1.SetBinError(i+1, 0.5*(PoissonErrorDn(bval)+PoissonErrorUp(bval)))
         else:
             self.bkg_th1 = self.bkg['bkg'].th1('bkg', rebin, mtname)
             if toy_data:
@@ -702,6 +723,9 @@ class InputRegion(object):
                     self.data_th1 = self.data['data'].th1('data', rebin, mtname)
                 else:
                     self.data_th1 = self.bkg_th1
+                    rng = np.random.default_rng(seed=123456)
+                    for i in range(0, self.data_th1.GetNbinsX()+1):
+                        self.data_th1.SetBinContent(i, rng.poisson(self.data_th1.GetBinContent(i)))
                 self.data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(self.mtvar), self.data_th1, 1.)
         self.bkg_datahist = ROOT.RooDataHist("bkg", "bkg", ROOT.RooArgList(self.mtvar), self.bkg_th1, 1.)
 
@@ -832,7 +856,13 @@ class InputRegion(object):
         def systs_for_para(pdf):
             for par in pdf.parameters:
                 if any([par.name==syst[0] for syst in dc.systs]): continue
-                dc.systs.append([par.name, 'extArg', f'{wsfile}:{ws.GetName()}'])
+                if par.hasPrior():
+                    if par.combinePrior=="param":
+                        dc.systs.append([par.name, 'param', 0, 1])
+                    else:
+                        raise RuntimeError(f"Datacard conversion not implemented yet for {par.combinePrior}")
+                else:
+                    dc.systs.append([par.name, 'extArg', f'{wsfile}:{ws.GetName()}'])
         if self.bkg_type=="multipdf":
             for p in self.bkg_pdf.pdfs:
                 systs_for_pdf(p)
@@ -1040,7 +1070,7 @@ class InputData(object):
                 bkgfit = simpdf.fitTo(
                     obs,
                     ROOT.RooFit.Extended(True),
-                    ROOT.RooFit.SumW2Error(True),
+                    ROOT.RooFit.SumW2Error(True), # True was causing huge errors in Chebyshev fits
                     ROOT.RooFit.Strategy(0),
                     ROOT.RooFit.Save(),
                     ROOT.RooFit.Minimizer("Minuit2", "migrad"),
@@ -1556,7 +1586,7 @@ def pdf_factory(pdf_type, n_pars, mt, bkg_th1, name=None, mt_scale='1000', trige
     """
     Main factory entry point to generate a single RooParametricShapeBinPDF on a TH1.
 
-    If `trigeff` equals 2016, 2017, or 2018, the bkg trigger efficiency as a 
+    If `trigeff` equals 2016, 2017, or 2018, the bkg trigger efficiency as a
     function of mT_AK15_subl is prefixed to the expression.
     """
     if pdf_type not in known_pdfs(): raise Exception('Unknown pdf_type %s' % pdf_type)
@@ -1622,7 +1652,7 @@ def get_variables(rooabsarg):
 
 def set_pdf_to_fitresult(pdf, res):
     """
-    Sets the parameters of a pdf to the fit result. 
+    Sets the parameters of a pdf to the fit result.
     """
     def set_par(par, value):
         par.setRange(value-10., value+10.)
@@ -1840,7 +1870,7 @@ def compute_fisher_toys(gof1, gof2, n1, n2, n_bins):
     f_data = vfval(col_data[0], col_data[1], n1, n2, n_bins)
     f_toys = vfval(col_toys[0], col_toys[1], n1, n2, n_bins)
     f_toys = f_toys[f_toys > 0]
-    cl = 1.-float(len(f_toys[f_toys > f_data]))/len(f_toys)
+    cl = float(len(f_toys[f_toys > f_data]))/len(f_toys)
     return cl
 
 
