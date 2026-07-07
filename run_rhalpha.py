@@ -206,6 +206,12 @@ steps['3a'] = StepRunner('Asimov toy', [
     Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{scan_dc_name} {scan_toy_args} {rinj_arg}", cast='single'),
     Command("mv", "", "{scan_toy_file_old} {scan_toy_file}", cast='single'),
 ])
+steps['3p'] = StepRunner('bias toys with pseudodata', [
+    # Remake data card with alternate random number seed
+    Command("python3 cli_boosted.py", "gen_datacards", "--norm-type crsimple --suff {suff} --seed {btoy_seed} {region_args1} --sig {regions_sig}", cast='mp'),
+    Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_name} {bias_toy_args} {rinj_arg}", cast='mp'),
+    Command("mv", "", "{bias_toy_file_old} {bias_toy_file}"),
+])
 steps['4'] = StepRunner('likelihood scan', [
     Command("python3 cli_boosted.py", "likelihood_scan", "{dc_dir}/{dc_name} {scan_args} --auto_nll 6 20", cast='mp'),
     # dump expected limit signal strengths into a file
@@ -257,6 +263,7 @@ predefs = {
     'asimov_inj': ['0','1','3a','6','7'],
     'self': ['0','1','3','8','9'],
     'bias': ['0','1','1b','3b','8b','9b'],
+    'bias2': ['0','1', '3p','8p','9p'],
     'bkgonly': ['11']
 }
 
@@ -274,8 +281,9 @@ def fill_signal_args(_args, signal):
 
     args.regions_sig = f"{args.sig} {args.antisig}"
     args.signame_dc = join_none("_",[args.signame, args.suff])
+    args.signame_main = args.signame_dc.replace('_altpd','') if '_altpd' in args.signame_dc else args.signame_dc.replace('_alt', '' ) if '_alt' in args.signame_dc else args.signame_dc
     args.dc_name = f"dc_{args.signame_dc}.txt"
-    args.dc_name_main = args.dc_name.replace('_alt','')
+    args.dc_name_main = f"dc_{args.signame_main}.txt"
 
     args.signame_dtoy = f"{args.signame}_{args.data_toy_suff}"
     args.data_toy_file_old = args.data_toy_file.replace(f"_{args.bkgname}.",f"_{args.signame_dtoy}.")
@@ -291,7 +299,7 @@ def fill_signal_args(_args, signal):
     args.bias_toy_file = args.bias_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
 
     args.bias_sig_args = f"--toysFile {args.bias_toy_file} --expectSignal 0"
-    args.bias_fit_file = f"toyfits_{args.bfit_date}/higgsCombineObserveddc_{args.signame_dc}.FitDiagnostics.mH120.{args.btoy_seed}.root"
+    args.bias_fit_file = f"toyfits_{args.bfit_date}/higgsCombineObserveddc_{args.signame_main}.FitDiagnostics.mH120.{args.btoy_seed}.root"
 
     args._scan_toy_file_old = f"toys_{args.stoy_date}/higgsCombineAsimovdc_{args.signame_dc}.GenerateOnly.mH120.{args.stoy_seed}.root"
     args._scan_toy_file = args._scan_toy_file_old.replace(".GenerateOnly", f"_rinj{rinjname}.GenerateOnly")
@@ -302,13 +310,15 @@ def fill_signal_args(_args, signal):
 
 # todo:
 # option to swap out all pseudodata-related toy args for real data args
-def derive_args(args_orig, signals, alt=False):
+def derive_args(args_orig, signals, alt=False, bias=False):
     args = deepcopy(args_orig)
 
     # swap to alt versions for bias study
     if alt:
         args.tf_basis = allowed_basis[1] if args.tf_basis==allowed_basis[0] else allowed_basis[0]
         args.suff = join_none("_", [args.suff, 'alt'])
+    if bias:
+        args.suff = join_none("_", [args.suff, 'altpd'])
 
     # derived values
     args.anti = "antiloose" if args.antiloose else "anti"
@@ -373,8 +383,9 @@ def derive_args(args_orig, signals, alt=False):
 
     args.bf_dir = f"bestfits_{args.fit_date}"
 
+    args.bias_toy_suff = join_none("_", [args.suff, "altpd"])
     args.bias_fits_dir = f"toyfits_{args.bfit_date}"
-    args.bias_test_type = "bias" if alt else "self"
+    args.bias_test_type = "bias" if (alt or bias) else "self"
     args.bias_results_rinj = "1" if args.rinj!=0 else "0"
     args.bias_results_basedir = f"{args.bias_test_type}_test_{args.dc_date}"
     args.bias_results_dir = f"{args.bias_results_basedir}/rinj{args.bias_results_rinj}"
@@ -485,6 +496,7 @@ if __name__=="__main__":
     # execute requested steps in order
     for step in args.steps:
         alt = step.endswith('b')
-        step = step.replace('b','')
-        args_step = derive_args(args, signals, alt=alt)
+        bias = step.endswith('p')
+        step = step[:-1] if step not in steps else step # Stripping modification postfix
+        args_step = derive_args(args, signals, alt=alt, bias=bias)
         steps[step].run(args_step, signals, args.dryrun)
