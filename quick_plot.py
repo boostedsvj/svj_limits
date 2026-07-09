@@ -1129,15 +1129,21 @@ def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff="
         outfile = rreplace(outfile,'.',f'_{suff}.',1)
 
     colors = get_color_cycle()
-    if canvas is None: # Ploting existing items
-        figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
+    if canvas is None: # Plotting existing items
+        if fit is None:
+            figure = plt.figure(figsize=(12,12))
+            ax = figure.gca()
+            ax2 = None
+        else:
+            figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
         pcolor = next(colors)
         ax.errorbar(mt['pts'], tf['arr']['vals'], yerr=tf['arr']['errs'], label=label, color=pcolor)
         ax.set_ylabel(ylabel)
         xlabel = r'$m_{\mathrm{T}}$ [GeV]'
-        pcolor = next(colors)
-        ax2.set_ylabel(r'(TF - fit) / $\Delta$TF')
-        ax2.set_xlabel(xlabel)
+        if ax2 is not None:
+            pcolor = next(colors)
+            ax2.set_ylabel(r'(TF - fit) / $\Delta$TF')
+            ax2.set_xlabel(xlabel)
     else:
         figure, (ax, ax2) = canvas
         _ = next(colors)
@@ -1145,15 +1151,17 @@ def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff="
         pcolor = next(colors) # Moving the color label
         print(outfile, "Updating canvas")
 
-    ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"$fit^{{{suff}}}$ ($\\mathrm{{n}} = {fit['npar']}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
-    ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
+    if fit is not None:
+        ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"$fit^{{{suff}}}$ ($\\mathrm{{n}} = {fit['npar']}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
+        ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
     leg_args = {'fontsize': 18, 'framealpha': 0.0}
     if title: leg_args['title'] = title
     ax.legend(**leg_args)
     # pulls in lower panel
-    pulls = (tf['arr']['vals'] - fit['tf_fn_vals']) / tf['arr']['errs']
-    ax2.plot(mt['range'], [0.,0.], c='gray')
-    ax2.scatter(mt['pts'], pulls, color=pcolor)
+    if fit is not None:
+        pulls = (tf['arr']['vals'] - fit['tf_fn_vals']) / tf['arr']['errs']
+        ax2.plot(mt['range'], [0.,0.], c='gray')
+        ax2.scatter(mt['pts'], pulls, color=pcolor)
     apply_ranges(ax)
     figure.savefig(outfile, bbox_inches='tight')
     return figure, (ax, ax2) # Returning the plot containers so that it can be updated
@@ -1216,7 +1224,7 @@ def bkgtf():
 
     # plot TF from MC
     mc_canvas = plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mc', title=title)
-    tf_json["mc_prefit"] = tf_to_json(mt, tf_mc, fit_mc)
+    if fit_mc is not None: tf_json["mc_prefit"] = tf_to_json(mt, tf_mc, fit_mc)
 
     # TF from data: everything comes from postfit file
     fit_data = None
