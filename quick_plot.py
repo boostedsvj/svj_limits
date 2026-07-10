@@ -1129,15 +1129,21 @@ def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff="
         outfile = rreplace(outfile,'.',f'_{suff}.',1)
 
     colors = get_color_cycle()
-    if canvas is None: # Ploting existing items
-        figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
+    if canvas is None: # Plotting existing items
+        if fit is None:
+            figure = plt.figure(figsize=(12,12))
+            ax = figure.gca()
+            ax2 = None
+        else:
+            figure, (ax, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, figsize=(12,16), sharex=True)
         pcolor = next(colors)
         ax.errorbar(mt['pts'], tf['arr']['vals'], yerr=tf['arr']['errs'], label=label, color=pcolor)
         ax.set_ylabel(ylabel)
         xlabel = r'$m_{\mathrm{T}}$ [GeV]'
-        pcolor = next(colors)
-        ax2.set_ylabel(r'(TF - fit) / $\Delta$TF')
-        ax2.set_xlabel(xlabel)
+        if ax2 is not None:
+            pcolor = next(colors)
+            ax2.set_ylabel(r'(TF - fit) / $\Delta$TF')
+            ax2.set_xlabel(xlabel)
     else:
         figure, (ax, ax2) = canvas
         _ = next(colors)
@@ -1145,15 +1151,17 @@ def plot_tf(outfile, mt, tf, fit=None, title="", label="MC", ylabel="TF", suff="
         pcolor = next(colors) # Moving the color label
         print(outfile, "Updating canvas")
 
-    ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"$fit^{{{suff}}}$ ($\\mathrm{{n}} = {fit['npar']}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
-    ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
+    if fit is not None:
+        ax.plot(mt['pts'], fit['tf_fn_vals'], label=f"$fit^{{{suff}}}$ ($\\mathrm{{n}} = {fit['npar']}$, $\\chi^2/\\mathrm{{ndf}} = {fit['chi2']:.1f}/{fit['ndf']}$)", color=pcolor)
+        ax.fill_between(mt['pts'], fit['tf_fn_band'][0], fit['tf_fn_band'][1], alpha=0.2, color=pcolor)
     leg_args = {'fontsize': 18, 'framealpha': 0.0}
     if title: leg_args['title'] = title
     ax.legend(**leg_args)
     # pulls in lower panel
-    pulls = (tf['arr']['vals'] - fit['tf_fn_vals']) / tf['arr']['errs']
-    ax2.plot(mt['range'], [0.,0.], c='gray')
-    ax2.scatter(mt['pts'], pulls, color=pcolor)
+    if fit is not None:
+        pulls = (tf['arr']['vals'] - fit['tf_fn_vals']) / tf['arr']['errs']
+        ax2.plot(mt['range'], [0.,0.], c='gray')
+        ax2.scatter(mt['pts'], pulls, color=pcolor)
     apply_ranges(ax)
     figure.savefig(outfile, bbox_inches='tight')
     return figure, (ax, ax2) # Returning the plot containers so that it can be updated
@@ -1216,7 +1224,7 @@ def bkgtf():
 
     # plot TF from MC
     mc_canvas = plot_tf(outfile, mt, tf_mc, fit_mc, ylabel=f'$TF_{{\\mathrm{{MC}}}}$ ({regions[0]} / {regions[1]})', suff='mc', title=title)
-    tf_json["mc_prefit"] = tf_to_json(mt, tf_mc, fit_mc)
+    if fit_mc is not None: tf_json["mc_prefit"] = tf_to_json(mt, tf_mc, fit_mc)
 
     # TF from data: everything comes from postfit file
     fit_data = None
@@ -1455,6 +1463,43 @@ def ftest_scan():
                 npar = plot_points[:, 1] + shift
                 ax.plot(mMed, npar, marker='o', label="$r_{inv}$ = " + rinv.replace("p", "."))
             ax.set_ylabel('Chosen number of parameters')
+            ax.set_xlabel("$m_{X}$ [GeV]")
+            ax.legend(title="$m_{dark}$ = " + mDark + " GeV")
+
+
+@scripter
+def span_scan():
+    hists_dir= bsvj.pull_arg('--hists-dir', type=str).hists_dir
+    sel = bsvj.pull_arg('--sel', type=str).sel
+    signals = bsvj.pull_arg("--signals", dest="signals", type=str, default="").signals
+    suff = bsvj.pull_arg("--suff", type=str, default="").suff
+    outdir = bsvj.pull_arg('-o', '--outdir', type=str).outdir
+
+    if suff != "":
+        suff = "_" + suff
+
+    with open(signals,'r') as sfile:
+        signals = [rhalph.Signal(*line.split(), 0) for line in sfile]
+        json_list = [f'{hists_dir}/{rhalph.get_signame(s)}_sel-{sel}_mt_smooth{suff}.json' for s in signals]
+
+    # Aggregating the results
+    result = {
+        (sig.mMed, sig.mDark, sig.rinv): json.load(open(infile,'r'), cls=bsvj.Decoder)['central'].metadata['span']
+        for sig, infile in zip(signals, json_list)
+        if os.path.exists(infile)
+    }
+    # Scanning verse mp
+    for mDark in set(sig[1] for sig in result.keys()):
+        with quick_ax(outfile=f"{outdir}/{sel}{suff}_span_scan_vs_mMed_mDark={mDark}.pdf") as ax:
+            for rinv in sorted(set(sig[2] for sig in result.keys())):
+                plot_points = np.array([(float(sig[0]), npar) for sig, npar in result.items() if sig[1]==mDark and sig[2] == rinv])
+                if(len(plot_points) == 0): continue
+                #shift = float(rinv.replace('p', '.')) * 0.2
+                shift = 0
+                mMed = plot_points[:,0]
+                npar = plot_points[:, 1] + shift
+                ax.plot(mMed, npar, marker='o', label="$r_{inv}$ = " + rinv.replace("p", "."))
+            ax.set_ylabel('Smoothing span')
             ax.set_xlabel("$m_{X}$ [GeV]")
             ax.legend(title="$m_{dark}$ = " + mDark + " GeV")
 
