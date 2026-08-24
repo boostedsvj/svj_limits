@@ -863,6 +863,8 @@ class InputRegion(object):
                         raise RuntimeError(f"Datacard conversion not implemented yet for {par.combinePrior}")
                 else:
                     dc.systs.append([par.name, 'extArg', f'{wsfile}:{ws.GetName()}'])
+                    # automatically track param in output
+                    dc.systs.append([par.name, 'flatParam'])
         if self.bkg_type=="multipdf":
             for p in self.bkg_pdf.pdfs:
                 systs_for_pdf(p)
