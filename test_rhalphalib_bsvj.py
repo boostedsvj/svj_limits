@@ -133,6 +133,11 @@ def plot_sr_cr(fail_bkg, pass_bkg, args):
         ax.set_ylabel(f'Number of events')
         ax.set_yscale('log')
 
+def run_and_log(cmd, dir, fname):
+    print(f"Running: {cmd}")
+    with open(os.path.join(dir,fname), 'w') as logfile:
+        subprocess.run(shlex.split(cmd), cwd=dir, stdout=logfile, stderr=logfile, text=True)
+
 
 def get_bias(fname, test):
     # undo change from install_roofit_helpers
@@ -225,7 +230,7 @@ def test_rhalphabet(args, sig_data, bkg_data, obs_data):
         np.save(paramfile, [par.value for par in tf_mc.parameters.flatten()])
         param_names = [p.name for p in tf_mc.parameters.reshape(-1)]
         decoVector = rl.DecorrelatedNuisanceVector.fromRooFitResult(tf_mc.name + "_deco", bkgfit, param_names)
-        print(decoVector.correlated_str)
+        #print(decoVector.correlated_str)
         decofile = os.path.join(str(args.dir), "svjModel_deco")
         np.save(decofile, decoVector._transform)
         tf_mc.parameters = decoVector.correlated_params.reshape(tf_mc.parameters.shape)
@@ -323,16 +328,16 @@ def test_rhalphabet(args, sig_data, bkg_data, obs_data):
         # fit to rhalphabet background model
         toy_cmd_self = toy_cmd.format(model="svjModel")
         fit_cmd_self = fit_cmd.format(test="self", toyfile="higgsCombine_svjModel.GenerateOnly.mH120.995.root")
-        subprocess.run(shlex.split(toy_cmd_self), cwd=svjModelPath)
-        subprocess.run(shlex.split(fit_cmd_self), cwd=svjModelPath)
+        run_and_log(toy_cmd_self, svjModelPath, "log_gen_self.log")
+        run_and_log(fit_cmd_self, svjModelPath, "log_fit_self.log")
 
         # bias test
         # toys generated from MC background directly
         # fit to rhalphabet background model
         toy_cmd_bias = toy_cmd.format(model="simpleModel")
         fit_cmd_bias = fit_cmd.format(test="bias", toyfile="../simpleModel/higgsCombine_simpleModel.GenerateOnly.mH120.995.root")
-        subprocess.run(shlex.split(toy_cmd_bias), cwd=simpleModelPath)
-        subprocess.run(shlex.split(fit_cmd_bias), cwd=svjModelPath)
+        run_and_log(toy_cmd_bias, simpleModelPath, "log_gen_bias.log")
+        run_and_log(fit_cmd_bias, svjModelPath, "log_fit_bias.log")
 
         # print results after Combine spew
         result_self = get_bias(os.path.join(svjModelPath, "higgsCombine_self.FitDiagnostics.mH120.995.root"), "self")
