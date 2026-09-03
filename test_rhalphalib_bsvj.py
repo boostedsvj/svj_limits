@@ -15,6 +15,8 @@ rl.util.install_roofit_helpers()
 
 basis = "Bernstein"
 
+np.random.seed(10)
+
 def predef_sample(obs, data):
     return (data["vals"], obs.binning, obs.name)
 
@@ -151,7 +153,6 @@ def get_bias(fname, test):
 
 
 def test_rhalphabet(args, sig_data, bkg_data, obs_data):
-    throwPoisson = False
     tfFromMC = True
 
     jec = rl.NuisanceParameter("CMS_jec", "lnN")
@@ -267,7 +268,7 @@ def test_rhalphabet(args, sig_data, bkg_data, obs_data):
         # make up a data_obs, with possibly different yield values, excluding signal
         template_obs = predef_sample(mt, obs_data[region])
         yields = template_obs[0]
-        if throwPoisson:
+        if args.poisson:
             yields = np.random.poisson(yields)
         data_obs = (yields, mt.binning, mt.name)
         ch.setObservation(data_obs)
@@ -404,6 +405,7 @@ if __name__ == "__main__":
     parser.add_argument("--sig", type=str, required=True, choices=list(sig.keys()), help="signal type")
     parser.add_argument("--bkg", type=str, required=True, choices=list(bkg.keys()), help="background type")
     parser.add_argument("--obs", type=str, default=None, choices=list(bkg.keys()), help="observation type (None -> reuse background)")
+    parser.add_argument("--poisson", default=False, action="store_true", help="throw Poisson toy for observed data")
     parser.add_argument("--nmc", type=int, default=1, help="number of params for MC TF")
     parser.add_argument("--ndata", type=int, default=1, help="number of params for data TF")
     parser.add_argument("--verbose", default=False, action="store_true", help="verbose fit printouts")
