@@ -8,6 +8,8 @@ import scipy.stats
 import pickle
 import ROOT
 import argparse
+import subprocess
+import shlex
 
 rl.util.install_roofit_helpers()
 
@@ -130,6 +132,17 @@ def plot_sr_cr(fail_bkg, pass_bkg, args):
         ax.set_xlabel(r'$m_{\mathrm{T}}$ [GeV]')
         ax.set_ylabel(f'Number of events')
         ax.set_yscale('log')
+
+
+def get_bias(fname, test):
+    # undo change from install_roofit_helpers
+    ROOT.TH1.AddDirectory(True)
+
+    file = ROOT.TFile.Open(fname)
+    tree = file.Get("tree_fit_sb")
+    hist = ROOT.TH1F(test, test, 50, -5, 5)
+    n = tree.Draw(f"(r-0)/(0.5*(rLoErr+rHiErr))>>{test}", "fit_status==0 || fit_status==1", "goff")
+    return hist.GetMean(), hist.GetRMS()
 
 
 def test_rhalphabet(args, sig_data, bkg_data, obs_data):
@@ -276,7 +289,10 @@ def test_rhalphabet(args, sig_data, bkg_data, obs_data):
     with open(os.path.join(str(args.dir), "svjModel.pkl"), "wb") as fout:
         pickle.dump(model, fout)
 
-    model.renderCombine(os.path.join(str(args.dir), "svjModel"))
+    svjModelPath = os.path.join(str(args.dir), "svjModel")
+    model.renderCombine(svjModelPath)
+    if args.mode!="dryrun":
+        subprocess.run(["bash", "build.sh"], cwd=svjModelPath)
 
     # build simple model for bias tests
     model2 = rl.Model("simpleModel")
@@ -294,8 +310,35 @@ def test_rhalphabet(args, sig_data, bkg_data, obs_data):
     with open(os.path.join(str(args.dir), "simpleModel.pkl"), "wb") as fout:
         pickle.dump(model2, fout)
 
-    model.renderCombine(os.path.join(str(args.dir), "simpleModel"))
+    simpleModelPath = os.path.join(str(args.dir), "simpleModel")
+    model2.renderCombine(simpleModelPath)
+    if args.mode!="dryrun":
+        subprocess.run(["bash", "build.sh"], cwd=simpleModelPath)
 
+    if args.mode=="bias":
+        toy_cmd = "combine -M GenerateOnly -d model_combined.txt --saveWorkspace --toysFrequentist --bypassFrequentistFit --saveToys --name _{model} -t 300 -s 995 -v 0 --expectSignal 0.0 --setParameterRanges r=-3.0,5.0"
+        fit_cmd = "combine -M FitDiagnostics -d model_combined.txt --noPreFitValue --savePredictionsPerToy --toysFrequentist --saveToys --name _{test} -t 300 -s 995 -v 0 --expectSignal 0.0 --X-rtd MINIMIZER_MaxCalls=100000 --setParameterRanges r=-5.0,5.0 --cminDefaultMinimizerStrategy 0 --toysFile {toyfile}"
+        # self test
+        # toys generated from rhalphabet background model
+        # fit to rhalphabet background model
+        toy_cmd_self = toy_cmd.format(model="svjModel")
+        fit_cmd_self = fit_cmd.format(test="self", toyfile="higgsCombine_svjModel.GenerateOnly.mH120.995.root")
+        subprocess.run(shlex.split(toy_cmd_self), cwd=svjModelPath)
+        subprocess.run(shlex.split(fit_cmd_self), cwd=svjModelPath)
+
+        # bias test
+        # toys generated from MC background directly
+        # fit to rhalphabet background model
+        toy_cmd_bias = toy_cmd.format(model="simpleModel")
+        fit_cmd_bias = fit_cmd.format(test="bias", toyfile="../simpleModel/higgsCombine_simpleModel.GenerateOnly.mH120.995.root")
+        subprocess.run(shlex.split(toy_cmd_bias), cwd=simpleModelPath)
+        subprocess.run(shlex.split(fit_cmd_bias), cwd=svjModelPath)
+
+        # print results after Combine spew
+        result_self = get_bias(os.path.join(svjModelPath, "higgsCombine_self.FitDiagnostics.mH120.995.root"), "self")
+        print(f"self: mean = {result_self[0]:.4f}, stdev = {result_self[1]:.4f}")
+        result_bias = get_bias(os.path.join(svjModelPath, "higgsCombine_bias.FitDiagnostics.mH120.995.root"), "bias")
+        print(f"bias: mean = {result_bias[0]:.4f}, stdev = {result_bias[1]:.4f}")
 
 
 if __name__ == "__main__":
@@ -359,6 +402,7 @@ if __name__ == "__main__":
     parser.add_argument("--nmc", type=int, default=1, help="number of params for MC TF")
     parser.add_argument("--ndata", type=int, default=1, help="number of params for data TF")
     parser.add_argument("--verbose", default=False, action="store_true", help="verbose fit printouts")
+    parser.add_argument("--mode", type=str, default="dryrun", choices=["dryrun","build","bias"], help="mode of operation (determines what combine commands run after creating model & cards)")
     args = parser.parse_args()
 
     if args.obs is None: args.obs = args.bkg
