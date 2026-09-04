@@ -376,6 +376,8 @@ def derive_args(args_orig, signals, alt=False, bias=False):
     args.data_toy_file = f"toys_{args.dtoy_date}/higgsCombineObserveddc_{args.bkgname}.GenerateOnly.mH120.{args.dtoy_seed}.root"
     args.data_toy_file_anti = f"toys_{args.dtoy_date}/higgsCombineObserveddc_{args.antibkgname}.GenerateOnly.mH120.{args.dtoy_seed}.root"
     args.region_args2 = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg} --data {args.data_toy_file} {args.data_toy_file_anti}"
+    if args.use_bkgsmooth:
+        args.region_args2 = f"{args.region_args_base} --bkg {args.bkgsmooth} {args.antibkgsmooth} --data {args.data_toy_file} {args.data_toy_file_anti}"
     if args.data_hists_dir is not None:
         data_sr=f"{args.data_hists_dir}/data_sel-{args.sel}{args.hists_name}.json"
         data_cr=f"{args.data_hists_dir}/data_sel-{args.antisel}{args.hists_name_anti}.json"
@@ -461,6 +463,7 @@ if __name__=="__main__":
     group_dc.add_argument("--npar-data-max", type=int, default=5, help="max number of parameters for data TF F-test")
     group_dc.add_argument("--ftoys", type=int, default=0, help="number of toys for data TF F-test")
     group_dc.add_argument("--ftoy-seed", type=int, default=1005, help="random seed for F-test toy generation")
+    group_dc.add_argument("--bkgsmooth", dest="use_bkgsmooth", default=False, action="store_true", help="use smoothed MC for bkg")
     group_ty = parser.add_argument_group("toys")
     group_ty.add_argument("--rinj", type=float, default=0, help="toy signal injection strength; if -x, strength = expected limit * x")
     group_sc = parser.add_argument_group("scan")
