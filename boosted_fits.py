@@ -1043,7 +1043,7 @@ class InputData(object):
             bkgmodels = []
             winner_indices = winners if winners else {}
             npar_vals = winner_indices.get('tf_mc', None)
-            if not npar_vals: npar_vals = range(npar_mc_max)
+            if npar_vals is None: npar_vals = range(npar_mc_max)
             else: npar_vals = [npar_vals]
             for npar_mc in npar_vals:
                 # use rhalphalib model to create workspace
