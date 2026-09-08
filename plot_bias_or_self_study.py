@@ -72,6 +72,8 @@ def main():
             path = f"{base}/higgsCombineObserveddc_{get_signame(signal)}_sel-{args.sel}_mt_smooth{args.filesuff}.FitDiagnostics.mH120.{args.seed}.root"
             afile = ROOT.TFile(path)
             atree = afile.Get("tree_fit_sb")
+            if not atree:
+                raise RuntimeError(f"Could not find tree_fit_sb in {path}")
 
             # Create histograms for r/rErr
             histo = ROOT.TH1F(f"histo_rinj{inj_type}_{signal.mMed}", f"Histogram of (r-rinj)/(0.5*(rLoErr+rHiErr)) for MZ = {signal.mMed} GeV (r_inj={rinj_signal})", 50, -10, 10)
