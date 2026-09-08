@@ -30,6 +30,8 @@ def main():
                               " it expects two subdirectories: rinj0 and rinj1"))
     parser.add_argument('--suff', type=str, default="",
                         help="Suffix for rinj0 and rinj1 dir names")
+    parser.add_argument('--filesuff', type=str, default="",
+                        help="Suffix for Combine file names")
     parser.add_argument('--sel', type=str, required=True,
                         help="Selection type")
     parser.add_argument('--test', type=str, required=True, choices=['bias', 'self'],
@@ -67,7 +69,7 @@ def main():
 
         for signal in signals:
             rinj_signal = get_rinj(rinj,signal)
-            path = f"{base}/higgsCombineObserveddc_{get_signame(signal)}_sel-{args.sel}_mt_smooth.FitDiagnostics.mH120.{args.seed}.root"
+            path = f"{base}/higgsCombineObserveddc_{get_signame(signal)}_sel-{args.sel}_mt_smooth{args.filesuff}.FitDiagnostics.mH120.{args.seed}.root"
             afile = ROOT.TFile(path)
             atree = afile.Get("tree_fit_sb")
 
