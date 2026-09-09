@@ -217,7 +217,8 @@ def gen_datacards():
     suff = bsvj.pull_arg('--suff', type=str, default='').suff
     ftest = bsvj.pull_arg('--ftest', default=False, action="store_true").ftest
     ntoys = bsvj.read_arg('-t', type=int, default=0).t
-    ftest_long = bsvj.pull_arg('--ftest-long', default=False, action="store_true").ftest_long
+    # convention: 0 = short-circuit, 1 = long (n-1 vs. n), 2 = full (n-1, n-2, ... vs. n)
+    ftest_length = bsvj.pull_arg('--ftest-length', type=int, default=0).ftest_length
     verbose = bsvj.pull_arg('--verbose', default=False, action="store_true").verbose
 
     # use npar arg as max value in saturated gof f-test
@@ -255,35 +256,44 @@ def gen_datacards():
                 result_npar['bf'] = bf_datacard(cmd,outdir)
                 goffile = gof_datacard(cmd,outdir,result_npar['bf'])
                 result_npar['gof'] = collect_gof(goffile)
+                # placeholder for later
+                result_npar['toyfile'] = None
             results_npar[npar] = result_npar
 
             # n-1 vs. n comparisons
             if ntoys>0:
                 if ipar==0: continue
-                # generate toys from n-1
-                cmd1, outdir1 = cmd_datacard(results_npar[npar-1]['dc'])
-                # remake command including -t arg
-                cmd, outdir = cmd_datacard(dcfile)
-                toyfile = toy_datacard(cmd1,outdir1,ntoys)
-                # fit toys to n-1 and n
-                gof1file = gof_datacard(cmd1,outdir1,results_npar[npar-1]['bf'],toyfile)
-                gof1 = {
-                    'toys': collect_gof(gof1file),
-                    'data': results_npar[npar-1]['gof']
-                }
-                gof2file = gof_datacard(cmd,outdir,result_npar['bf'],toyfile)
-                gof2 = {
-                    'toys': collect_gof(gof2file),
-                    'data': result_npar['gof'],
-                }
-                results[(ipar-1,ipar)] = ((npar, gof1), (npar+1, gof2))
-                if not ftest_long:
-                    # shortcircuit toy-based ftest for speed
-                    i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=True)
-                    if i_winner==ipar-1:
-                        break
-                    else:
-                        i_winner = None
+
+                ipar_min = ipar-1
+                if ftest_length==2:
+                    ipar_min = 0
+                for ipar1 in range(ipar-1, ipar_min-1, -1):
+                    npar1 = npar - (ipar - ipar1)
+                    cmd1, outdir1 = cmd_datacard(results_npar[npar1]['dc'])
+                    # remake command including -t arg
+                    cmd, outdir = cmd_datacard(dcfile)
+                    # generate toys from n-1 (if not already done)
+                    if results_npar[npar1]['toyfile'] is None:
+                        results_npar[npar1]['toyfile'] = toy_datacard(cmd1,outdir1,ntoys)
+                    # fit toys to n-1 and n
+                    gof1file = gof_datacard(cmd1,outdir1,results_npar[npar1]['bf'],results_npar[npar1]['toyfile'])
+                    gof1 = {
+                        'toys': collect_gof(gof1file),
+                        'data': results_npar[npar1]['gof']
+                    }
+                    gof2file = gof_datacard(cmd,outdir,result_npar['bf'],results_npar[npar1]['toyfile'])
+                    gof2 = {
+                        'toys': collect_gof(gof2file),
+                        'data': result_npar['gof'],
+                    }
+                    results[(ipar1,ipar)] = ((npar1+1, gof1), (npar+1, gof2))
+                    if ftest_length==0:
+                        # shortcircuit toy-based ftest for speed
+                        i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=True)
+                        if i_winner==ipar1:
+                            break
+                        else:
+                            i_winner = None
             else:
                 results.append((npar+1, result_npar['gof'][0]))
 

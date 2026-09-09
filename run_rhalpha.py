@@ -342,7 +342,7 @@ def derive_args(args_orig, signals, alt=False, bias=False):
         args.ftoy_args,
         f"-t {args.ftoys}" if args.ftoys else "",
         f"--suff {args.suff}" if args.suff else "",
-        f"--ftest-long" if args.ftest_long else "",
+        f"--ftest-length {args.ftest_length}",
     ])
     args.bias_toy_args = f"-t {args.btoys} -s {args.btoy_seed}"
     args.bias_fit_args = f"{args.bias_toy_args} --range {args.brange[0]} {args.brange[1]} --cminDefaultMinimizerStrategy 0"
@@ -462,7 +462,7 @@ if __name__=="__main__":
     group_dc.add_argument("--npar-mc-max", type=int, default=6, help="max number of parameters for MC TF F-test")
     group_dc.add_argument("--npar-data", type=int, default=None, help="number of parameters for data TF, if not using F-test")
     group_dc.add_argument("--npar-data-max", type=int, default=5, help="max number of parameters for data TF F-test")
-    group_dc.add_argument("--ftest-long", default=False, action="store_true", help="do not short-circuit data TF F-test")
+    group_dc.add_argument("--ftest-length", type=int, default=0, help="data F-test: 0: short-circuit; 1: n-1 vs. n; 2: n-1, n-2, ... vs. n")
     group_dc.add_argument("--ftoys", type=int, default=0, help="number of toys for data TF F-test")
     group_dc.add_argument("--ftoy-seed", type=int, default=1005, help="random seed for F-test toy generation")
     group_dc.add_argument("--bkgsmooth", dest="use_bkgsmooth", default=False, action="store_true", help="use smoothed MC for bkg")
