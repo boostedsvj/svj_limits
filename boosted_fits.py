@@ -1111,6 +1111,10 @@ class InputData(object):
                 i_winner = 0
             logger.info(f'gen_datacard_rhalpha: chose n_pars={results[i_winner][0]} for tf_mc')
 
+            # alternative test
+            results_for_aic = {bm["results"][0] : 2*bm["fit"].minNll() for bm in bkgmodels}
+            do_aic_test(results_for_aic, self.n_bins)
+
             # save winner
             bkgmodel = bkgmodels[i_winner]['model']
             tf_mc = bkgmodels[i_winner]['tf']
@@ -1991,6 +1995,27 @@ def do_fisher_test(results, n_bins, a_crit=.05, toys=False):
     tex_table.insert(1, ['\\hline'])
     logger.info(f'Tex-formatted table:\n{tabelize(tex_table)}')
 
+    return winner
+
+
+# compute (corrected) AIC
+def compute_aic(nll, n, n_bins):
+    corr = (2*(n**2) + 2*n)/(n_bins - n - 1)
+    aic = 2*n + nll
+    return aic + corr
+
+
+def do_aic_test(results, n_bins):
+    aics = []
+    nvals = []
+    for n, result in sorted(results.items()):
+        aics.append(compute_aic(result, n, n_bins))
+        nvals.append(n)
+    logger.info('Running AIC test')
+    winner = np.argmin(np.array(aics))
+    logger.info(f'AIC winner is pdf {winner} with {nvals[winner]} parameters')
+    table = [[f'{n}' for n in nvals],[f'{a}' for a in aics]]
+    logger.info('AIC values:\n' + tabelize(table))
     return winner
 
 
