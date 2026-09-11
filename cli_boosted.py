@@ -235,6 +235,8 @@ def gen_datacards():
     # format: results[(i,j)] = ((n1,gof1),(n2,gof2))
     # non-toy case: gof result for each n
     results = {} if ntoys>0 else []
+    # format: n:gof
+    results_for_aic = {}
     i_winner = None
     for ipar,npar in enumerate(npar_vals):
         npar_suff = suff
@@ -296,6 +298,7 @@ def gen_datacards():
                             i_winner = None
             else:
                 results.append((npar+1, result_npar['gof'][0]))
+            results_for_aic[npar+1] = result_npar['gof'][0]
 
     # conduct ftest
     # todo: allow reusing existing result (--cache arg? or --npar -1?)
@@ -306,6 +309,8 @@ def gen_datacards():
             bsvj.logger.warning("F-test w/o toys may not be accurate")
         if not i_winner:
             i_winner = bsvj.do_fisher_test(results, input.n_bins, a_crit=0.05, toys=ntoys>0)
+        # alternative test
+        bsvj.do_aic_test(results_for_aic, input.n_bins)
         # assign i_winner as the "main" datacard
         outdir = osp.dirname(dcfile)
         npar_suff = f'_npar{i_winner}'
