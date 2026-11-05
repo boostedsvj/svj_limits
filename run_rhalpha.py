@@ -14,13 +14,12 @@ hists_dates = {
     "cutbased_ddt": ("20250710", "", ""),
     "cutbased_ddt=0.11": ("20250715", "", ""),
     "cutbased_ddt=0.12": ("20250912", "", ""),
-    "rtcutbased_ddt=0.1": ("20260511", "", ""),
+    "rtcutbased_ddt=0.1": ("20261105", "", ""),
     "bdt=0.55": ("20250912", "", ""),
     "bdt=0.75": ("20250912", "", ""),
     "rtbdt=0.6": ("20251117", "", ""),
     "rtbdt=0.52": ("20260108", "", ""),
-    "rtbdt=0.62": ("20260511", "", ""),
-    "rtbdt=0.72": ("20260209", "", ""),
+    "rtbdt=0.85": ("20261105", "", ""),
 }
 def safe_len(val): return -1 if val is None else len(val)
 hists_dates = {key : {"": val[0], "anti": val[0] if safe_len(val[1])==0 else val[1], "antiloose": val[0] if safe_len(val[2])==0 else val[2]} for key,val in hists_dates.items()}
@@ -174,11 +173,11 @@ steps['0'] = StepRunner('pseudodata', [
     Command("cp", "", "{data_toy_file} {data_toy_file_anti}", cast='single'),
 ])
 steps['1'] = StepRunner('datacard generation', [
-    Command("python3 cli_boosted.py", "gen_datacards", "--norm-type rhalpha {region_args2} --sig {regions_sig} {dc_args}", cast='mp'),
+    Command("python3 cli_boosted.py", "gen_datacards", "--norm-type rhalpha {region_args2} --sig {regions_sig} {dc_args} --range -0.5 0.5", cast='mp'),
 ])
 steps['2'] = StepRunner('diagnostics', [
     # run bestfit
-    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range_auto 1 10 10", cast='mp'),
+    Command("python3 cli_boosted.py", "bestfit", "{dc_dir}/{dc_name} --range_auto 2 10 10", cast='mp'),
     # hessian analysis
     Command("python3", "hessian.py", "-w {bf_file}:w -f {bf_file}:fit_mdf -s 0.1"),
     # make plots
@@ -236,7 +235,7 @@ steps['8'] = StepRunner('bias fits', [
     Command("mv", "", "{bias_fit_file} {bias_results_dir}/"),
 ])
 steps['9'] = StepRunner('bias plots', [
-    Command("python3", "plot_bias_or_self_study.py", "--base-dir {bias_results_basedir} --sel {sel} --test {bias_test_type} -s {btoy_seed} --rinj {rinj} --explim {explim} --signals {signals}", cast='single'),
+    Command("python3", "plot_bias_or_self_study.py", "--base-dir {bias_results_basedir} --sel {sel} --dcsuff {suff} --test {bias_test_type} -s {btoy_seed} --rinj {rinj} --explim {explim} --signals {signals}", cast='single'),
 ])
 steps['10'] = StepRunner('impacts', [
     # Impact
@@ -387,7 +386,7 @@ def derive_args(args_orig, signals, alt=False, pseudoalt=False):
     args.bias_fits_dir = f"toyfits_{args.bfit_date}"
     args.bias_test_type = "bias" if (alt or pseudoalt) else "self"
     args.bias_results_rinj = "1" if args.rinj!=0 else "0"
-    args.bias_results_basedir = f"{args.bias_test_type}_test_{args.dc_date}"
+    args.bias_results_basedir = f"{args.bias_test_type}_test{args.suff.replace('_pdalt','')}_{args.dc_date}"
     args.bias_results_dir = f"{args.bias_results_basedir}/rinj{args.bias_results_rinj}"
 
     args.scan_dir = f"scans_{args.scan_date}"
