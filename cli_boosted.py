@@ -416,7 +416,7 @@ def bestfit():
         file  = ROOT.TFile.Open(outfile)
         tree = file.Get("limit")
         tree.GetEntry(0) # Getting the first entry
-        return np.isclose(tree.r, r ) or np.isclose(tree.r, -r)
+        return np.abs(tree.r/r) <1.01 and np.abs(tree.r/r) >0.99
 
     for r in np.linspace(rmin, rmax, int(rcount)):
         dc = bsvj.Datacard.from_txt(txtfile)
