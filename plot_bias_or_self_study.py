@@ -22,14 +22,14 @@ ROOT.gROOT.SetBatch(True)  # Prevents ROOT from opening canvases
 ROOT.TH1.AddDirectory(True)
 
 def main():
-    imgs = ["pdf", "png"]
-
     parser = argparse.ArgumentParser(description="Configure base directory and parameters for bias test")
     parser.add_argument('--base-dir', type=str, required=True,
                         help=("Directory path containing the test subdirectories, e.g. '/path/to/test/',"
                               " it expects two subdirectories: rinj0 and rinj1"))
     parser.add_argument('--suff', type=str, default="",
                         help="Suffix for rinj0 and rinj1 dir names")
+    parser.add_argument('--dcsuff', type=str, default="",
+                        help="Suffix used for datacards")
     parser.add_argument('--sel', type=str, required=True,
                         help="Selection type")
     parser.add_argument('--test', type=str, required=True, choices=['bias', 'self'],
@@ -63,63 +63,95 @@ def main():
 
         rinj = 0 if inj_type==0 else args.rinj
 
-        results[inj_type] = {"mean": [], "emean": [], "sigma": [], "esigma": []}
+        results[inj_type] = {"mMed":[], "mean": [], "emean": [], "sigma": [], "esigma": []}
 
         for signal in signals:
-            rinj_signal = get_rinj(rinj,signal)
-            path = f"{base}/higgsCombineObserveddc_{get_signame(signal)}_sel-{args.sel}_mt_smooth.FitDiagnostics.mH120.{args.seed}.root"
-            afile = ROOT.TFile(path)
-            atree = afile.Get("tree_fit_sb")
+            try:
+                rinj_signal = get_rinj(rinj,signal)
+                path_suff = f"_{args.dcsuff.replace('_pdalt', '')}" if args.dcsuff else ""
+                path = f"{base}/higgsCombineObserveddc_{get_signame(signal)}_sel-{args.sel}_mt_smooth{path_suff}.FitDiagnostics.mH120.{args.seed}.root"
+                afile = ROOT.TFile(path)
+                atree = afile.Get("tree_fit_sb")
 
-            # Create histograms for r/rErr
-            histo = ROOT.TH1F(f"histo_rinj{inj_type}_{signal.mMed}", f"Histogram of (r-rinj)/(0.5*(rLoErr+rHiErr)) for MZ = {signal.mMed} GeV (r_inj={rinj_signal})", 50, -10, 10)
+                # Create histograms for r/rErr
+                histo = ROOT.TH1F(f"histo_rinj{inj_type}_{signal.mMed}", f"Histogram of (r-rinj)/(0.5*(rLoErr+rHiErr)) for MZ = {signal.mMed} GeV (r_inj={rinj_signal})", 50, -10, 10)
+                # Draw r/rErr into the histogram
+                atree.Draw(f"(r - {rinj_signal})/(0.5*(rLoErr+rHiErr))>>{histo.GetName()}", "fit_status==0 || fit_status==1")
+                # Perform Gaussian fit
+                fit = histo.Fit("gaus", "S", "Q")
 
-            # Draw r/rErr into the histogram
-            atree.Draw(f"(r - {rinj_signal})/(0.5*(rLoErr+rHiErr))>>{histo.GetName()}", "fit_status==0 || fit_status==1")
+                # Store means and sigmas for both fits
+                y = fit.Parameter(1) * 2
 
-            # Perform Gaussian fit
-            fit = histo.Fit("gaus", "S", "Q")
+                results[inj_type]["mMed"].append(signal.mMed_val())
+                results[inj_type]["mean"].append(fit.Parameter(1))
+                results[inj_type]["emean"].append(fit.ParError(1))
+                results[inj_type]["sigma"].append(fit.Parameter(2))
+                results[inj_type]["esigma"].append(fit.ParError(2))
 
-            # Store means and sigmas for both fits
-            results[inj_type]["mean"].append(fit.Parameter(1))
-            results[inj_type]["emean"].append(fit.ParError(1))
-            results[inj_type]["sigma"].append(fit.Parameter(2))
-            results[inj_type]["esigma"].append(fit.ParError(2))
+                # Save the histograms as PDFs and PNGs
+                canvas = ROOT.TCanvas("canvas", "canvas", 800, 600)
+                histo.Draw()
+                canvas.SaveAs(f"{args.base_dir}/{test}_sel-{args.sel}_rinj{inj_type}_MZ_{signal.mMed}_GeV.pdf")
 
-            # Save the histograms as PDFs and PNGs
-            canvas = ROOT.TCanvas("canvas", "canvas", 800, 600)
-            histo.Draw()
-            for img in imgs:
-                canvas.SaveAs(f"{args.base_dir}/{test}_rinj{inj_type}_MZ_{signal.mMed}_GeV.{img}")
+                key_list = ["r", "rLoErr", "rHiErr", "fit_status"]
+                arrays = {
+                    k: np.array([getattr(t,k) for t in atree]) for k in key_list
+                }
+                mask = (arrays["fit_status"] == 0) | (arrays["fit_status"] == 1)
+                err = (arrays["rLoErr"] + arrays["rHiErr"])[mask]
+                asymm = ((arrays["rLoErr"] - arrays["rHiErr"])[mask]) /err
+                r = arrays["r"][mask]
+                x = np.linspace(np.min(err), np.max(err), 10)
+
+                plt.plot(x, [rinj_signal] * 10, color='k')
+                plt.fill_between(x, rinj_signal + x, rinj_signal - x, color='gray', alpha=0.2)
+                plt.fill_between(x, rinj_signal + 2*x, rinj_signal - 2*x, color='gray', alpha=0.2)
+                plt.text(x[-1], rinj_signal + x[-1], "$1\sigma$")
+                plt.text(x[-1], rinj_signal + 2*x[-1], "$2\sigma$")
+                plt.scatter(err, r) # Actual scatter
+                plt.ylabel("Fit value")
+                plt.xlabel("Fit Uncertainty")
+                plt.title(f"{args.sel} rinj{inj_type} MZ{signal.mMed}GeV")
+                plt.savefig(f"{args.base_dir}/{test}_sel-{args.sel}_rinj{inj_type}_MZ_{signal.mMed}_GeV_rscatter.pdf")
+                plt.close()
+                plt.scatter(err, asymm)
+                plt.ylabel("Uncertainty Asymmetry")
+                plt.xlabel("Avg. Uncertainty")
+                plt.title(f"{args.sel} rinj{inj_type} MZ{signal.mMed}GeV")
+                plt.savefig(f"{args.base_dir}/{test}_sel-{args.sel}_rinj{inj_type}_MZ_{signal.mMed}_GeV_rErrAsymm.pdf")
+                plt.close()
+            except:
+                pass
 
     # keep consistent colors
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
     # Plot mean for both r_inj = 0 and r_inj = 1
     inj_label = ["0", "Expected"]
-    xvals = [signal.mMed_val() for signal in signals]
     for inj_type in results:
+        xvals = results[inj_type]["mMed"]
+        print(xvals, results[inj_type]["mean"])
         plt.errorbar(xvals, results[inj_type]["mean"], yerr=results[inj_type]["emean"], color=color_cycle[inj_type], marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=${inj_label[inj_type]}')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('Mean', fontsize=12)
     plt.title(f'{test_title} Test: Gaussian $\mu$ of $(r-r_{{inj}})/\\langle\\varepsilon_{{r}}\\rangle$', fontsize=15)
-    plt.ylim(-3.0, 3.0)
+    plt.ylim(-5.0, 5.0)
     plt.fill_between(plt.xlim(), 0.5, -0.5, color='#f88379', alpha=0.25, label='$\pm 0.5$')
-    for img in imgs:
-        plt.savefig(f'{args.base_dir}/{test}_pull_mean.{img}')
+    plt.savefig(f'{args.base_dir}/{test}_sel-{args.sel}_pull_mean.pdf')
     plt.close()
 
     # Plot sigma for both r_inj = 0 and r_inj = 1
     for inj_type in results:
+        xvals = results[inj_type]["mMed"]
         plt.errorbar(xvals, results[inj_type]["sigma"], yerr=results[inj_type]["esigma"], color=color_cycle[inj_type], marker='.', markersize=8, linestyle='--', label=f'$r_{{inj}}=${inj_label[inj_type]}')
     plt.legend()
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('$\sigma$', fontsize=12)
     plt.title(f'{test_title} Test: Gaussian $\sigma$ of $(r-r_{{inj}})/\\langle\\varepsilon_{{r}}\\rangle$', fontsize=15)
     plt.ylim(0.5, 2.5)
-    for img in imgs:
-        plt.savefig(f'{args.base_dir}/{test}_pull_stdev.{img}')
+    plt.savefig(f'{args.base_dir}/{test}_sel-{args.sel}_pull_stdev.pdf')
     plt.close()
 
 main()
