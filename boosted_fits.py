@@ -723,9 +723,6 @@ class InputRegion(object):
                     self.data_th1 = self.data['data'].th1('data', rebin, mtname)
                 else:
                     self.data_th1 = self.bkg_th1
-                    rng = np.random.default_rng(seed=123456)
-                    for i in range(0, self.data_th1.GetNbinsX()+1):
-                        self.data_th1.SetBinContent(i, rng.poisson(self.data_th1.GetBinContent(i)))
                 self.data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(self.mtvar), self.data_th1, 1.)
         self.bkg_datahist = ROOT.RooDataHist("bkg", "bkg", ROOT.RooArgList(self.mtvar), self.bkg_th1, 1.)
 
@@ -863,6 +860,8 @@ class InputRegion(object):
                         raise RuntimeError(f"Datacard conversion not implemented yet for {par.combinePrior}")
                 else:
                     dc.systs.append([par.name, 'extArg', f'{wsfile}:{ws.GetName()}'])
+                    # automatically track param in output
+                    dc.systs.append([par.name, 'flatParam'])
         if self.bkg_type=="multipdf":
             for p in self.bkg_pdf.pdfs:
                 systs_for_pdf(p)
@@ -1041,7 +1040,7 @@ class InputData(object):
             bkgmodels = []
             winner_indices = winners if winners else {}
             npar_vals = winner_indices.get('tf_mc', None)
-            if not npar_vals: npar_vals = range(npar_mc_max)
+            if npar_vals is None: npar_vals = range(npar_mc_max)
             else: npar_vals = [npar_vals]
             for npar_mc in npar_vals:
                 # use rhalphalib model to create workspace
@@ -1108,6 +1107,10 @@ class InputData(object):
                 # keep already-saved value, don't overwrite w/ 0
                 i_winner = 0
             logger.info(f'gen_datacard_rhalpha: chose n_pars={results[i_winner][0]} for tf_mc')
+
+            # alternative test
+            results_for_aic = {bm["results"][0] : 2*bm["fit"].minNll() for bm in bkgmodels}
+            do_aic_test(results_for_aic, self.n_bins)
 
             # save winner
             bkgmodel = bkgmodels[i_winner]['model']
@@ -1989,6 +1992,27 @@ def do_fisher_test(results, n_bins, a_crit=.05, toys=False):
     tex_table.insert(1, ['\\hline'])
     logger.info(f'Tex-formatted table:\n{tabelize(tex_table)}')
 
+    return winner
+
+
+# compute (corrected) AIC
+def compute_aic(nll, n, n_bins):
+    corr = (2*(n**2) + 2*n)/(n_bins - n - 1)
+    aic = 2*n + nll
+    return aic + corr
+
+
+def do_aic_test(results, n_bins):
+    aics = []
+    nvals = []
+    for n, result in sorted(results.items()):
+        aics.append(compute_aic(result, n, n_bins))
+        nvals.append(n)
+    logger.info('Running AIC test')
+    winner = np.argmin(np.array(aics))
+    logger.info(f'AIC winner is pdf {winner} with {nvals[winner]} parameters')
+    table = [[f'{n}' for n in nvals],[f'{a}' for a in aics]]
+    logger.info('AIC values:\n' + tabelize(table))
     return winner
 
 
