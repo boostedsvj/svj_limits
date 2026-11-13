@@ -207,7 +207,7 @@ steps['3a'] = StepRunner('Asimov toy', [
 ])
 steps['3p'] = StepRunner('bias toys with pseudodata', [
     # Remake data card with alternate random number seed
-    Command("python3 cli_boosted.py", "gen_datacards", "--norm-type crsimple --suff {suff} --seed {btoy_seed} {region_args1} --sig {regions_sig}", cast='mp'),
+    Command("python3 cli_boosted.py", "gen_datacards", "--norm-type crsimple --suff {suff} --seed {btoy_seed} {region_args_bias} --sig {regions_sig}", cast='mp'),
     Command("python3 cli_boosted.py", "gentoys", "{dc_dir}/{dc_name} {bias_toy_args} {rinj_arg}", cast='mp'),
     Command("mv", "", "{bias_toy_file_old} {bias_toy_file}"),
 ])
@@ -369,6 +369,8 @@ def derive_args(args_orig, signals, alt=False, pseudoalt=False):
 
     args.region_args_base = f"--regions {args.sel} {args.antisel}"
     args.region_args1 = f"{args.region_args_base} --bkg {args.bkgsmooth} {args.antibkgsmooth}"
+    # bias toys with pseudodata (step 3p): generator from the smoothed MC, or from the unsmoothed MC with --bias-raw-bkg
+    args.region_args_bias = f"{args.region_args_base} --bkg {args.bkg} {args.antibkg}" if args.bias_raw_bkg else args.region_args1
     args.dc_dir = f"dc_{args.dc_date}_{args.sel}"
 
     args.data_toy_suff = join_none("_",[args.suff,"simple"])
@@ -479,6 +481,7 @@ if __name__=="__main__":
     group_bi.add_argument("--btoy-date", type=str, default=today, help="date for toy folder for bias test (if skipping step)")
     group_bi.add_argument("--bfit-date", type=str, default=today, help="date for bias fit folder (if skipping step)")
     group_bi.add_argument("--brange", type=float, default=[-5,5], nargs=2, help="bias study r range")
+    group_bi.add_argument("--bias-raw-bkg", default=False, action="store_true", help="bias toys with pseudodata (step 3p): generate from the unsmoothed bkg MC instead of the smoothed one")
     # todo: expose pointsRandProf options
     args = parser.parse_args()
 
