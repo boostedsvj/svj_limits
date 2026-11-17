@@ -1139,9 +1139,10 @@ class InputData(object):
             tf_mc_params_final = tf_mc(mtscaled)
 
         # bkg represented as linked parametric histograms
-        # one parameter per bin in CR
+        # one parameter per bin in CR, in units of the Poisson error of the CR data (see scaledparams)
+        # range +-100 as in the rhalphalib example: the default (+-10) is too narrow for toys from MC
         initial_bkg = roodataset_values(self.regions[1].data_datahist)[1]
-        bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0) for b in range(self.n_bins)])
+        bkgparams = np.array([rl.IndependentParameter(f"bkgparam_mtbin{b}",0,lo=-100,hi=100) for b in range(self.n_bins)])
         scaledparams = initial_bkg * (1.0 + 1.0/np.sqrt(initial_bkg)) ** (bkgparams)
         fail_bkg = rl.ParametericSample(joiner([bkg_name, self.regions[1].bin_suff]), rl.Sample.BACKGROUND, rl_mt, scaledparams)
 
