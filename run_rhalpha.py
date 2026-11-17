@@ -189,7 +189,7 @@ steps['2'] = StepRunner('diagnostics', [
     Command("python3 quick_plot.py", "ftest_toys", "--results_dump {dc_dir}/ftest/{signame_dc}_ftest-results.py -o {dc_dir}/ftest/{signame_dc}"),
     # F-test results vs all signal samples for plotting
     # todo: More fit parameter results vs. signal parameter(s)
-    Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/ --suff {suff}", cast='single'),
+    Command("python3 quick_plot.py", "ftest_scan", "--results_dir {dc_dir}/ftest/ --signals {signals} --sel {sel} -o {dc_dir}/ftest/ --suff '{suff}'", cast='single'),
     ] + [
     # postfit
     Command("python3 quick_plot.py", "mtdist", "{{bf_file}} --sel {0} --channel {1} --outfile {{bf_dir}}/bestfit_{1}_{{signame_dc}}.pdf --ftest {{dc_dir}}/ftest/{{signame_dc}}_ftest-results.py".format(sel, channel))
@@ -235,7 +235,7 @@ steps['8'] = StepRunner('bias fits', [
     Command("mv", "", "{bias_fit_file} {bias_results_dir}/"),
 ])
 steps['9'] = StepRunner('bias plots', [
-    Command("python3", "plot_bias_or_self_study.py", "--base-dir {bias_results_basedir} --sel {sel} --dcsuff {suff} --test {bias_test_type} -s {btoy_seed} --rinj {rinj} --explim {explim} --signals {signals}", cast='single'),
+    Command("python3", "plot_bias_or_self_study.py", "--base-dir {bias_results_basedir} --sel {sel} --dcsuff '{suff}' --test {bias_test_type} -s {btoy_seed} --rinj {rinj} --explim {explim} --signals {signals}", cast='single'),
 ])
 steps['10'] = StepRunner('impacts', [
     # Impact

@@ -1338,6 +1338,7 @@ def bkgtf():
         else:
             if verbose: print('tf_data_th1', bsvj.th1_to_hist(tf_data['th1'])['vals'].tolist())
             tf_data['bkg_eff'] = tf_mc['bkg_eff']
+            suff_data = 'data'
 
         tf_data['arr'] = bsvj.th1_to_hist(tf_data['th1'])
         fit_data = get_tf_fit(fn_data, npar_data, tf_data['th1'], mt['scaled'], tf_data['bkg_eff'])
