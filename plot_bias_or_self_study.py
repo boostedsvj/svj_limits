@@ -139,7 +139,7 @@ def main():
     plt.xlabel('$M_{Z^{\prime}}$ (GeV)', fontsize=12)
     plt.ylabel('Mean', fontsize=12)
     plt.title(f'{test_title} Test: Gaussian $\mu$ of $(r-r_{{inj}})/\\langle\\varepsilon_{{r}}\\rangle$', fontsize=15)
-    plt.ylim(-5.0, 5.0)
+    plt.ylim(-2.0, 2.0)
     plt.fill_between(plt.xlim(), 0.5, -0.5, color='#f88379', alpha=0.25, label='$\pm 0.5$')
     plt.savefig(f'{args.base_dir}/{test}_sel-{args.sel}_pull_mean.pdf')
     plt.close()
